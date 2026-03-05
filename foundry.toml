@@ -4,6 +4,8 @@ evm_version = 'paris'
 optimizer_runs = 100000000
 libs = ["node_modules", "lib"]
 fs_permissions = [{ access = "read-write", path = "./"}]
+no_match_contract = "_Fork"
+block_timestamp = 1_700_000_000
 
 [profile.ci_sizes]
 optimizer_runs = 200
