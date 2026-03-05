@@ -199,7 +199,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     }
 
     /// @notice Lock a hook for a project.
-    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_POOL` permission from the
+    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
     /// owner can lock a hook for a project.
     /// @param projectId The ID of the project to lock the hook for.
     function lockHookFor(uint256 projectId) external {
@@ -207,7 +207,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         _requirePermissionFrom({
             account: PROJECTS.ownerOf(projectId),
             projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_POOL
+            permissionId: JBPermissionIds.SET_BUYBACK_HOOK
         });
 
         // L-27: Require a non-zero hook before locking. Either the project has one set, or the default exists.
@@ -239,7 +239,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     }
 
     /// @notice Set the hook for a project.
-    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_POOL` permission from the
+    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
     /// owner can set the hook for a project.
     /// @param projectId The ID of the project to set the hook for.
     /// @param hook The hook to set for the project.
@@ -253,7 +253,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         _requirePermissionFrom({
             account: PROJECTS.ownerOf(projectId),
             projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_POOL
+            permissionId: JBPermissionIds.SET_BUYBACK_HOOK
         });
 
         // Set the hook.
