@@ -130,22 +130,21 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
             JBAccountingContext[] memory _tokensToAccept = new JBAccountingContext[](1);
 
             _tokensToAccept[0] = JBAccountingContext({
-                token: JBConstants.NATIVE_TOKEN,
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+                token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             });
 
             _terminalConfigurations[0] =
                 JBTerminalConfig({terminal: jbMultiTerminal(), accountingContextsToAccept: _tokensToAccept});
 
             // Create a first project to collect fees.
-            jbController().launchProjectFor({
-                owner: multisig(),
-                projectUri: "whatever",
-                rulesetConfigurations: _rulesetConfigurations,
-                terminalConfigurations: _terminalConfigurations, // Set terminals to receive fees.
-                memo: ""
-            });
+            jbController()
+                .launchProjectFor({
+                    owner: multisig(),
+                    projectUri: "whatever",
+                    rulesetConfigurations: _rulesetConfigurations,
+                    terminalConfigurations: _terminalConfigurations, // Set terminals to receive fees.
+                    memo: ""
+                });
 
             // Setup an erc20 for the project
             vm.prank(multisig());
@@ -268,8 +267,9 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
         if (sqrtP == 0) return TWAP_SLIPPAGE_DENOMINATOR;
         uint256 base = mulDiv(_amountIn, 100_000, uint256(liquidity));
         console.log("base", base);
-        uint256 slippageTolerance =
-            zeroForOne ? mulDiv(base, uint256(sqrtP), uint256(1) << 96) : mulDiv(base, uint256(1) << 96, uint256(sqrtP));
+        uint256 slippageTolerance = zeroForOne
+            ? mulDiv(base, uint256(sqrtP), uint256(1) << 96)
+            : mulDiv(base, uint256(1) << 96, uint256(sqrtP));
         console.log("slippageTolerance", slippageTolerance);
         if (slippageTolerance > 150_000) slippageTolerance = 8800;
         else if (slippageTolerance > 100_000) slippageTolerance = 6700;
@@ -413,8 +413,7 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
             // The swap succeeded: verify token balances
             uint256 _balAfterPayment = jbx.balanceOf(multisig());
             uint256 _beneficiaryReceived = _balAfterPayment - _balBeforePayment;
-            uint256 _reserveAdded =
-                jbController().pendingReservedTokenBalanceOf(1) - _reservedBalanceBefore;
+            uint256 _reserveAdded = jbController().pendingReservedTokenBalanceOf(1) - _reservedBalanceBefore;
 
             // The total swap output is split between beneficiary and reserve.
             uint256 _totalSwapOutput = _beneficiaryReceived + _reserveAdded;
@@ -424,12 +423,7 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
 
             // Verify the beneficiary/reserve split matches the reserved percent (1 wei tolerance for rounding).
             if (_reservedPercent > 0) {
-                assertApproxEqAbs(
-                    _reserveAdded,
-                    _totalSwapOutput * _reservedPercent / 10_000,
-                    1,
-                    "wrong reserve split"
-                );
+                assertApproxEqAbs(_reserveAdded, _totalSwapOutput * _reservedPercent / 10_000, 1, "wrong reserve split");
             }
             if (_reservedPercent < 10_000) {
                 assertApproxEqAbs(
@@ -443,9 +437,7 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
             // The dynamic sqrtPriceLimit caused a partial fill that didn't meet the minimum.
             bytes4 selector = bytes4(reason);
             assertEq(
-                selector,
-                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector,
-                "unexpected revert reason"
+                selector, JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, "unexpected revert reason"
             );
         }
     }
@@ -588,9 +580,7 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
             // This is expected behavior for large swaps relative to pool liquidity.
             bytes4 selector = bytes4(reason);
             assertEq(
-                selector,
-                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector,
-                "unexpected revert reason"
+                selector, JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, "unexpected revert reason"
             );
         }
     }
@@ -671,9 +661,7 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
             // The dynamic sqrtPriceLimit caused a partial fill that didn't meet the TWAP minimum.
             bytes4 selector = bytes4(reason);
             assertEq(
-                selector,
-                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector,
-                "unexpected revert reason"
+                selector, JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, "unexpected revert reason"
             );
         }
     }
@@ -819,9 +807,7 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
             // The dynamic sqrtPriceLimit caused a partial fill that didn't meet the minimum.
             bytes4 selector = bytes4(reason);
             assertEq(
-                selector,
-                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector,
-                "unexpected revert reason"
+                selector, JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, "unexpected revert reason"
             );
         }
     }
@@ -835,7 +821,12 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
         JBSplitGroup[] memory _groupedSplits = new JBSplitGroup[](1);
         _groupedSplits[0] = JBSplitGroup({
             groupId: 1,
-            splits: jbSplits().splitsOf(_projectId, _fundingCycle.id, uint256(uint160(JBConstants.NATIVE_TOKEN)) /*group*/ )
+            splits: jbSplits()
+                .splitsOf(
+                    _projectId,
+                    _fundingCycle.id,
+                    uint256(uint160(JBConstants.NATIVE_TOKEN)) /*group*/
+                )
         });
 
         _metadata.useDataHookForPay = true;

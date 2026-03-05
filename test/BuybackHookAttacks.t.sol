@@ -29,7 +29,9 @@ contract ForTest_AttackBuybackHook is JBBuybackHook {
         IWETH9 weth,
         address factory,
         address trustedForwarder
-    ) JBBuybackHook(directory, permissions, prices, projects, tokens, weth, factory, trustedForwarder) {}
+    )
+        JBBuybackHook(directory, permissions, prices, projects, tokens, weth, factory, trustedForwarder)
+    {}
 
     function ForTest_initPool(
         IUniswapV3Pool pool,
@@ -37,7 +39,9 @@ contract ForTest_AttackBuybackHook is JBBuybackHook {
         uint256 twapWindow,
         address projectToken,
         address terminalToken
-    ) public {
+    )
+        public
+    {
         poolOf[projectId][terminalToken] = pool;
         twapWindowOf[projectId] = twapWindow;
         projectTokenOf[projectId] = projectToken;
@@ -259,7 +263,10 @@ contract BuybackHookAttacks is TestBaseWorkflow, JBTest {
         uint256 weight,
         uint256 swapOutCount,
         uint256 amountIn
-    ) public pure {
+    )
+        public
+        pure
+    {
         // Bound inputs
         weight = bound(weight, 1, 1e24);
         swapOutCount = bound(swapOutCount, 1, type(uint128).max);

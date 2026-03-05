@@ -94,21 +94,20 @@ contract TestBuybackHook_SigmoidValidation is TestBaseWorkflow, JBTest, UniswapV
             JBAccountingContext[] memory _tokensToAccept = new JBAccountingContext[](1);
 
             _tokensToAccept[0] = JBAccountingContext({
-                token: JBConstants.NATIVE_TOKEN,
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+                token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             });
 
             _terminalConfigurations[0] =
                 JBTerminalConfig({terminal: jbMultiTerminal(), accountingContextsToAccept: _tokensToAccept});
 
-            jbController().launchProjectFor({
-                owner: multisig(),
-                projectUri: "whatever",
-                rulesetConfigurations: _rulesetConfigurations,
-                terminalConfigurations: _terminalConfigurations,
-                memo: ""
-            });
+            jbController()
+                .launchProjectFor({
+                    owner: multisig(),
+                    projectUri: "whatever",
+                    rulesetConfigurations: _rulesetConfigurations,
+                    terminalConfigurations: _terminalConfigurations,
+                    memo: ""
+                });
 
             vm.prank(multisig());
             jbx = jbController().deployERC20For(1, "JUICEBOXXX", "JBX", bytes32(0));
@@ -277,7 +276,9 @@ contract TestBuybackHook_SigmoidValidation is TestBaseWorkflow, JBTest, UniswapV
             assertGe(
                 tolerance,
                 actualSlippage,
-                string(abi.encodePacked("sigmoid tolerance should cover actual slippage for amount index ", vm.toString(i)))
+                string(
+                    abi.encodePacked("sigmoid tolerance should cover actual slippage for amount index ", vm.toString(i))
+                )
             );
 
             vm.revertToState(snapshot);

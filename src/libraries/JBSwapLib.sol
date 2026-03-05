@@ -110,9 +110,7 @@ library JBSwapLib {
         returns (uint160 sqrtPriceLimit)
     {
         if (minimumAmountOut == 0 || amountIn == 0) {
-            return zeroForOne
-                ? TickMath.MIN_SQRT_RATIO + 1
-                : TickMath.MAX_SQRT_RATIO - 1;
+            return zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1;
         }
 
         uint256 num;
@@ -129,9 +127,7 @@ library JBSwapLib {
 
         if (num / den >= (uint256(1) << 128)) {
             // Ratio too large for any valid sqrtPriceX96 — fall back to no limit.
-            return zeroForOne
-                ? TickMath.MIN_SQRT_RATIO + 1
-                : TickMath.MAX_SQRT_RATIO - 1;
+            return zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1;
         } else if (num / den >= (uint256(1) << 64)) {
             // Extended range: use ratioX128 to avoid mulDiv overflow, then shift.
             uint256 ratioX128 = mulDiv(num, uint256(1) << 128, den);
