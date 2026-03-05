@@ -201,7 +201,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
             bytes4 metadataId = JBMetadataResolver.getId("quote");
 
             // Unpack the quote specified by the payer/client (typically from the pool).
-            (bool quoteExists, bytes memory metadata) = JBMetadataResolver.getDataFor(metadataId, context.metadata);
+            (bool quoteExists, bytes memory metadata) =
+                JBMetadataResolver.getDataFor({id: metadataId, metadata: context.metadata});
             if (quoteExists) (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
         }
 
@@ -363,7 +364,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         // If no observation history, fall back to minting (skip buyback) — slot0 is flash-loan manipulable.
         if (oldestObservation == 0) return 0;
 
-        (arithmeticMeanTick, liquidity) = OracleLibrary.consult(address(pool), uint32(twapWindow));
+        (arithmeticMeanTick, liquidity) =
+            OracleLibrary.consult({pool: address(pool), secondsAgo: uint32(twapWindow)});
 
         // If there's no liquidity, fall back to minting.
         if (liquidity == 0) return 0;
@@ -431,10 +433,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         if (sqrtP == 0) return TWAP_SLIPPAGE_DENOMINATOR;
 
         // Calculate impact using 1e18 precision (prevents rounding to 0 for small swaps).
-        uint256 impact = JBSwapLib.calculateImpact(amountIn, liquidity, sqrtP, zeroForOne);
+        uint256 impact = JBSwapLib.calculateImpact({
+            amountIn: amountIn,
+            liquidity: liquidity,
+            sqrtP: sqrtP,
+            zeroForOne: zeroForOne
+        });
 
         // Use the continuous sigmoid formula with pool fee awareness.
-        return JBSwapLib.getSlippageTolerance(impact, poolFeeBps);
+        return JBSwapLib.getSlippageTolerance({impact: impact, poolFeeBps: poolFeeBps});
     }
 
     /// @notice The calldata. Preferred to use over `msg.data`.
@@ -462,7 +469,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     /// @param context The pay context passed in by the terminal.
     function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable override {
         // Make sure only the project's payment terminals can access this function.
-        if (!DIRECTORY.isTerminalOf(context.projectId, IJBTerminal(msg.sender))) {
+        if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
             revert JBBuybackHook_Unauthorized(msg.sender);
         }
 
@@ -753,11 +760,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         // Compute a dynamic sqrtPriceLimit from the minimum acceptable output (MEV protection).
         // When selling terminalToken for projectToken:
         //   zeroForOne = !projectTokenIs0
-        uint160 sqrtPriceLimit = JBSwapLib.sqrtPriceLimitFromAmounts(
-            amountToSwapWith,
-            minimumSwapAmountOut,
-            !projectTokenIs0
-        );
+        uint160 sqrtPriceLimit = JBSwapLib.sqrtPriceLimitFromAmounts({
+            amountIn: amountToSwapWith,
+            minimumAmountOut: minimumSwapAmountOut,
+            zeroForOne: !projectTokenIs0
+        });
 
         // Try swapping.
         // slither-disable-next-line reentrancy-events
