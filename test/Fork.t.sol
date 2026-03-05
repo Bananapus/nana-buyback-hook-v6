@@ -155,9 +155,7 @@ contract TestJBBuybackHook_Fork is TestBaseWorkflow, JBTest, UniswapV3ForgeQuote
     }
 
     function setUp() public override {
-        vm.createSelectFork(
-            "https://rpc.ankr.com/eth/4bdda9badb97f42aa5cc09055318c1ae2e4d3c0a449ebdf8bf4fe6969b20772a", 17_962_427
-        );
+        vm.createSelectFork(vm.rpcUrl("ethereum"), 17_962_427);
 
         super.setUp();
 
