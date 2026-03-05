@@ -1,27 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
-import {JBPermissioned} from "@bananapus/core-v5/src/abstract/JBPermissioned.sol";
-import {IJBController} from "@bananapus/core-v5/src/interfaces/IJBController.sol";
-import {IJBDirectory} from "@bananapus/core-v5/src/interfaces/IJBDirectory.sol";
-import {IJBMultiTerminal} from "@bananapus/core-v5/src/interfaces/IJBMultiTerminal.sol";
-import {IJBPayHook} from "@bananapus/core-v5/src/interfaces/IJBPayHook.sol";
-import {IJBPermissioned} from "@bananapus/core-v5/src/interfaces/IJBPermissioned.sol";
-import {IJBPermissions} from "@bananapus/core-v5/src/interfaces/IJBPermissions.sol";
-import {IJBPrices} from "@bananapus/core-v5/src/interfaces/IJBPrices.sol";
-import {IJBProjects} from "@bananapus/core-v5/src/interfaces/IJBProjects.sol";
-import {IJBRulesetDataHook} from "@bananapus/core-v5/src/interfaces/IJBRulesetDataHook.sol";
-import {IJBTerminal} from "@bananapus/core-v5/src/interfaces/IJBTerminal.sol";
-import {IJBTokens} from "@bananapus/core-v5/src/interfaces/IJBTokens.sol";
-import {JBConstants} from "@bananapus/core-v5/src/libraries/JBConstants.sol";
-import {JBMetadataResolver} from "@bananapus/core-v5/src/libraries/JBMetadataResolver.sol";
-import {JBRulesetMetadataResolver} from "@bananapus/core-v5/src/libraries/JBRulesetMetadataResolver.sol";
-import {JBAfterPayRecordedContext} from "@bananapus/core-v5/src/structs/JBAfterPayRecordedContext.sol";
-import {JBBeforePayRecordedContext} from "@bananapus/core-v5/src/structs/JBBeforePayRecordedContext.sol";
-import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v5/src/structs/JBBeforeCashOutRecordedContext.sol";
-import {JBCashOutHookSpecification} from "@bananapus/core-v5/src/structs/JBCashOutHookSpecification.sol";
-import {JBPayHookSpecification} from "@bananapus/core-v5/src/structs/JBPayHookSpecification.sol";
-import {JBRuleset} from "@bananapus/core-v5/src/structs/JBRuleset.sol";
+import {JBPermissioned} from "@bananapus/core-v6/src/abstract/JBPermissioned.sol";
+import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
+import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
+import {IJBPermissioned} from "@bananapus/core-v6/src/interfaces/IJBPermissioned.sol";
+import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
+import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
+import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
+import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
+import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
+import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
+import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
+import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
+import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
+import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
+import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -31,10 +31,11 @@ import {mulDiv} from "@prb/math/src/Common.sol";
 import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import {TickMath} from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
 import {OracleLibrary} from "@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol";
-import {JBPermissionIds} from "@bananapus/permission-ids-v5/src/JBPermissionIds.sol";
+import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 
 import {IJBBuybackHook} from "./interfaces/IJBBuybackHook.sol";
 import {IWETH9} from "./interfaces/external/IWETH9.sol";
+import {JBSwapLib} from "./libraries/JBSwapLib.sol";
 
 /// @custom:benediction DEVS BENEDICAT ET PROTEGAT CONTRACTVS MEAM
 /// @notice The buyback hook allows beneficiaries of a payment to a project to either:
@@ -62,6 +63,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     error JBBuybackHook_TerminalTokenIsProjectToken(address terminalToken, address projectToken);
     error JBBuybackHook_Unauthorized(address caller);
     error JBBuybackHook_ZeroProjectToken();
+    error JBBuybackHook_AmountOverflow();
     error JBBuybackHook_ZeroTerminalToken();
 
     //*********************************************************************//
@@ -199,7 +201,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
             bytes4 metadataId = JBMetadataResolver.getId("quote");
 
             // Unpack the quote specified by the payer/client (typically from the pool).
-            (bool quoteExists, bytes memory metadata) = JBMetadataResolver.getDataFor(metadataId, context.metadata);
+            (bool quoteExists, bytes memory metadata) =
+                JBMetadataResolver.getDataFor({id: metadataId, metadata: context.metadata});
             if (quoteExists) (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
         }
 
@@ -217,7 +220,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         (JBRuleset memory ruleset,) = controller.currentRulesetOf(context.projectId);
 
         // If the hook should base its weight on a currency other than the terminal's currency, determine the
-        // factor. The weight is always a fixed point mumber with 18 decimals. To ensure this, the ratio should use the
+        // factor. The weight is always a fixed point number with 18 decimals. To ensure this, the ratio should use the
         // same number of decimals as the `amountToSwapWith`.
         uint256 weightRatio = context.amount.currency == ruleset.baseCurrency()
             ? 10 ** context.amount.decimals
@@ -358,30 +361,32 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         // Keep a reference to the liquidity.
         uint128 liquidity;
 
-        // Resolve mean tick and liquidity source
-        if (oldestObservation == 0) {
-            // fallback: use spot tick and current in-range liquidity
-            // slither-disable-next-line unused-return
-            (, arithmeticMeanTick,,,,,) = pool.slot0();
-            liquidity = pool.liquidity();
-        } else {
-            (arithmeticMeanTick, liquidity) = OracleLibrary.consult(address(pool), uint32(twapWindow));
-        }
+        // If no observation history, fall back to minting (skip buyback) — slot0 is flash-loan manipulable.
+        if (oldestObservation == 0) return 0;
 
-        // If there's no liquidity, return an empty quote.
+        (arithmeticMeanTick, liquidity) = OracleLibrary.consult({pool: address(pool), secondsAgo: uint32(twapWindow)});
+
+        // If there's no liquidity, fall back to minting.
         if (liquidity == 0) return 0;
 
-        // Calculate the slippage tolerance.
+        // Get the pool fee in basis points for the sigmoid formula.
+        uint256 poolFeeBps = uint256(pool.fee()) / 100;
+
+        // Calculate the slippage tolerance using the continuous sigmoid formula.
         uint256 slippageTolerance = _getSlippageTolerance({
             amountIn: amountIn,
             liquidity: liquidity,
             projectToken: projectToken,
             terminalToken: terminalToken,
-            arithmeticMeanTick: arithmeticMeanTick
+            arithmeticMeanTick: arithmeticMeanTick,
+            poolFeeBps: poolFeeBps
         });
 
-        // If the slippage tolerance is the maximum, return an empty quote.
-        if (slippageTolerance == TWAP_SLIPPAGE_DENOMINATOR) return 0;
+        // If the slippage tolerance meets or exceeds the maximum, return an empty quote.
+        if (slippageTolerance >= TWAP_SLIPPAGE_DENOMINATOR) return 0;
+
+        // Make sure the amount doesn't overflow uint128 before passing to Uniswap.
+        if (amountIn > type(uint128).max) revert JBBuybackHook_AmountOverflow();
 
         // Get a quote based on this TWAP tick.
         amountOut = OracleLibrary.getQuoteAtTick({
@@ -396,18 +401,21 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     }
 
     /// @notice Get the slippage tolerance for a given amount in and liquidity.
+    /// @dev Uses the continuous sigmoid formula from JBSwapLib for smoother behavior across all swap sizes.
     /// @param amountIn The amount in to get the slippage tolerance for.
     /// @param liquidity The liquidity to get the slippage tolerance for.
     /// @param projectToken The project token to get the slippage tolerance for.
     /// @param terminalToken The terminal token to get the slippage tolerance for.
     /// @param arithmeticMeanTick The arithmetic mean tick to get the slippage tolerance for.
+    /// @param poolFeeBps The pool fee in basis points (e.g., 30 for 0.3%).
     /// @return slippageTolerance The slippage tolerance for the given amount in and liquidity.
     function _getSlippageTolerance(
         uint256 amountIn,
         uint128 liquidity,
         address projectToken,
         address terminalToken,
-        int24 arithmeticMeanTick
+        int24 arithmeticMeanTick,
+        uint256 poolFeeBps
     )
         internal
         pure
@@ -423,25 +431,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         // If the sqrtP is 0, there's no valid price so we'll return the maximum slippage tolerance.
         if (sqrtP == 0) return TWAP_SLIPPAGE_DENOMINATOR;
 
-        // Approximate % of range liquidity consumed by the swap (in bps)
-        // Multiply by 10 to to amplify the results and prevent results on the low end from rounding to zero.
-        uint256 base = mulDiv(amountIn, 10 * TWAP_SLIPPAGE_DENOMINATOR, uint256(liquidity));
+        // Calculate impact using 1e18 precision (prevents rounding to 0 for small swaps).
+        uint256 impact =
+            JBSwapLib.calculateImpact({amountIn: amountIn, liquidity: liquidity, sqrtP: sqrtP, zeroForOne: zeroForOne});
 
-        // Compute final slippage tolerance (bps), normalized by √P
-        uint256 slippageTolerance =
-            zeroForOne ? mulDiv(base, uint256(sqrtP), uint256(1) << 96) : mulDiv(base, uint256(1) << 96, uint256(sqrtP));
-
-        // Adjust the slippage tolerance to be reasonable given the ranges.
-        if (slippageTolerance > 15 * TWAP_SLIPPAGE_DENOMINATOR) return TWAP_SLIPPAGE_DENOMINATOR * 88 / 100;
-        else if (slippageTolerance > 10 * TWAP_SLIPPAGE_DENOMINATOR) return TWAP_SLIPPAGE_DENOMINATOR * 67 / 100;
-        else if (slippageTolerance > 30_000) return slippageTolerance / 12;
-        else if (slippageTolerance > 15_000) return slippageTolerance / 10;
-        else if (slippageTolerance > 10_000) return slippageTolerance * 2 / 15;
-        else if (slippageTolerance > 5000) return slippageTolerance * 3 / 20;
-        else if (slippageTolerance > 1500) return slippageTolerance / 5;
-        else if (slippageTolerance > 500) return (slippageTolerance / 5) + 200;
-        else if (slippageTolerance > 0) return (slippageTolerance / 5) + 100;
-        else return UNCERTAIN_TWAP_SLIPPAGE_TOLERANCE;
+        // Use the continuous sigmoid formula with pool fee awareness.
+        return JBSwapLib.getSlippageTolerance({impact: impact, poolFeeBps: poolFeeBps});
     }
 
     /// @notice The calldata. Preferred to use over `msg.data`.
@@ -469,7 +464,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     /// @param context The pay context passed in by the terminal.
     function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable override {
         // Make sure only the project's payment terminals can access this function.
-        if (!DIRECTORY.isTerminalOf(context.projectId, IJBTerminal(msg.sender))) {
+        if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
             revert JBBuybackHook_Unauthorized(msg.sender);
         }
 
@@ -479,14 +474,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
 
         // If the token paid in isn't the native token, pull the amount to swap from the terminal.
         if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
-            IERC20(context.forwardedAmount.token).safeTransferFrom(
-                msg.sender, address(this), context.forwardedAmount.value
-            );
+            IERC20(context.forwardedAmount.token)
+                .safeTransferFrom(msg.sender, address(this), context.forwardedAmount.value);
         }
 
         // Get a reference to the number of project tokens that was swapped for.
         // slither-disable-next-line reentrancy-events
-        uint256 exactSwapAmountOut = _swap({context: context, projectTokenIs0: projectTokenIs0, controller: controller});
+        uint256 exactSwapAmountOut = _swap({
+            context: context,
+            projectTokenIs0: projectTokenIs0,
+            controller: controller,
+            minimumSwapAmountOut: minimumSwapAmountOut
+        });
 
         // Ensure swap satisfies payer/client minimum amount or calculated TWAP if payer/client did not specify.
         if (exactSwapAmountOut < minimumSwapAmountOut) {
@@ -503,7 +502,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         (JBRuleset memory ruleset,) = controller.currentRulesetOf(context.projectId);
 
         // If the hook should base its weight on a currency other than the terminal's currency, determine the
-        // factor. The weight is always a fixed point mumber with 18 decimals. To ensure this, the ratio should use
+        // factor. The weight is always a fixed point number with 18 decimals. To ensure this, the ratio should use
         // the same number of decimals as the `leftoverAmountInThisContract`.
         uint256 weightRatio = context.amount.currency == ruleset.baseCurrency()
             ? 10 ** context.amount.decimals
@@ -570,6 +569,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     /// @dev Uses create2 for callback auth and to allow adding pools which haven't been deployed yet.
     /// This can be called by the project's owner or an address which has the `JBPermissionIds.SET_BUYBACK_POOL`
     /// permission from the owner.
+    /// @dev L-13: Pool addresses are intentionally immutable once set. This prevents manipulation of swap routing
+    /// after a project's buyback hook is configured. If a project needs to use a different pool (e.g., one with
+    /// better liquidity), a new buyback hook must be deployed and configured for the project.
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The fee used in the pool being set, as a fixed-point number of basis points with 2 decimals. A 0.01%
     /// fee is `100`, a 0.05% fee is `500`, a 0.3% fee is `3000`, and a 1% fee is `10000`.
@@ -587,12 +589,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     {
         // Enforce permissions.
         _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId),
-            projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_POOL
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });
 
         // Make sure this pool hasn't already been set in this hook.
+        // L-13: This is intentional — pool addresses are permanently locked after being set to prevent
+        // swap routing manipulation. Changing pools requires deploying a new buyback hook.
         if (poolOf[projectId][terminalToken] != IUniswapV3Pool(address(0))) {
             revert JBBuybackHook_PoolAlreadySet(poolOf[projectId][terminalToken]);
         }
@@ -651,16 +653,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         // Store the pool.
         poolOf[projectId][terminalToken] = newPool;
 
-        // Pack and store the TWAP window and the TWAP slippage tolerance in `twapParamsOf`.
+        // Store the TWAP window and the project token.
         twapWindowOf[projectId] = twapWindow;
         projectTokenOf[projectId] = address(projectToken);
 
         emit TwapWindowChanged({projectId: projectId, oldWindow: 0, newWindow: twapWindow, caller: _msgSender()});
         emit PoolAdded({
-            projectId: projectId,
-            terminalToken: terminalToken,
-            pool: address(newPool),
-            caller: _msgSender()
+            projectId: projectId, terminalToken: terminalToken, pool: address(newPool), caller: _msgSender()
         });
     }
 
@@ -673,9 +672,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     function setTwapWindowOf(uint256 projectId, uint256 newWindow) external {
         // Enforce permissions.
         _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId),
-            projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_TWAP
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_TWAP
         });
 
         // Make sure the specified window is within reasonable bounds.
@@ -726,11 +723,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     /// @param context The `afterPayRecordedContext` passed in by the terminal.
     /// @param projectTokenIs0 A flag indicating whether the pool references the project token as the first in the pair.
     /// @param controller The controller used to mint and burn tokens.
+    /// @param minimumSwapAmountOut The minimum acceptable output from the swap (used for sqrtPriceLimit).
     /// @return amountReceived The amount of project tokens received from the swap.
     function _swap(
         JBAfterPayRecordedContext calldata context,
         bool projectTokenIs0,
-        IJBController controller
+        IJBController controller,
+        uint256 minimumSwapAmountOut
     )
         internal
         returns (uint256 amountReceived)
@@ -745,15 +744,24 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         // Get a reference to the pool that'll be used to make the swap.
         IUniswapV3Pool pool = poolOf[context.projectId][terminalTokenWithWETH];
 
+        // Compute a dynamic sqrtPriceLimit from the minimum acceptable output (MEV protection).
+        // When selling terminalToken for projectToken:
+        //   zeroForOne = !projectTokenIs0
+        uint160 sqrtPriceLimit = JBSwapLib.sqrtPriceLimitFromAmounts({
+            amountIn: amountToSwapWith, minimumAmountOut: minimumSwapAmountOut, zeroForOne: !projectTokenIs0
+        });
+
         // Try swapping.
         // slither-disable-next-line reentrancy-events
         try pool.swap({
             recipient: address(this),
             zeroForOne: !projectTokenIs0,
             amountSpecified: int256(amountToSwapWith),
-            sqrtPriceLimitX96: projectTokenIs0 ? TickMath.MAX_SQRT_RATIO - 1 : TickMath.MIN_SQRT_RATIO + 1,
+            sqrtPriceLimitX96: sqrtPriceLimit,
             data: abi.encode(context.projectId, context.forwardedAmount.token)
-        }) returns (int256 amount0, int256 amount1) {
+        }) returns (
+            int256 amount0, int256 amount1
+        ) {
             // If the swap succeded, take note of the amount of tokens received.
             // This will be returned as a negative value, which Uniswap uses to represent the outputs of exact input
             // swaps.
@@ -775,10 +783,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         // Burn the whole amount received.
         if (amountReceived != 0) {
             controller.burnTokensOf({
-                holder: address(this),
-                projectId: context.projectId,
-                tokenCount: amountReceived,
-                memo: ""
+                holder: address(this), projectId: context.projectId, tokenCount: amountReceived, memo: ""
             });
         }
     }

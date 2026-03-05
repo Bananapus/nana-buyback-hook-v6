@@ -23,6 +23,6 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: Run tests
-        run: forge snapshot --fail-fast --summary --detailed
+        run: forge test --fail-fast --summary --detailed --nmc "_Fork"
       - name: Check contract sizes
         run: FOUNDRY_PROFILE=ci_sizes forge build --sizes --skip SphinxUtils

@@ -46,10 +46,10 @@ library BuybackDeploymentLib {
         returns (BuybackDeployment memory deployment)
     {
         deployment.hook =
-            IJBBuybackHook(_getDeploymentAddress(path, "nana-buyback-hook-v5", network_name, "JBBuybackHook"));
+            IJBBuybackHook(_getDeploymentAddress(path, "nana-buyback-hook-v6", network_name, "JBBuybackHook"));
 
         deployment.registry = IJBBuybackHookRegistry(
-            _getDeploymentAddress(path, "nana-buyback-hook-v5", network_name, "JBBuybackHookRegistry")
+            _getDeploymentAddress(path, "nana-buyback-hook-v6", network_name, "JBBuybackHookRegistry")
         );
     }
 

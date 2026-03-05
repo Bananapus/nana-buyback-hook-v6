@@ -3,36 +3,36 @@ pragma solidity ^0.8.16;
 
 import "forge-std/Test.sol";
 
-import "@bananapus/core-v5/src/abstract/JBPermissioned.sol";
-import "@bananapus/core-v5/src/JBController.sol";
-import "@bananapus/core-v5/src/JBDirectory.sol";
-import "@bananapus/core-v5/src/JBMultiTerminal.sol";
-import "@bananapus/core-v5/src/JBFundAccessLimits.sol";
-import "@bananapus/core-v5/src/JBTerminalStore.sol";
-import "@bananapus/core-v5/src/JBRulesets.sol";
-import "@bananapus/core-v5/src/JBFeelessAddresses.sol";
-import "@bananapus/core-v5/src/JBPermissions.sol";
-import "@bananapus/core-v5/src/JBPrices.sol";
-import "@bananapus/core-v5/src/JBProjects.sol";
-import "@bananapus/core-v5/src/JBSplits.sol";
-import "@bananapus/core-v5/src/JBTokens.sol";
-import "@bananapus/core-v5/src/JBERC20.sol";
+import "@bananapus/core-v6/src/abstract/JBPermissioned.sol";
+import "@bananapus/core-v6/src/JBController.sol";
+import "@bananapus/core-v6/src/JBDirectory.sol";
+import "@bananapus/core-v6/src/JBMultiTerminal.sol";
+import "@bananapus/core-v6/src/JBFundAccessLimits.sol";
+import "@bananapus/core-v6/src/JBTerminalStore.sol";
+import "@bananapus/core-v6/src/JBRulesets.sol";
+import "@bananapus/core-v6/src/JBFeelessAddresses.sol";
+import "@bananapus/core-v6/src/JBPermissions.sol";
+import "@bananapus/core-v6/src/JBPrices.sol";
+import "@bananapus/core-v6/src/JBProjects.sol";
+import "@bananapus/core-v6/src/JBSplits.sol";
+import "@bananapus/core-v6/src/JBTokens.sol";
+import "@bananapus/core-v6/src/JBERC20.sol";
 
-import "@bananapus/core-v5/src/structs/JBAfterPayRecordedContext.sol";
-import "@bananapus/core-v5/src/structs/JBAfterCashOutRecordedContext.sol";
-import "@bananapus/core-v5/src/structs/JBFee.sol";
-import "@bananapus/core-v5/src/structs/JBFundAccessLimitGroup.sol";
-import "@bananapus/core-v5/src/structs/JBRuleset.sol";
-import "@bananapus/core-v5/src/structs/JBRulesetMetadata.sol";
-import "@bananapus/core-v5/src/structs/JBSplitGroup.sol";
-import "@bananapus/core-v5/src/structs/JBPermissionsData.sol";
-import "@bananapus/core-v5/src/structs/JBBeforePayRecordedContext.sol";
-import "@bananapus/core-v5/src/structs/JBBeforeCashOutRecordedContext.sol";
-import "@bananapus/core-v5/src/structs/JBSplit.sol";
-import "@bananapus/core-v5/src/interfaces/IJBTerminal.sol";
-import "@bananapus/core-v5/src/interfaces/IJBToken.sol";
-import "@bananapus/core-v5/src/libraries/JBConstants.sol";
-import "@bananapus/core-v5/src/interfaces/IJBTerminalStore.sol";
+import "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
+import "@bananapus/core-v6/src/structs/JBFee.sol";
+import "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
+import "@bananapus/core-v6/src/structs/JBRuleset.sol";
+import "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
+import "@bananapus/core-v6/src/structs/JBPermissionsData.sol";
+import "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
+import "@bananapus/core-v6/src/structs/JBSplit.sol";
+import "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
+import "@bananapus/core-v6/src/interfaces/IJBToken.sol";
+import "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import "@bananapus/core-v6/src/interfaces/IJBTerminalStore.sol";
 
 import "src/interfaces/external/IWETH9.sol";
 import "src/JBBuybackHook.sol";
@@ -234,9 +234,7 @@ contract TestBaseWorkflowV3 is Test {
         JBTerminalConfig[] memory terminalConfigurations = new JBTerminalConfig[](1);
         JBAccountingContext[] memory accountingContextsToAccept = new JBAccountingContext[](1);
         accountingContextsToAccept[0] = JBAccountingContext({
-            token: JBConstants.NATIVE_TOKEN,
-            currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-            decimals: 18
+            token: JBConstants.NATIVE_TOKEN, currency: uint32(uint160(JBConstants.NATIVE_TOKEN)), decimals: 18
         });
         terminalConfigurations[0] =
             JBTerminalConfig({terminal: jbMultiTerminal, accountingContextsToAccept: accountingContextsToAccept});

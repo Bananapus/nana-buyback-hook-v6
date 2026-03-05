@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
-import "@bananapus/core-v5/script/helpers/CoreDeploymentLib.sol";
+import "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
 
 import {Sphinx} from "@sphinx-labs/contracts/SphinxPlugin.sol";
 import {Script} from "forge-std/Script.sol";
@@ -15,7 +15,7 @@ contract DeployScript is Script, Sphinx {
     CoreDeployment core;
 
     /// @notice the salts that are used to deploy the contracts.
-    bytes32 BUYBACK_HOOK = "JBBuybackHook";
+    bytes32 BUYBACK_HOOK = "JBBuybackHookV6";
 
     /// @notice tracks the addresses that are required for the chain we are deploying to.
     address weth;
@@ -24,7 +24,7 @@ contract DeployScript is Script, Sphinx {
 
     function configureSphinx() public override {
         // TODO: Update to contain revnet devs.
-        sphinxConfig.projectName = "nana-buyback-hook-v5";
+        sphinxConfig.projectName = "nana-buyback-hook-v6";
         sphinxConfig.mainnets = ["ethereum", "optimism", "base", "arbitrum"];
         sphinxConfig.testnets = ["ethereum_sepolia", "optimism_sepolia", "base_sepolia", "arbitrum_sepolia"];
     }
@@ -33,7 +33,7 @@ contract DeployScript is Script, Sphinx {
         // Get the deployment addresses for the nana CORE for this chain.
         // We want to do this outside of the `sphinx` modifier.
         core = CoreDeploymentLib.getDeployment(
-            vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v5/deployments/"))
+            vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v6/deployments/"))
         );
 
         trustedForwarder = core.permissions.trustedForwarder();
@@ -99,15 +99,7 @@ contract DeployScript is Script, Sphinx {
         registry.setDefaultHook(hook);
     }
 
-    function _isDeployed(
-        bytes32 salt,
-        bytes memory creationCode,
-        bytes memory arguments
-    )
-        internal
-        view
-        returns (bool)
-    {
+    function _isDeployed(bytes32 salt, bytes memory creationCode, bytes memory arguments) internal view returns (bool) {
         address _deployedTo = vm.computeCreate2Address({
             salt: salt,
             initCodeHash: keccak256(abi.encodePacked(creationCode, arguments)),
