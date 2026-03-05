@@ -112,6 +112,9 @@ contract Test_BuybackHook_Unit is TestBaseWorkflow, JBTest {
     function setUp() public override {
         super.setUp();
 
+        // Ensure block.timestamp is large enough for tests that subtract from it.
+        vm.warp(1_700_000_000);
+
         vm.etch(address(projectToken), "6969");
         vm.etch(address(weth), "6969");
         vm.etch(address(pool), "6969");
