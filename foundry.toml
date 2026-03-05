@@ -3,7 +3,6 @@ solc = '0.8.23'
 evm_version = 'paris'
 optimizer_runs = 100000000
 libs = ["node_modules", "lib"]
-extra_output = ['storageLayout']
 fs_permissions = [{ access = "read-write", path = "./"}]
 
 [profile.ci_sizes]
@@ -21,15 +20,3 @@ fail_on_revert = false
 number_underscore = "thousands"
 multiline_func_header = "all"
 wrap_comments = true
-
-[rpc_endpoints]
-ethereum ="${RPC_ETHEREUM_MAINNET}"
-optimism = "${RPC_OPTIMISM_MAINNET}"
-polygon = "${RPC_POLYGON_MUMBAI}"
-arbitrum = "${RPC_ARBITRUM_MAINNET}"
-base = "${RPC_BASE_MAINNET}"
-arbitrum_sepolia = "${RPC_ARBITRUM_SEPOLIA}"
-ethereum_sepolia ="${RPC_ETHEREUM_SEPOLIA}"
-optimism_sepolia = "${RPC_OPTIMISM_SEPOLIA}"
-polygon_mumbai = "${RPC_POLYGON_MUMBAI}"
-base_sepolia = "${RPC_BASE_SEPOLIA}"
