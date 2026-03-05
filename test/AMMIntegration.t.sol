@@ -104,21 +104,20 @@ contract TestBuybackHook_AMMIntegration is TestBaseWorkflow, JBTest, UniswapV3Fo
             JBAccountingContext[] memory _tokensToAccept = new JBAccountingContext[](1);
 
             _tokensToAccept[0] = JBAccountingContext({
-                token: JBConstants.NATIVE_TOKEN,
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+                token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             });
 
             _terminalConfigurations[0] =
                 JBTerminalConfig({terminal: jbMultiTerminal(), accountingContextsToAccept: _tokensToAccept});
 
-            jbController().launchProjectFor({
-                owner: multisig(),
-                projectUri: "whatever",
-                rulesetConfigurations: _rulesetConfigurations,
-                terminalConfigurations: _terminalConfigurations,
-                memo: ""
-            });
+            jbController()
+                .launchProjectFor({
+                    owner: multisig(),
+                    projectUri: "whatever",
+                    rulesetConfigurations: _rulesetConfigurations,
+                    terminalConfigurations: _terminalConfigurations,
+                    memo: ""
+                });
 
             vm.prank(multisig());
             jbx = jbController().deployERC20For(1, "JUICEBOXXX", "JBX", bytes32(0));
@@ -230,9 +229,7 @@ contract TestBuybackHook_AMMIntegration is TestBaseWorkflow, JBTest, UniswapV3Fo
         JBSplitGroup[] memory _groupedSplits = new JBSplitGroup[](1);
         _groupedSplits[0] = JBSplitGroup({
             groupId: 1,
-            splits: jbSplits().splitsOf(
-                _projectId, _fundingCycle.id, uint256(uint160(JBConstants.NATIVE_TOKEN))
-            )
+            splits: jbSplits().splitsOf(_projectId, _fundingCycle.id, uint256(uint160(JBConstants.NATIVE_TOKEN)))
         });
 
         _metadata.useDataHookForPay = true;
@@ -464,13 +461,7 @@ contract TestBuybackHook_AMMIntegration is TestBaseWorkflow, JBTest, UniswapV3Fo
 
         // Pay 1 ETH with the stale quote.
         jbMultiTerminal().pay{value: 1 ether}(
-            1,
-            JBConstants.NATIVE_TOKEN,
-            1 ether,
-            multisig(),
-            0,
-            "test_swapRevertsOnExcessiveSlippage",
-            metadata
+            1, JBConstants.NATIVE_TOKEN, 1 ether, multisig(), 0, "test_swapRevertsOnExcessiveSlippage", metadata
         );
     }
 }

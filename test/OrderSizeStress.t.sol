@@ -99,21 +99,20 @@ contract TestBuybackHook_OrderSizeStress is TestBaseWorkflow, JBTest, UniswapV3F
             JBAccountingContext[] memory _tokensToAccept = new JBAccountingContext[](1);
 
             _tokensToAccept[0] = JBAccountingContext({
-                token: JBConstants.NATIVE_TOKEN,
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+                token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             });
 
             _terminalConfigurations[0] =
                 JBTerminalConfig({terminal: jbMultiTerminal(), accountingContextsToAccept: _tokensToAccept});
 
-            jbController().launchProjectFor({
-                owner: multisig(),
-                projectUri: "whatever",
-                rulesetConfigurations: _rulesetConfigurations,
-                terminalConfigurations: _terminalConfigurations,
-                memo: ""
-            });
+            jbController()
+                .launchProjectFor({
+                    owner: multisig(),
+                    projectUri: "whatever",
+                    rulesetConfigurations: _rulesetConfigurations,
+                    terminalConfigurations: _terminalConfigurations,
+                    memo: ""
+                });
 
             vm.prank(multisig());
             jbx = jbController().deployERC20For(1, "JUICEBOXXX", "JBX", bytes32(0));
@@ -226,9 +225,7 @@ contract TestBuybackHook_OrderSizeStress is TestBaseWorkflow, JBTest, UniswapV3F
         JBSplitGroup[] memory _groupedSplits = new JBSplitGroup[](1);
         _groupedSplits[0] = JBSplitGroup({
             groupId: 1,
-            splits: jbSplits().splitsOf(
-                _projectId, _fundingCycle.id, uint256(uint160(JBConstants.NATIVE_TOKEN))
-            )
+            splits: jbSplits().splitsOf(_projectId, _fundingCycle.id, uint256(uint160(JBConstants.NATIVE_TOKEN)))
         });
 
         _metadata.useDataHookForPay = true;
@@ -310,9 +307,7 @@ contract TestBuybackHook_OrderSizeStress is TestBaseWorkflow, JBTest, UniswapV3F
                 bytes memory metadata = _buildMetadata(amount, quote);
                 uint256 balBefore = jbx.balanceOf(multisig());
 
-                jbMultiTerminal().pay{value: amount}(
-                    1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", metadata
-                );
+                jbMultiTerminal().pay{value: amount}(1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", metadata);
 
                 assertGt(jbx.balanceOf(multisig()) - balBefore, 0, "dust swap should yield tokens");
             }
@@ -335,9 +330,7 @@ contract TestBuybackHook_OrderSizeStress is TestBaseWorkflow, JBTest, UniswapV3F
             bytes memory metadata = _buildMetadata(amount, quote);
             uint256 balBefore = jbx.balanceOf(multisig());
 
-            jbMultiTerminal().pay{value: amount}(
-                1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", metadata
-            );
+            jbMultiTerminal().pay{value: amount}(1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", metadata);
 
             uint256 tokensReceived = jbx.balanceOf(multisig()) - balBefore;
             assertEq(tokensReceived, quote, "small swap output should match quote exactly");
@@ -360,9 +353,7 @@ contract TestBuybackHook_OrderSizeStress is TestBaseWorkflow, JBTest, UniswapV3F
             bytes memory metadata = _buildMetadata(amount, quote);
             uint256 balBefore = jbx.balanceOf(multisig());
 
-            jbMultiTerminal().pay{value: amount}(
-                1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", metadata
-            );
+            jbMultiTerminal().pay{value: amount}(1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", metadata);
 
             uint256 tokensReceived = jbx.balanceOf(multisig()) - balBefore;
             assertEq(tokensReceived, quote, "1 ETH swap should match quote exactly");
@@ -384,9 +375,7 @@ contract TestBuybackHook_OrderSizeStress is TestBaseWorkflow, JBTest, UniswapV3F
 
             // Now use TWAP fallback (empty metadata) through the hook.
             uint256 balBefore = jbx.balanceOf(multisig());
-            jbMultiTerminal().pay{value: amount}(
-                1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", new bytes(0)
-            );
+            jbMultiTerminal().pay{value: amount}(1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", new bytes(0));
             uint256 tokensReceived = jbx.balanceOf(multisig()) - balBefore;
 
             assertGt(tokensReceived, 0, "10 ETH TWAP swap should produce tokens");
@@ -426,9 +415,7 @@ contract TestBuybackHook_OrderSizeStress is TestBaseWorkflow, JBTest, UniswapV3F
                 bytes memory metadata = _buildMetadata(amount, quote);
 
                 vm.expectRevert();
-                jbMultiTerminal().pay{value: amount}(
-                    1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", metadata
-                );
+                jbMultiTerminal().pay{value: amount}(1, JBConstants.NATIVE_TOKEN, amount, multisig(), 0, "", metadata);
             }
 
             vm.revertToState(snapshot);
