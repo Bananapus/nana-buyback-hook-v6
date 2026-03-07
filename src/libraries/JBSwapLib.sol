@@ -98,6 +98,7 @@ library JBSwapLib {
             // Oracle hook not available — fall back to spot price from the PoolManager.
             // This ensures buybacks still work for callers that don't provide their own quote.
             PoolId poolId = key.toId();
+            // slither-disable-next-line unused-return
             (uint160 sqrtPriceX96, int24 tick,,) = poolManager.getSlot0(poolId);
             if (sqrtPriceX96 == 0) return (0, 0, 0);
             arithmeticMeanTick = tick;
