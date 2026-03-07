@@ -15,7 +15,11 @@ import {IWETH9} from "./external/IWETH9.sol";
 
 interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     event Swap(
-        uint256 indexed projectId, uint256 amountToSwapWith, PoolId indexed poolId, uint256 amountReceived, address caller
+        uint256 indexed projectId,
+        uint256 amountToSwapWith,
+        PoolId indexed poolId,
+        uint256 amountReceived,
+        address caller
     );
     event Mint(uint256 indexed projectId, uint256 leftoverAmount, uint256 tokenCount, address caller);
     event PoolAdded(uint256 indexed projectId, address indexed terminalToken, PoolId poolId, address caller);
@@ -56,10 +60,7 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     function POOL_MANAGER() external view returns (IPoolManager);
     function WETH() external view returns (IWETH9);
 
-    function poolKeyOf(uint256 projectId, address terminalToken)
-        external
-        view
-        returns (PoolKey memory key);
+    function poolKeyOf(uint256 projectId, address terminalToken) external view returns (PoolKey memory key);
     function projectTokenOf(uint256 projectId) external view returns (address projectTokenOf);
     function twapWindowOf(uint256 projectId) external view returns (uint256 window);
 
@@ -73,6 +74,7 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
         PoolKey calldata poolKey,
         uint256 twapWindow,
         address terminalToken
-    ) external;
+    )
+        external;
     function setTwapWindowOf(uint256 projectId, uint256 newWindow) external;
 }

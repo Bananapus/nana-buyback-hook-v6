@@ -322,12 +322,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param projectId The ID of the project.
     /// @param terminalToken The terminal token address (normalized to WETH for native).
     /// @return key The V4 PoolKey.
-    function poolKeyOf(uint256 projectId, address terminalToken)
-        public
-        view
-        override
-        returns (PoolKey memory key)
-    {
+    function poolKeyOf(uint256 projectId, address terminalToken) public view override returns (PoolKey memory key) {
         return _poolKeyOf[projectId][terminalToken];
     }
 
@@ -432,9 +427,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // If the token paid in isn't the native token, pull the amount to swap from the terminal.
         if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
-            IERC20(context.forwardedAmount.token).safeTransferFrom(
-                msg.sender, address(this), context.forwardedAmount.value
-            );
+            IERC20(context.forwardedAmount.token)
+                .safeTransferFrom(msg.sender, address(this), context.forwardedAmount.value);
         }
 
         // Get a reference to the number of project tokens that was swapped for.
@@ -535,9 +529,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     {
         // Enforce permissions.
         _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId),
-            projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_POOL
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });
 
         // Normalize the terminal token — use WETH for native.
@@ -590,10 +582,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         emit TwapWindowChanged({projectId: projectId, oldWindow: 0, newWindow: twapWindow, caller: _msgSender()});
         emit PoolAdded({
-            projectId: projectId,
-            terminalToken: normalizedTerminalToken,
-            poolId: poolId,
-            caller: _msgSender()
+            projectId: projectId, terminalToken: normalizedTerminalToken, poolId: poolId, caller: _msgSender()
         });
     }
 
@@ -603,9 +592,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     function setTwapWindowOf(uint256 projectId, uint256 newWindow) external override {
         // Enforce permissions.
         _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId),
-            projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_TWAP
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_TWAP
         });
 
         // Make sure the specified window is within reasonable bounds.
@@ -632,9 +619,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Compute a price limit that stops the swap if the rate is worse than the minimum acceptable output.
         bool zeroForOne = !params.projectTokenIs0;
         uint160 sqrtPriceLimit = JBSwapLib.sqrtPriceLimitFromAmounts({
-            amountIn: params.amountIn,
-            minimumAmountOut: params.minimumSwapAmountOut,
-            zeroForOne: zeroForOne
+            amountIn: params.amountIn, minimumAmountOut: params.minimumSwapAmountOut, zeroForOne: zeroForOne
         });
 
         // Execute the swap: we're buying project tokens (the output) with terminal tokens (the input).
@@ -766,10 +751,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Burn the project tokens received from the swap (they'll be re-minted with reserves applied).
         if (amountReceived != 0) {
             controller.burnTokensOf({
-                holder: address(this),
-                projectId: context.projectId,
-                tokenCount: amountReceived,
-                memo: ""
+                holder: address(this), projectId: context.projectId, tokenCount: amountReceived, memo: ""
             });
         }
     }

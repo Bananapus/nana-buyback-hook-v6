@@ -96,7 +96,9 @@ contract ForTest_V4BuybackHook is JBBuybackHook {
         uint256 twapWindow,
         address projectToken,
         address terminalToken
-    ) external {
+    )
+        external
+    {
         _poolKeyOf[projectId][terminalToken] = key;
         twapWindowOf[projectId] = twapWindow;
         projectTokenOf[projectId] = projectToken;
@@ -210,11 +212,21 @@ contract V4BuybackHookTest is Test {
             abi.encodeCall(directory.isTerminalOf, (projectId, IJBTerminal(address(terminal)))),
             abi.encode(true)
         );
-        vm.mockCall(address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken))));
+        vm.mockCall(
+            address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
+        );
 
         // Mock permissions to always allow (for setPoolFor)
-        vm.mockCall(address(permissions), abi.encodeWithSignature("hasPermission(address,address,uint256,uint256,bool,bool)"), abi.encode(true));
-        vm.mockCall(address(permissions), abi.encodeWithSignature("hasPermission(address,address,uint256,uint256)"), abi.encode(true));
+        vm.mockCall(
+            address(permissions),
+            abi.encodeWithSignature("hasPermission(address,address,uint256,uint256,bool,bool)"),
+            abi.encode(true)
+        );
+        vm.mockCall(
+            address(permissions),
+            abi.encodeWithSignature("hasPermission(address,address,uint256,uint256)"),
+            abi.encode(true)
+        );
 
         // Mock controller responses
         _mockCurrentRuleset();
@@ -272,9 +284,7 @@ contract V4BuybackHookTest is Test {
         });
 
         vm.mockCall(
-            address(controller),
-            abi.encodeCall(IJBController.currentRulesetOf, (projectId)),
-            abi.encode(ruleset, meta)
+            address(controller), abi.encodeCall(IJBController.currentRulesetOf, (projectId)), abi.encode(ruleset, meta)
         );
     }
 
@@ -290,9 +300,7 @@ contract V4BuybackHookTest is Test {
     /// @notice Mock controller.burnTokensOf to succeed.
     function _mockControllerBurn() internal {
         vm.mockCall(
-            address(controller),
-            abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"),
-            abi.encode()
+            address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );
     }
 
@@ -303,22 +311,20 @@ contract V4BuybackHookTest is Test {
         bool projectTokenIs0,
         uint256 amountToMintWith,
         uint256 minimumSwapAmountOut
-    ) internal view returns (JBAfterPayRecordedContext memory) {
+    )
+        internal
+        view
+        returns (JBAfterPayRecordedContext memory)
+    {
         return JBAfterPayRecordedContext({
             payer: payer,
             projectId: projectId,
             rulesetId: 1,
             amount: JBTokenAmount({
-                token: payToken,
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                value: payValue
+                token: payToken, decimals: 18, currency: uint32(uint160(JBConstants.NATIVE_TOKEN)), value: payValue
             }),
             forwardedAmount: JBTokenAmount({
-                token: payToken,
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                value: payValue
+                token: payToken, decimals: 18, currency: uint32(uint160(JBConstants.NATIVE_TOKEN)), value: payValue
             }),
             weight: 1e18,
             newlyIssuedTokenCount: 0,
@@ -421,9 +427,7 @@ contract V4BuybackHookTest is Test {
         // Call from a random address (not the PoolManager).
         address attacker = makeAddr("attacker");
         vm.prank(attacker);
-        vm.expectRevert(
-            abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_CallerNotPoolManager.selector, attacker)
-        );
+        vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_CallerNotPoolManager.selector, attacker));
         hook.unlockCallback(fakeData);
     }
 
@@ -518,9 +522,7 @@ contract V4BuybackHookTest is Test {
             abi.encode(IJBToken(address(projectToken)))
         );
         vm.mockCall(
-            address(directory),
-            abi.encodeCall(directory.controllerOf, (noOracleProjectId)),
-            abi.encode(controller)
+            address(directory), abi.encodeCall(directory.controllerOf, (noOracleProjectId)), abi.encode(controller)
         );
 
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
@@ -604,7 +606,7 @@ contract V4BuybackHookTest is Test {
         assertEq(JBSwapLib.getSlippageTolerance(0, 0), 200, "impact=0,fee=0 -> minSlippage=200");
         assertEq(JBSwapLib.getSlippageTolerance(0, 30), 200, "impact=0,fee=30 -> minSlippage=200");
         assertEq(JBSwapLib.getSlippageTolerance(0, 3000), 3100, "impact=0,fee=3000 -> minSlippage=3100");
-        assertEq(JBSwapLib.getSlippageTolerance(0, 10000), 8800, "impact=0,fee=10000 -> MAX_SLIPPAGE");
+        assertEq(JBSwapLib.getSlippageTolerance(0, 10_000), 8800, "impact=0,fee=10000 -> MAX_SLIPPAGE");
 
         // Scaled impact values (old 5000 bps = 5e16 in new scale)
         // poolFeeBps=30: minSlippage=200, range=8600
@@ -663,7 +665,10 @@ contract V4BuybackHookTest is Test {
         uint128 liquidity,
         uint160 sqrtP,
         bool zeroForOne
-    ) public pure {
+    )
+        public
+        pure
+    {
         // Bound sqrtP to the valid Uniswap range (any real pool is within these bounds).
         sqrtP = uint160(bound(sqrtP, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE));
 
@@ -681,12 +686,15 @@ contract V4BuybackHookTest is Test {
         uint160 sqrtP,
         bool zeroForOne,
         uint256 poolFeeBps
-    ) public pure {
+    )
+        public
+        pure
+    {
         // Bound to valid Uniswap pool ranges
         sqrtP = uint160(bound(sqrtP, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE));
         liquidity = uint128(bound(liquidity, 1, type(uint128).max));
         amountIn = uint128(bound(amountIn, 1, type(uint128).max));
-        poolFeeBps = bound(poolFeeBps, 0, 10000);
+        poolFeeBps = bound(poolFeeBps, 0, 10_000);
 
         uint256 impact = JBSwapLib.calculateImpact(amountIn, liquidity, sqrtP, zeroForOne);
         uint256 tolerance = JBSwapLib.getSlippageTolerance(impact, poolFeeBps);
@@ -698,7 +706,7 @@ contract V4BuybackHookTest is Test {
     /// @notice Deterministic multi-fee-tier monotonicity across all common Uniswap fee tiers.
     /// @dev Impact values scaled to match IMPACT_PRECISION (1e13 per old bps).
     function test_slippageMultiFeeTiers() public pure {
-        uint256[7] memory fees = [uint256(1), 5, 30, 100, 500, 3000, 10000];
+        uint256[7] memory fees = [uint256(1), 5, 30, 100, 500, 3000, 10_000];
 
         for (uint256 f = 0; f < fees.length; f++) {
             uint256 poolFeeBps = fees[f];
@@ -728,9 +736,7 @@ contract V4BuybackHookTest is Test {
 
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (newProjectId)), abi.encode(owner));
         vm.mockCall(
-            address(tokens),
-            abi.encodeCall(tokens.tokenOf, (newProjectId)),
-            abi.encode(IJBToken(address(projectToken)))
+            address(tokens), abi.encodeCall(tokens.tokenOf, (newProjectId)), abi.encode(IJBToken(address(projectToken)))
         );
 
         // --- 1. Successful set ---
@@ -747,9 +753,7 @@ contract V4BuybackHookTest is Test {
 
         // --- 2. Revert when pool already set ---
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector, poolId)
-        );
+        vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector, poolId));
         hook.setPoolFor(newProjectId, poolKey, twapWindow, address(mockWeth));
 
         // --- 3. Revert when pool not initialized (sqrtPrice == 0) ---
@@ -773,9 +777,7 @@ contract V4BuybackHookTest is Test {
 
         // Don't set any slot0 data for this pool (sqrtPrice defaults to 0).
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolNotInitialized.selector, uninitPoolId)
-        );
+        vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolNotInitialized.selector, uninitPoolId));
         hook.setPoolFor(uninitProjectId, uninitPoolKey, twapWindow, address(mockWeth));
 
         // --- 4. Revert with invalid TWAP window ---
@@ -914,15 +916,9 @@ contract V4BuybackHookTest is Test {
         uint256 cvProjectId = 300;
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (cvProjectId)), abi.encode(owner));
         vm.mockCall(
-            address(tokens),
-            abi.encodeCall(tokens.tokenOf, (cvProjectId)),
-            abi.encode(IJBToken(address(projectToken)))
+            address(tokens), abi.encodeCall(tokens.tokenOf, (cvProjectId)), abi.encode(IJBToken(address(projectToken)))
         );
-        vm.mockCall(
-            address(directory),
-            abi.encodeCall(directory.controllerOf, (cvProjectId)),
-            abi.encode(controller)
-        );
+        vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (cvProjectId)), abi.encode(controller));
 
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
         mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
@@ -1010,7 +1006,7 @@ contract V4BuybackHookTest is Test {
         // should exceed the mint count. The minimumSwapAmountOut in the hook spec metadata
         // should be the TWAP-based value (> 1).
         if (specs.length == 1) {
-            (, , uint256 minOut,) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController));
+            (,, uint256 minOut,) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController));
             assertGt(minOut, badPayerQuote, "TWAP minimum should override bad payer quote");
         }
         // If specs.length == 0, the mint path was chosen (TWAP returned 0) — still valid,
@@ -1024,9 +1020,7 @@ contract V4BuybackHookTest is Test {
         uint256 newProjectId = 400;
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (newProjectId)), abi.encode(owner));
         vm.mockCall(
-            address(tokens),
-            abi.encodeCall(tokens.tokenOf, (newProjectId)),
-            abi.encode(IJBToken(address(projectToken)))
+            address(tokens), abi.encodeCall(tokens.tokenOf, (newProjectId)), abi.encode(IJBToken(address(projectToken)))
         );
 
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);

@@ -87,7 +87,10 @@ contract LiquidityHelper is IUnlockCallback {
         int24 tickLower,
         int24 tickUpper,
         int256 liquidityDelta
-    ) external payable {
+    )
+        external
+        payable
+    {
         bytes memory data = abi.encode(AddLiqParams(key, tickLower, tickUpper, liquidityDelta));
         poolManager.unlock(data);
     }
@@ -185,8 +188,8 @@ contract V4ForkTest is Test {
     address constant WETH_ADDR = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     /// @notice Full-range tick bounds for tickSpacing = 60.
-    int24 constant TICK_LOWER = -887220;
-    int24 constant TICK_UPPER = 887220;
+    int24 constant TICK_LOWER = -887_220;
+    int24 constant TICK_UPPER = 887_220;
     int24 constant TICK_SPACING = 60;
     uint24 constant POOL_FEE = 3000; // 0.3% in hundredths of a bip
 
@@ -290,16 +293,11 @@ contract V4ForkTest is Test {
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, ForkProjectToken projectToken) =
-                _setupProjectWithPool(pid, 10_000 ether);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 10_000 ether);
 
             uint256 received = _executeNativeSwap(pid, key, projectToken, orderSizes[i]);
 
-            console.log(
-                "  Order: %s ETH -> %s tokens received",
-                _formatEther(orderSizes[i]),
-                _formatEther(received)
-            );
+            console.log("  Order: %s ETH -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
 
             assertGt(received, 0, "Should receive tokens from swap");
         }
@@ -315,22 +313,16 @@ contract V4ForkTest is Test {
         console.log("====== FORK TEST: VARYING LIQUIDITY (1 ETH order) ======");
         console.log("");
 
-        uint256[4] memory liquidities =
-            [uint256(100 ether), 10_000 ether, 1_000_000 ether, 100_000_000 ether];
+        uint256[4] memory liquidities = [uint256(100 ether), 10_000 ether, 1_000_000 ether, 100_000_000 ether];
         string[4] memory labels = ["100", "10K", "1M", "100M"];
 
         for (uint256 i = 0; i < liquidities.length; i++) {
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, ForkProjectToken projectToken) =
-                _setupProjectWithPool(pid, liquidities[i]);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, liquidities[i]);
 
             uint256 received = _executeNativeSwap(pid, key, projectToken, 1 ether);
 
-            console.log(
-                "  Liquidity: %s -> %s tokens for 1 ETH",
-                labels[i],
-                _formatEther(received)
-            );
+            console.log("  Liquidity: %s -> %s tokens for 1 ETH", labels[i], _formatEther(received));
 
             assertGt(received, 0, "Should receive tokens from swap");
         }
@@ -356,11 +348,7 @@ contract V4ForkTest is Test {
 
             uint256 received = _executeERC20Swap(pid, key, projectToken, terminalToken, orderSizes[i]);
 
-            console.log(
-                "  ERC-20 Order: %s -> %s tokens received",
-                _formatEther(orderSizes[i]),
-                _formatEther(received)
-            );
+            console.log("  ERC-20 Order: %s -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
 
             assertGt(received, 0, "Should receive tokens from ERC-20 swap");
         }
@@ -377,7 +365,7 @@ contract V4ForkTest is Test {
         console.log("");
 
         uint256[3] memory orders = [uint256(0.1 ether), 1 ether, 50 ether];
-        uint256[3] memory liqs = [uint256(1_000 ether), 100_000 ether, 10_000_000 ether];
+        uint256[3] memory liqs = [uint256(1000 ether), 100_000 ether, 10_000_000 ether];
         string[3] memory orderLabels = ["0.1 ETH", "1 ETH", "50 ETH"];
         string[3] memory liqLabels = ["1K", "100K", "10M"];
 
@@ -386,8 +374,7 @@ contract V4ForkTest is Test {
 
             for (uint256 o = 0; o < orders.length; o++) {
                 uint256 pid = _nextProjectId();
-                (PoolKey memory key, ForkProjectToken projectToken) =
-                    _setupProjectWithPool(pid, liqs[l]);
+                (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, liqs[l]);
 
                 uint256 received = _executeNativeSwap(pid, key, projectToken, orders[o]);
 
@@ -420,16 +407,11 @@ contract V4ForkTest is Test {
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, ForkProjectToken projectToken) =
-                _setupProjectWithPool(pid, 100_000 ether);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 100_000 ether);
 
             uint256 received = _executeE2E(pid, key, projectToken, orderSizes[i]);
 
-            console.log(
-                "  E2E %s ETH -> %s tokens received",
-                _formatEther(orderSizes[i]),
-                _formatEther(received)
-            );
+            console.log("  E2E %s ETH -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
 
             assertGt(received, 0, "E2E should complete swap");
         }
@@ -467,16 +449,11 @@ contract V4ForkTest is Test {
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, ForkProjectToken projectToken) =
-                _setupProjectWithPool(pid, 100_000 ether);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 100_000 ether);
 
             uint256 received = _executeE2E_noQuote(pid, key, projectToken, orderSizes[i]);
 
-            console.log(
-                "  No-quote %s ETH -> %s tokens received",
-                _formatEther(orderSizes[i]),
-                _formatEther(received)
-            );
+            console.log("  No-quote %s ETH -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
 
             assertGt(received, 0, "No-quote E2E should still trigger buyback via spot fallback");
         }
@@ -642,15 +619,9 @@ contract V4ForkTest is Test {
     function _mockJBCore(uint256 projectId, ForkProjectToken projectToken) internal {
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));
         vm.mockCall(
-            address(tokens),
-            abi.encodeCall(tokens.tokenOf, (projectId)),
-            abi.encode(IJBToken(address(projectToken)))
+            address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
         );
-        vm.mockCall(
-            address(directory),
-            abi.encodeCall(directory.controllerOf, (projectId)),
-            abi.encode(controller)
-        );
+        vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (projectId)), abi.encode(controller));
         vm.mockCall(
             address(directory),
             abi.encodeCall(directory.isTerminalOf, (projectId, IJBTerminal(address(terminal)))),
@@ -664,9 +635,7 @@ contract V4ForkTest is Test {
             abi.encode(0)
         );
         vm.mockCall(
-            address(controller),
-            abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"),
-            abi.encode()
+            address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );
 
         // Mock currentRulesetOf with weight = 0.5e18 (so swap path wins over mint at 1:1 pool).
@@ -709,9 +678,7 @@ contract V4ForkTest is Test {
         });
 
         vm.mockCall(
-            address(controller),
-            abi.encodeCall(IJBController.currentRulesetOf, (projectId)),
-            abi.encode(ruleset, meta)
+            address(controller), abi.encodeCall(IJBController.currentRulesetOf, (projectId)), abi.encode(ruleset, meta)
         );
     }
 

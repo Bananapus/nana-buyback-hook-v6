@@ -22,7 +22,9 @@ contract MockOracleHook {
         int56 _tickCumulative1,
         uint160 _secPerLiq0,
         uint160 _secPerLiq1
-    ) external {
+    )
+        external
+    {
         tickCumulative0 = _tickCumulative0;
         tickCumulative1 = _tickCumulative1;
         secPerLiq0 = _secPerLiq0;
@@ -36,7 +38,10 @@ contract MockOracleHook {
 
     /// @notice IGeomeanOracle.observe implementation.
     /// @dev Returns arrays of length 2 matching the [twapWindow, 0] secondsAgos pattern.
-    function observe(PoolKey calldata, uint32[] calldata)
+    function observe(
+        PoolKey calldata,
+        uint32[] calldata
+    )
         external
         view
         returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s)

@@ -14,7 +14,6 @@ import {JBSwapLib} from "src/libraries/JBSwapLib.sol";
 ///         Run with -vvv to see the full output tables:
 ///           forge test --match-contract MEVScenarios -vvv --skip "script/*"
 contract MEVScenarios is Test {
-
     uint256 constant BPS = 10_000;
 
     struct PoolScenario {
@@ -75,8 +74,10 @@ contract MEVScenarios is Test {
         }
 
         console.log("");
-        console.log("KEY INSIGHT: attacks > %s ticks trigger full mint fallback (0 MEV).",
-            _toString(uint256(uint24(-limitTick))));
+        console.log(
+            "KEY INSIGHT: attacks > %s ticks trigger full mint fallback (0 MEV).",
+            _toString(uint256(uint24(-limitTick)))
+        );
         console.log("The sqrtPriceLimit acts as a circuit breaker.");
     }
 
@@ -93,8 +94,7 @@ contract MEVScenarios is Test {
 
         uint256 saved = oldMEV > newMEV ? oldMEV - newMEV : 0;
 
-        console.log("  Attack %s bps: Old=%s New=%s",
-            _padLeft(atk, 3), _padLeft(oldMEV, 3), _padLeft(newMEV, 3));
+        console.log("  Attack %s bps: Old=%s New=%s", _padLeft(atk, 3), _padLeft(oldMEV, 3), _padLeft(newMEV, 3));
         console.log("    Saved: %s bps | %s", _padLeft(saved, 3), note);
     }
 
@@ -111,14 +111,15 @@ contract MEVScenarios is Test {
         // Scenarios: (name, tick, liquidity, fee)
         string[4] memory names = ["DeepETH/USDC", "MediumDEX", "ThinMicrocap", "UltraThin"];
         int24[4] memory ticks = [int24(0), int24(0), int24(0), int24(0)];
-        uint128[4] memory liqs = [uint128(100_000_000e18), uint128(1_000_000e18), uint128(50_000e18), uint128(5_000e18)];
+        uint128[4] memory liqs = [uint128(100_000_000e18), uint128(1_000_000e18), uint128(50_000e18), uint128(5000e18)];
         uint24[4] memory fees = [uint24(30), uint24(30), uint24(100), uint24(100)];
 
         uint256[5] memory sizes = [uint256(1 ether), 10 ether, 50 ether, 100 ether, 500 ether];
 
         for (uint256 s = 0; s < 4; s++) {
-            console.log("--- %s (liq=%s, fee=%sbps) ---",
-                names[s], _formatEther(uint256(liqs[s])), _toString(uint256(fees[s])));
+            console.log(
+                "--- %s (liq=%s, fee=%sbps) ---", names[s], _formatEther(uint256(liqs[s])), _toString(uint256(fees[s]))
+            );
 
             for (uint256 i = 0; i < sizes.length; i++) {
                 uint256 amountIn = sizes[i];
@@ -129,10 +130,15 @@ contract MEVScenarios is Test {
                 uint256 minOut = quote - (quote * slippage) / BPS;
                 uint256 lostTokens = quote - minOut;
 
-                console.log("  %s ETH: impact=%s slippage=%sbps",
-                    _formatEther(amountIn), _toString(impact), _toString(slippage));
-                console.log("    quote=%s minOut=%s maxLoss=%s",
-                    _formatEther(quote), _formatEther(minOut), _formatEther(lostTokens));
+                console.log(
+                    "  %s ETH: impact=%s slippage=%sbps", _formatEther(amountIn), _toString(impact), _toString(slippage)
+                );
+                console.log(
+                    "    quote=%s minOut=%s maxLoss=%s",
+                    _formatEther(quote),
+                    _formatEther(minOut),
+                    _formatEther(lostTokens)
+                );
             }
             console.log("");
         }
@@ -161,7 +167,7 @@ contract MEVScenarios is Test {
             uint256(9_500_000_000_000_000_000), // 9.5 (stale by 5% — TWAP overrides)
             uint256(9_000_000_000_000_000_000), // 9.0 (very stale)
             uint256(8_000_000_000_000_000_000), // 8.0 (extremely stale)
-            uint256(5_000_000_000_000_000_000)  // 5.0 (malicious relay)
+            uint256(5_000_000_000_000_000_000) // 5.0 (malicious relay)
         ];
 
         console.log("  TWAP minimum: %s tokens", _formatEther(twapQuote));
@@ -177,8 +183,9 @@ contract MEVScenarios is Test {
                 protectionBps = ((twapQuote - payerQuote) * BPS) / amountIn;
             }
 
-            console.log("  Payer quote: %s | Used: %s | Source: %s",
-                _formatEther(payerQuote), _formatEther(used), source);
+            console.log(
+                "  Payer quote: %s | Used: %s | Source: %s", _formatEther(payerQuote), _formatEther(used), source
+            );
             if (protectionBps > 0) {
                 console.log("    --> TWAP saved %s bps of additional MEV exposure", protectionBps);
             }
@@ -224,8 +231,9 @@ contract MEVScenarios is Test {
                 errorBps = ((minOut - impliedMinOut) * BPS) / minOut;
             }
 
-            console.log("  Tick %s: implied=%s target=%s",
-                _tickStr(tick), _formatEther(impliedMinOut), _formatEther(minOut));
+            console.log(
+                "  Tick %s: implied=%s target=%s", _tickStr(tick), _formatEther(impliedMinOut), _formatEther(minOut)
+            );
             console.log("    Error: %s bps", errorBps);
 
             assertLe(errorBps, 1, "Price limit error exceeds 1 bps");
@@ -250,8 +258,8 @@ contract MEVScenarios is Test {
         console.log("");
 
         uint128 liquidity = 1_000_000e18; // Medium pool
-        uint256 ticksToManipulate = 100;  // ~1% price manipulation
-        uint24 feeBps = 30;               // 0.3% fee
+        uint256 ticksToManipulate = 100; // ~1% price manipulation
+        uint24 feeBps = 30; // 0.3% fee
 
         // Cost model:
         // 1. Attacker must swap enough to move price by 100 ticks.
@@ -261,8 +269,8 @@ contract MEVScenarios is Test {
         uint256 swapAmount = (uint256(liquidity) * ticksToManipulate) / BPS;
         uint256 roundTripFees = (swapAmount * 2 * feeBps) / BPS;
 
-        uint256 window2min = 120;   // Old minimum
-        uint256 window5min = 300;   // New minimum
+        uint256 window2min = 120; // Old minimum
+        uint256 window5min = 300; // New minimum
 
         // Blocks required (12s per block on Ethereum mainnet).
         uint256 blocks2min = window2min / 12;
@@ -283,8 +291,11 @@ contract MEVScenarios is Test {
         console.log("    Attacker must dominate %s consecutive blocks", _toString(blocks5min));
         console.log("    Requires multi-block MEV (much more expensive)");
         console.log("");
-        console.log("  Difficulty increase: %sx more blocks = %sx harder",
-            _toString(blocks5min / blocks2min), _toString(blocks5min / blocks2min));
+        console.log(
+            "  Difficulty increase: %sx more blocks = %sx harder",
+            _toString(blocks5min / blocks2min),
+            _toString(blocks5min / blocks2min)
+        );
     }
 
     //*********************************************************************//
@@ -310,8 +321,9 @@ contract MEVScenarios is Test {
             uint256 impact = JBSwapLib.calculateImpact(amounts[i], liq, sqrtP, true);
             uint256 slippage = JBSwapLib.getSlippageTolerance(impact, 30);
 
-            console.log("  %s ETH: impact=%s slippage=%sbps",
-                _formatEther(amounts[i]), _toString(impact), _toString(slippage));
+            console.log(
+                "  %s ETH: impact=%s slippage=%sbps", _formatEther(amounts[i]), _toString(impact), _toString(slippage)
+            );
         }
 
         // Verify: all small swaps get ~200 bps (2%) tolerance, not 1050 (10.5%)
@@ -328,18 +340,12 @@ contract MEVScenarios is Test {
     //*********************************************************************//
 
     /// @notice For any non-zero minimum, the computed limit is strictly tighter.
-    function testFuzz_priceLimitTighterThanExtreme(
-        uint128 amountIn,
-        uint128 minOut,
-        bool zeroForOne
-    ) public pure {
+    function testFuzz_priceLimitTighterThanExtreme(uint128 amountIn, uint128 minOut, bool zeroForOne) public pure {
         amountIn = uint128(bound(amountIn, 1e15, type(uint128).max));
         minOut = uint128(bound(minOut, 1e15, type(uint128).max));
 
         uint160 newLimit = JBSwapLib.sqrtPriceLimitFromAmounts(amountIn, minOut, zeroForOne);
-        uint160 oldLimit = zeroForOne
-            ? TickMath.MIN_SQRT_PRICE + 1
-            : TickMath.MAX_SQRT_PRICE - 1;
+        uint160 oldLimit = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
 
         if (zeroForOne) {
             assertGe(uint256(newLimit), uint256(oldLimit), "tighter for zeroForOne");
@@ -349,10 +355,7 @@ contract MEVScenarios is Test {
     }
 
     /// @notice Fuzz: cross-validation always picks the higher quote.
-    function testFuzz_crossValidationPicksHigher(
-        uint128 payerMinOut,
-        uint128 twapMinOut
-    ) public pure {
+    function testFuzz_crossValidationPicksHigher(uint128 payerMinOut, uint128 twapMinOut) public pure {
         payerMinOut = uint128(bound(payerMinOut, 1, type(uint128).max));
         twapMinOut = uint128(bound(twapMinOut, 1, type(uint128).max));
 
@@ -379,9 +382,12 @@ contract MEVScenarios is Test {
         if (value == 0) return "0";
         uint256 temp = value;
         uint256 digits;
-        while (temp != 0) { digits++; temp /= 10; }
+        while (temp != 0) digits++;
+        temp /= 10;
         bytes memory buffer = new bytes(digits);
-        while (value != 0) { digits--; buffer[digits] = bytes1(uint8(48 + value % 10)); value /= 10; }
+        while (value != 0) digits--;
+        buffer[digits] = bytes1(uint8(48 + value % 10));
+        value /= 10;
         return string(buffer);
     }
 
@@ -396,8 +402,12 @@ contract MEVScenarios is Test {
         if (b.length >= width) return s;
         bytes memory padded = new bytes(width);
         uint256 padding = width - b.length;
-        for (uint256 i = 0; i < padding; i++) padded[i] = " ";
-        for (uint256 i = 0; i < b.length; i++) padded[padding + i] = b[i];
+        for (uint256 i = 0; i < padding; i++) {
+            padded[i] = " ";
+        }
+        for (uint256 i = 0; i < b.length; i++) {
+            padded[padding + i] = b[i];
+        }
         return string(padded);
     }
 }
