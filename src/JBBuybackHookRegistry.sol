@@ -192,7 +192,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Disallow the hook.
         isHookAllowed[hook] = false;
 
-        // L-26: Clear default hook if it matches the hook being disallowed.
+        // Clear default hook if it matches the hook being disallowed.
         if (defaultHook == hook) defaultHook = IJBRulesetDataHook(address(0));
 
         emit JBBuybackHookRegistry_DisallowHook(hook);
@@ -208,7 +208,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_HOOK
         });
 
-        // L-27: Require a non-zero hook before locking. Either the project has one set, or the default exists.
+        // Require a non-zero hook before locking. Either the project has one set, or the default exists.
         IJBRulesetDataHook hook = _hookOf[projectId];
         if (hook == IJBRulesetDataHook(address(0))) {
             hook = defaultHook;
