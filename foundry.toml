@@ -1,7 +1,11 @@
 [profile.default]
 solc = '0.8.26'
-evm_version = 'paris'
+evm_version = 'cancun'                 # Required for V4 transient storage (TSTORE/TLOAD)
+sizes = true
+verbosity = 3                           # display errors
 optimizer_runs = 100000000
+block_number = 14126430
+block_timestamp = 1643802347
 libs = ["node_modules", "lib"]
 fs_permissions = [{ access = "read-write", path = "./"}]
 
@@ -18,6 +22,9 @@ runs = 4096
 runs = 1024
 depth = 100
 fail_on_revert = false
+
+[lint]
+lint_on_build = false
 
 [fmt]
 number_underscore = "thousands"

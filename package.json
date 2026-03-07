@@ -1,6 +1,6 @@
 {
   "name": "@bananapus/buyback-hook-v6",
-  "version": "0.0.5",
+  "version": "0.0.4",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -20,10 +20,8 @@
   "dependencies": {
     "@bananapus/core-v6": "^0.0.5",
     "@bananapus/permission-ids-v6": "^0.0.3",
-    "@exhausted-pigeon/uniswap-v3-forge-quoter": "^1.0.2",
     "@openzeppelin/contracts": "^5.2.0",
-    "@uniswap/v3-core": "github:Uniswap/v3-core#0.8",
-    "@uniswap/v3-periphery": "github:Uniswap/v3-periphery#0.8"
+    "@uniswap/v4-core": "^1.0.2"
   },
   "devDependencies": {
     "@sphinx-labs/plugins": "^0.33.1"

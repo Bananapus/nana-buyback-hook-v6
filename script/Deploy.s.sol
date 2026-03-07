@@ -6,6 +6,8 @@ import "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
 import {Sphinx} from "@sphinx-labs/contracts/SphinxPlugin.sol";
 import {Script} from "forge-std/Script.sol";
 
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
 import {IWETH9} from "src/interfaces/external/IWETH9.sol";
@@ -19,11 +21,10 @@ contract DeployScript is Script, Sphinx {
 
     /// @notice tracks the addresses that are required for the chain we are deploying to.
     address weth;
-    address factory;
+    address poolManager;
     address trustedForwarder;
 
     function configureSphinx() public override {
-        // TODO: Update to contain revnet devs.
         sphinxConfig.projectName = "nana-buyback-hook-v6";
         sphinxConfig.mainnets = ["ethereum", "optimism", "base", "arbitrum"];
         sphinxConfig.testnets = ["ethereum_sepolia", "optimism_sepolia", "base_sepolia", "arbitrum_sepolia"];
@@ -31,45 +32,45 @@ contract DeployScript is Script, Sphinx {
 
     function run() public {
         // Get the deployment addresses for the nana CORE for this chain.
-        // We want to do this outside of the `sphinx` modifier.
         core = CoreDeploymentLib.getDeployment(
             vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v6/deployments/"))
         );
 
         trustedForwarder = core.permissions.trustedForwarder();
 
+        // Uniswap V4 PoolManager addresses per chain.
         // Ethereum Mainnet
         if (block.chainid == 1) {
             weth = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-            factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
             // Ethereum Sepolia
         } else if (block.chainid == 11_155_111) {
             weth = 0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9;
-            factory = 0x0227628f3F023bb0B980b67D528571c95c6DaC1c;
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
             // Optimism Mainnet
         } else if (block.chainid == 10) {
             weth = 0x4200000000000000000000000000000000000006;
-            factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+            poolManager = 0x9a13f98cb987694c9f086b1f5eb990eea8264ec3;
             // Base Mainnet
         } else if (block.chainid == 8453) {
             weth = 0x4200000000000000000000000000000000000006;
-            factory = 0x33128a8fC17869897dcE68Ed026d694621f6FDfD;
+            poolManager = 0x498581ff718922c3f8e6a244956af099b2652b2b;
             // Optimism Sepolia
         } else if (block.chainid == 11_155_420) {
             weth = 0x4200000000000000000000000000000000000006;
-            factory = 0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24;
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
             // BASE Sepolia
         } else if (block.chainid == 84_532) {
             weth = 0x4200000000000000000000000000000000000006;
-            factory = 0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24;
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
             // Arbitrum Mainnet
         } else if (block.chainid == 42_161) {
             weth = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
-            factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+            poolManager = 0x360e68faccca8ca495c1b759fd9eee466db9fb32;
             // Arbitrum Sepolia
         } else if (block.chainid == 421_614) {
             weth = 0x980B62Da83eFf3D4576C647993b0c1D7faf17c73;
-            factory = 0x248AB79Bbb9bC29bB72f7Cd42F17e054Fc40188e;
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
         } else {
             revert("Invalid RPC / no juice contracts deployed on this network");
         }
@@ -79,11 +80,12 @@ contract DeployScript is Script, Sphinx {
     }
 
     function deploy() public sphinx {
-        // Deploy the registry with the hook as the default hook.
+        // Deploy the registry.
         JBBuybackHookRegistry registry = new JBBuybackHookRegistry{salt: BUYBACK_HOOK}(
             core.permissions, core.projects, safeAddress(), trustedForwarder
         );
 
+        // Deploy the V4 buyback hook.
         JBBuybackHook hook = new JBBuybackHook{salt: BUYBACK_HOOK}(
             core.directory,
             core.permissions,
@@ -91,7 +93,7 @@ contract DeployScript is Script, Sphinx {
             core.projects,
             core.tokens,
             IWETH9(weth),
-            factory,
+            IPoolManager(poolManager),
             trustedForwarder
         );
 
@@ -103,11 +105,9 @@ contract DeployScript is Script, Sphinx {
         address _deployedTo = vm.computeCreate2Address({
             salt: salt,
             initCodeHash: keccak256(abi.encodePacked(creationCode, arguments)),
-            // Arachnid/deterministic-deployment-proxy address.
             deployer: address(0x4e59b44847b379578588920cA78FbF26c0B4956C)
         });
 
-        // Return if code is already present at this address.
         return address(_deployedTo).code.length != 0;
     }
 }

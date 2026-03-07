@@ -3,7 +3,7 @@ pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {JBSwapLib} from "../src/libraries/JBSwapLib.sol";
-import {TickMath} from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 /// @notice Tests for JBSwapLib — sigmoid slippage, 1e18 impact, sqrtPriceLimit.
 contract JBSwapLibTest is Test {
@@ -61,7 +61,7 @@ contract JBSwapLibTest is Test {
     /// @notice Small swap in deep pool should not round to zero.
     function test_impactPrecisionSmallSwap() public pure {
         // 1 ETH in a pool with 1M ETH liquidity and sqrtP at tick 0
-        uint160 sqrtP = TickMath.getSqrtRatioAtTick(0);
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(0);
         uint256 impact = JBSwapLib.calculateImpact(1e18, 1_000_000e18, sqrtP, true);
         // With old 1e5 precision, this would be 0. With 1e18, it should be ~1e12.
         assert(impact > 0);
@@ -69,7 +69,7 @@ contract JBSwapLibTest is Test {
 
     /// @notice Zero liquidity should return zero impact.
     function test_impactZeroLiquidity() public pure {
-        uint160 sqrtP = TickMath.getSqrtRatioAtTick(0);
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(0);
         uint256 impact = JBSwapLib.calculateImpact(1e18, 0, sqrtP, true);
         assertEq(impact, 0);
     }
@@ -82,7 +82,7 @@ contract JBSwapLibTest is Test {
 
     /// @notice Both directions should produce positive impact.
     function test_impactBothDirections() public pure {
-        uint160 sqrtP = TickMath.getSqrtRatioAtTick(100);
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(100);
         uint256 impact0For1 = JBSwapLib.calculateImpact(1e18, 100e18, sqrtP, true);
         uint256 impact1For0 = JBSwapLib.calculateImpact(1e18, 100e18, sqrtP, false);
         assert(impact0For1 > 0);
@@ -96,21 +96,21 @@ contract JBSwapLibTest is Test {
     /// @notice Zero minimumAmountOut should return extreme values.
     function test_sqrtPriceLimitNoMinimum() public pure {
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(1e18, 0, true);
-        assertEq(limit, TickMath.MIN_SQRT_RATIO + 1);
+        assertEq(limit, TickMath.MIN_SQRT_PRICE + 1);
 
         limit = JBSwapLib.sqrtPriceLimitFromAmounts(1e18, 0, false);
-        assertEq(limit, TickMath.MAX_SQRT_RATIO - 1);
+        assertEq(limit, TickMath.MAX_SQRT_PRICE - 1);
     }
 
     /// @notice sqrtPriceLimit should be within valid V3 range.
     function test_sqrtPriceLimitInRange() public pure {
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(1e18, 5e17, true);
-        assert(limit >= TickMath.MIN_SQRT_RATIO);
-        assert(limit <= TickMath.MAX_SQRT_RATIO);
+        assert(limit >= TickMath.MIN_SQRT_PRICE);
+        assert(limit <= TickMath.MAX_SQRT_PRICE);
 
         limit = JBSwapLib.sqrtPriceLimitFromAmounts(1e18, 5e17, false);
-        assert(limit >= TickMath.MIN_SQRT_RATIO);
-        assert(limit <= TickMath.MAX_SQRT_RATIO);
+        assert(limit >= TickMath.MIN_SQRT_PRICE);
+        assert(limit <= TickMath.MAX_SQRT_PRICE);
     }
 
     /// @notice For zeroForOne, larger minimumAmountOut should push sqrtPriceLimit higher.
@@ -125,14 +125,14 @@ contract JBSwapLibTest is Test {
     function test_sqrtPriceLimitEqualAmounts() public pure {
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(1e18, 1e18, true);
         // price = 1:1, sqrt(1) * 2^96 = 2^96
-        assert(limit > TickMath.MIN_SQRT_RATIO);
-        assert(limit < TickMath.MAX_SQRT_RATIO);
+        assert(limit > TickMath.MIN_SQRT_PRICE);
+        assert(limit < TickMath.MAX_SQRT_PRICE);
     }
 
     /// @notice Zero amountIn should return extreme values.
     function test_sqrtPriceLimitZeroAmountIn() public pure {
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(0, 1e18, true);
-        assertEq(limit, TickMath.MIN_SQRT_RATIO + 1);
+        assertEq(limit, TickMath.MIN_SQRT_PRICE + 1);
     }
 
     /// @notice Extended range: ratio in [2^64, 2^128) should compute a valid limit, not fall back.
@@ -143,24 +143,24 @@ contract JBSwapLibTest is Test {
         uint256 minOut = 18_500_000e18; // 18.5M tokens
 
         uint160 limitZfo = JBSwapLib.sqrtPriceLimitFromAmounts(amountIn, minOut, true);
-        // Should NOT fall back to MIN_SQRT_RATIO + 1 — should compute a real limit.
-        assert(limitZfo > TickMath.MIN_SQRT_RATIO + 1);
-        assert(limitZfo <= TickMath.MAX_SQRT_RATIO);
+        // Should NOT fall back to MIN_SQRT_PRICE + 1 — should compute a real limit.
+        assert(limitZfo > TickMath.MIN_SQRT_PRICE + 1);
+        assert(limitZfo <= TickMath.MAX_SQRT_PRICE);
 
         uint160 limitOfz = JBSwapLib.sqrtPriceLimitFromAmounts(amountIn, minOut, false);
-        assert(limitOfz >= TickMath.MIN_SQRT_RATIO);
-        assert(limitOfz < TickMath.MAX_SQRT_RATIO - 1);
+        assert(limitOfz >= TickMath.MIN_SQRT_PRICE);
+        assert(limitOfz < TickMath.MAX_SQRT_PRICE - 1);
     }
 
     /// @notice Extreme ratio >= 2^128 should fall back to no limit.
     function test_sqrtPriceLimitExtremeRatioFallback() public pure {
         // zeroForOne: num = minOut, den = amountIn → ratio = 2^128, triggers fallback.
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(1, uint256(1) << 128, true);
-        assertEq(limit, TickMath.MIN_SQRT_RATIO + 1);
+        assertEq(limit, TickMath.MIN_SQRT_PRICE + 1);
 
         // !zeroForOne: num = amountIn, den = minOut → ratio = 2^128, triggers fallback.
         limit = JBSwapLib.sqrtPriceLimitFromAmounts(uint256(1) << 128, 1, false);
-        assertEq(limit, TickMath.MAX_SQRT_RATIO - 1);
+        assertEq(limit, TickMath.MAX_SQRT_PRICE - 1);
     }
 
     //*********************************************************************//
@@ -182,7 +182,7 @@ contract JBSwapLibTest is Test {
     function testFuzz_sqrtPriceLimitValid(uint128 amountIn, uint128 minOut, bool zeroForOne) public pure {
         vm.assume(amountIn > 0);
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(uint256(amountIn), uint256(minOut), zeroForOne);
-        assert(limit >= TickMath.MIN_SQRT_RATIO);
-        assert(limit <= TickMath.MAX_SQRT_RATIO);
+        assert(limit >= TickMath.MIN_SQRT_PRICE);
+        assert(limit <= TickMath.MAX_SQRT_PRICE);
     }
 }
