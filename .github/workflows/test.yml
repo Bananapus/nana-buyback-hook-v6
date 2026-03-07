@@ -3,11 +3,9 @@ on:
   pull_request:
     branches:
       - main
-      - master
   push:
     branches:
       - main
-      - master
 jobs:
   forge-test:
     runs-on: ubuntu-latest
@@ -19,7 +17,7 @@ jobs:
         with:
           node-version: 22.4.x
       - name: Install npm dependencies
-        run: npm ci
+        run: npm install --omit=dev
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: Run tests

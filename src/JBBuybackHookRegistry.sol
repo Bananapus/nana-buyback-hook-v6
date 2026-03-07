@@ -46,13 +46,17 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @custom:param projectId The ID of the project to get the locked hook for.
     mapping(uint256 projectId => bool) public override hasLockedHook;
 
-    /// @notice The hook for the given project.
-    /// @custom:param projectId The ID of the project to get the hook for.
-    mapping(uint256 projectId => IJBRulesetDataHook) public override hookOf;
-
-    /// @notice The address of each project's token.
-    /// @custom:param projectId The ID of the project the token belongs to.
+    /// @notice Whether the given hook is allowed for a project.
+    /// @custom:param hook The hook to check.
     mapping(IJBRulesetDataHook hook => bool) public override isHookAllowed;
+
+    //*********************************************************************//
+    // --------------------- internal stored properties ------------------ //
+    //*********************************************************************//
+
+    /// @notice The hook explicitly set for the given project.
+    /// @custom:param projectId The ID of the project to get the hook for.
+    mapping(uint256 projectId => IJBRulesetDataHook) internal _hookOf;
 
     //*********************************************************************//
     // ---------------------------- constructor -------------------------- //
@@ -79,6 +83,14 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
+    /// @notice The hook for the given project, or the default hook if none is set.
+    /// @param projectId The ID of the project to get the hook for.
+    /// @return hook The hook for the project.
+    function hookOf(uint256 projectId) external view override returns (IJBRulesetDataHook hook) {
+        hook = _hookOf[projectId];
+        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+    }
+
     /// @notice Forward the call to the hook for the project.
     function beforePayRecordedWith(JBBeforePayRecordedContext calldata context)
         external
@@ -86,10 +98,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         override
         returns (uint256 weight, JBPayHookSpecification[] memory hookSpecifications)
     {
-        // Get the hook for the project.
-        IJBRulesetDataHook hook = hookOf[context.projectId];
-
-        // If the hook is not set, use the default hook.
+        // Get the hook for the project (falls back to default).
+        IJBRulesetDataHook hook = _hookOf[context.projectId];
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
 
         // Forward the call to the hook.
@@ -123,10 +133,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         override
         returns (bool)
     {
-        // Get the hook for the project.
-        IJBRulesetDataHook hook = hookOf[projectId];
-
-        // If the hook is not set, use the default hook.
+        // Get the hook for the project (falls back to default).
+        IJBRulesetDataHook hook = _hookOf[projectId];
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
 
         // Make sure the hook has mint permission.
@@ -184,29 +192,36 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Disallow the hook.
         isHookAllowed[hook] = false;
 
+        // L-26: Clear default hook if it matches the hook being disallowed.
+        if (defaultHook == hook) defaultHook = IJBRulesetDataHook(address(0));
+
         emit JBBuybackHookRegistry_DisallowHook(hook);
     }
 
     /// @notice Lock a hook for a project.
-    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_POOL` permission from the
+    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
     /// owner can lock a hook for a project.
     /// @param projectId The ID of the project to lock the hook for.
     function lockHookFor(uint256 projectId) external {
         // Enforce permissions.
         _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId),
-            projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_POOL
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_HOOK
         });
+
+        // L-27: Require a non-zero hook before locking. Either the project has one set, or the default exists.
+        IJBRulesetDataHook hook = _hookOf[projectId];
+        if (hook == IJBRulesetDataHook(address(0))) {
+            hook = defaultHook;
+            if (hook == IJBRulesetDataHook(address(0))) revert JBBuybackHookRegistry_HookNotSet(projectId);
+            _hookOf[projectId] = hook;
+        }
 
         // Set the hook to locked.
         hasLockedHook[projectId] = true;
 
-        // If the hook is not set, lock in the default hook.
-        if (hookOf[projectId] == IJBRulesetDataHook(address(0))) hookOf[projectId] = defaultHook;
-
         emit JBBuybackHookRegistry_LockHook(projectId);
     }
+
     /// @notice Set the default hook.
     /// @dev Only the owner can set the default hook.
     /// @param hook The hook to set as the default.
@@ -222,7 +237,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     }
 
     /// @notice Set the hook for a project.
-    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_POOL` permission from the
+    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
     /// owner can set the hook for a project.
     /// @param projectId The ID of the project to set the hook for.
     /// @param hook The hook to set for the project.
@@ -234,13 +249,11 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
         // Enforce permissions.
         _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId),
-            projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_POOL
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_HOOK
         });
 
         // Set the hook.
-        hookOf[projectId] = hook;
+        _hookOf[projectId] = hook;
 
         emit JBBuybackHookRegistry_SetHook(projectId, hook);
     }

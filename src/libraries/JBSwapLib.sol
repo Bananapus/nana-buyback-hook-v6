@@ -267,17 +267,20 @@ library JBSwapLib {
             den = minimumAmountOut;
         }
 
-        // Overflow guard: if num / den >= 2^64, mulDiv result won't fit in uint256.
-        if (num / den >= (uint256(1) << 64)) {
-            // For zeroForOne: user demands impossibly high rate — fall back to no limit.
-            // For !zeroForOne: user accepts extreme price — fall back to no limit.
-            return zeroForOne
-                ? TickMath.MIN_SQRT_PRICE + 1
-                : TickMath.MAX_SQRT_PRICE - 1;
-        }
+        uint256 sqrtResult;
 
-        uint256 ratioX192 = FullMath.mulDiv(num, uint256(1) << 192, den);
-        uint256 sqrtResult = Math.sqrt(ratioX192);
+        if (num / den >= (uint256(1) << 128)) {
+            // Ratio too large for any valid sqrtPriceX96 — fall back to no limit.
+            return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+        } else if (num / den >= (uint256(1) << 64)) {
+            // Extended range: use ratioX128 to avoid mulDiv overflow, then shift.
+            uint256 ratioX128 = FullMath.mulDiv(num, uint256(1) << 128, den);
+            sqrtResult = Math.sqrt(ratioX128) * (uint256(1) << 32);
+        } else {
+            // Normal range: full precision via ratioX192.
+            uint256 ratioX192 = FullMath.mulDiv(num, uint256(1) << 192, den);
+            sqrtResult = Math.sqrt(ratioX192);
+        }
 
         // Clamp to valid V4 range.
         if (zeroForOne) {

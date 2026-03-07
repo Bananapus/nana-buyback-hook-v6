@@ -48,16 +48,12 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Mock PROJECTS.ownerOf to return projectOwner for the test project.
         vm.mockCall(
-            address(projects),
-            abi.encodeWithSelector(IERC721.ownerOf.selector, projectId),
-            abi.encode(projectOwner)
+            address(projects), abi.encodeWithSelector(IERC721.ownerOf.selector, projectId), abi.encode(projectOwner)
         );
 
         // Mock permissions to return true by default (for authorized calls).
         vm.mockCall(
-            address(permissions),
-            abi.encodeWithSelector(IJBPermissions.hasPermission.selector),
-            abi.encode(true)
+            address(permissions), abi.encodeWithSelector(IJBPermissions.hasPermission.selector), abi.encode(true)
         );
     }
 
@@ -167,14 +163,18 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Try to set again.
         vm.prank(projectOwner);
-        vm.expectRevert(abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookLocked.selector, projectId));
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookLocked.selector, projectId)
+        );
         registry.setHookFor(projectId, hookB);
     }
 
     function test_setHookFor_revertsIfNotAllowed() public {
         // hookA is not allowed.
         vm.prank(projectOwner);
-        vm.expectRevert(abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotAllowed.selector, hookA));
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotAllowed.selector, hookA)
+        );
         registry.setHookFor(projectId, hookA);
     }
 
@@ -184,9 +184,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Mock permissions to return false.
         vm.mockCall(
-            address(permissions),
-            abi.encodeWithSelector(IJBPermissions.hasPermission.selector),
-            abi.encode(false)
+            address(permissions), abi.encodeWithSelector(IJBPermissions.hasPermission.selector), abi.encode(false)
         );
 
         vm.prank(dude);
@@ -219,8 +217,8 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.prank(owner);
         registry.setDefaultHook(hookA);
 
-        // No project-specific hook set. Lock should copy default.
-        assertEq(address(registry.hookOf(projectId)), address(0), "hookOf should be 0 before lock");
+        // No project-specific hook set. hookOf should already return the default.
+        assertEq(address(registry.hookOf(projectId)), address(hookA), "hookOf should return default before lock");
 
         vm.prank(projectOwner);
         registry.lockHookFor(projectId);
@@ -319,8 +317,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         JBRuleset memory ruleset;
         assertFalse(
-            registry.hasMintPermissionFor(projectId, ruleset, dude),
-            "random address should not have mint permission"
+            registry.hasMintPermissionFor(projectId, ruleset, dude), "random address should not have mint permission"
         );
     }
 
@@ -346,13 +343,40 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
     function test_supportsInterface() public view {
         assertTrue(
-            registry.supportsInterface(type(IJBRulesetDataHook).interfaceId),
-            "should support IJBRulesetDataHook"
+            registry.supportsInterface(type(IJBRulesetDataHook).interfaceId), "should support IJBRulesetDataHook"
         );
-        assertTrue(
-            registry.supportsInterface(type(IERC165).interfaceId),
-            "should support IERC165"
-        );
+        assertTrue(registry.supportsInterface(type(IERC165).interfaceId), "should support IERC165");
+    }
+
+    //*********************************************************************//
+    // --- hookOf default fallback (L-27) -------------------------------- //
+    //*********************************************************************//
+
+    function test_hookOf_returnsDefaultWhenNoProjectHook() public {
+        // Set a default hook.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // No project-specific hook set — hookOf should return the default.
+        assertEq(address(registry.hookOf(projectId)), address(hookA), "hookOf should return defaultHook");
+    }
+
+    function test_hookOf_returnsProjectHookOverDefault() public {
+        // Set default to hookA, then set project-specific to hookB.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        vm.prank(owner);
+        registry.allowHook(hookB);
+        vm.prank(projectOwner);
+        registry.setHookFor(projectId, hookB);
+
+        assertEq(address(registry.hookOf(projectId)), address(hookB), "hookOf should prefer project hook");
+    }
+
+    function test_hookOf_returnsZeroWhenNoDefaultAndNoProjectHook() public view {
+        // No default, no project hook → address(0).
+        assertEq(address(registry.hookOf(projectId)), address(0), "hookOf should be address(0) with no hooks");
     }
 
     //*********************************************************************//
@@ -375,6 +399,69 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.prank(projectOwner);
         registry.setHookFor(projectId, hookB);
         assertEq(address(registry.hookOf(projectId)), address(hookB));
+    }
+
+    //*********************************************************************//
+    // --- L-26: disallowHook clears defaultHook ------------------------ //
+    //*********************************************************************//
+
+    function test_disallowHook_clearsDefaultIfMatch() public {
+        // Set hookA as default.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+        assertEq(address(registry.defaultHook()), address(hookA));
+
+        // Disallow hookA — should clear the default.
+        vm.prank(owner);
+        registry.disallowHook(hookA);
+
+        assertEq(address(registry.defaultHook()), address(0), "defaultHook should be cleared when disallowed");
+    }
+
+    function test_disallowHook_doesNotClearDefaultIfNoMatch() public {
+        // Set hookA as default, disallow hookB.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        vm.prank(owner);
+        registry.allowHook(hookB);
+
+        vm.prank(owner);
+        registry.disallowHook(hookB);
+
+        assertEq(
+            address(registry.defaultHook()),
+            address(hookA),
+            "defaultHook should remain when disallowing a different hook"
+        );
+    }
+
+    //*********************************************************************//
+    // --- L-27: lockHookFor reverts when no hook set ------------------- //
+    //*********************************************************************//
+
+    function test_lockHookFor_revertsWhenNoHookAndNoDefault() public {
+        // No project hook, no default — should revert.
+        vm.prank(projectOwner);
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotSet.selector, projectId)
+        );
+        registry.lockHookFor(projectId);
+    }
+
+    function test_lockHookFor_revertsWhenDefaultWasDisallowed() public {
+        // Set default, then disallow it (clears default via L-26).
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+        vm.prank(owner);
+        registry.disallowHook(hookA);
+
+        // No project hook, default is now zero — should revert.
+        vm.prank(projectOwner);
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotSet.selector, projectId)
+        );
+        registry.lockHookFor(projectId);
     }
 
     //*********************************************************************//
