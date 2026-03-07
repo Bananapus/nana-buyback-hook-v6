@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-import "@bananapus/core-v5/src/structs/JBSplitHookContext.sol";
-import "@bananapus/core-v5/src/structs/JBTokenAmount.sol";
-import "@bananapus/core-v5/src/interfaces/IJBPayHook.sol";
-import "@bananapus/core-v5/src/interfaces/IJBSplitHook.sol";
+import "@bananapus/core-v6/src/structs/JBSplitHookContext.sol";
+import "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
+import "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
+import "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
 
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 

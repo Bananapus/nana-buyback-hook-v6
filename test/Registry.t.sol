@@ -3,18 +3,18 @@ pragma solidity ^0.8.16;
 
 import "forge-std/Test.sol";
 
-import "@bananapus/core-v5/src/interfaces/IJBPermissions.sol";
-import "@bananapus/core-v5/src/interfaces/IJBProjects.sol";
-import "@bananapus/core-v5/src/interfaces/IJBRulesetDataHook.sol";
+import "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
+import "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
+import "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@bananapus/core-v5/src/structs/JBBeforePayRecordedContext.sol";
-import "@bananapus/core-v5/src/structs/JBBeforeCashOutRecordedContext.sol";
-import "@bananapus/core-v5/src/structs/JBPayHookSpecification.sol";
-import "@bananapus/core-v5/src/structs/JBCashOutHookSpecification.sol";
-import "@bananapus/core-v5/src/structs/JBTokenAmount.sol";
-import "@bananapus/core-v5/src/structs/JBRuleset.sol";
-import "@bananapus/core-v5/src/libraries/JBConstants.sol";
-import "@bananapus/permission-ids-v5/src/JBPermissionIds.sol";
+import "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
+import "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
+import "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
+import "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
+import "@bananapus/core-v6/src/structs/JBRuleset.sol";
+import "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 
 import "src/JBBuybackHookRegistry.sol";
 

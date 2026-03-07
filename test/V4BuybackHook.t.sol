@@ -4,27 +4,27 @@ pragma solidity 0.8.26;
 import "forge-std/Test.sol";
 
 // JB core imports
-import {IJBController} from "@bananapus/core-v5/src/interfaces/IJBController.sol";
-import {IJBDirectory} from "@bananapus/core-v5/src/interfaces/IJBDirectory.sol";
-import {IJBMultiTerminal} from "@bananapus/core-v5/src/interfaces/IJBMultiTerminal.sol";
-import {IJBPermissions} from "@bananapus/core-v5/src/interfaces/IJBPermissions.sol";
-import {IJBPermissioned} from "@bananapus/core-v5/src/interfaces/IJBPermissioned.sol";
-import {IJBPrices} from "@bananapus/core-v5/src/interfaces/IJBPrices.sol";
-import {IJBProjects} from "@bananapus/core-v5/src/interfaces/IJBProjects.sol";
-import {IJBTerminal} from "@bananapus/core-v5/src/interfaces/IJBTerminal.sol";
-import {IJBTokens} from "@bananapus/core-v5/src/interfaces/IJBTokens.sol";
-import {IJBToken} from "@bananapus/core-v5/src/interfaces/IJBToken.sol";
-import {IJBRulesetApprovalHook} from "@bananapus/core-v5/src/interfaces/IJBRulesetApprovalHook.sol";
-import {JBConstants} from "@bananapus/core-v5/src/libraries/JBConstants.sol";
-import {JBMetadataResolver} from "@bananapus/core-v5/src/libraries/JBMetadataResolver.sol";
-import {JBRulesetMetadataResolver} from "@bananapus/core-v5/src/libraries/JBRulesetMetadataResolver.sol";
-import {JBAfterPayRecordedContext} from "@bananapus/core-v5/src/structs/JBAfterPayRecordedContext.sol";
-import {JBBeforePayRecordedContext} from "@bananapus/core-v5/src/structs/JBBeforePayRecordedContext.sol";
-import {JBPayHookSpecification} from "@bananapus/core-v5/src/structs/JBPayHookSpecification.sol";
-import {JBRuleset} from "@bananapus/core-v5/src/structs/JBRuleset.sol";
-import {JBRulesetMetadata} from "@bananapus/core-v5/src/structs/JBRulesetMetadata.sol";
-import {JBTokenAmount} from "@bananapus/core-v5/src/structs/JBTokenAmount.sol";
-import {JBPermissionIds} from "@bananapus/permission-ids-v5/src/JBPermissionIds.sol";
+import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
+import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
+import {IJBPermissioned} from "@bananapus/core-v6/src/interfaces/IJBPermissioned.sol";
+import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
+import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
+import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
+import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
+import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
+import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
+import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
+import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
+import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
+import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
+import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
@@ -342,12 +342,13 @@ contract V4BuybackHookTest is Test {
         uint256 swapOut = 500e18; // project tokens received from swap
 
         // Configure mock deltas: the swap returns swapOut project tokens.
-        // If projectToken is currency0: delta0 is negative (we receive), delta1 is positive (we pay)
-        // If projectToken is currency1: delta0 is positive (we pay), delta1 is negative (we receive)
+        // V4 convention: negative = caller spent (input), positive = caller received (output).
+        // If projectTokenIs0: zeroForOne=false, delta0=+swapOut (received), delta1=-payAmount (spent)
+        // If !projectTokenIs0: zeroForOne=true, delta0=-payAmount (spent), delta1=+swapOut (received)
         if (projectTokenIs0) {
-            mockPM.setMockDeltas(-int128(uint128(swapOut)), int128(uint128(payAmount)));
+            mockPM.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
         } else {
-            mockPM.setMockDeltas(int128(uint128(payAmount)), -int128(uint128(swapOut)));
+            mockPM.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
         }
 
         // Pre-fund the MockPoolManager with project tokens so take() can transfer them.
@@ -435,11 +436,11 @@ contract V4BuybackHookTest is Test {
         uint256 payAmount = 2 ether;
         uint256 swapOut = 1000e18;
 
-        // Configure deltas for the swap.
+        // Configure deltas for the swap (V4 convention: negative=spent, positive=received).
         if (projectTokenIs0) {
-            mockPM.setMockDeltas(-int128(uint128(swapOut)), int128(uint128(payAmount)));
+            mockPM.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
         } else {
-            mockPM.setMockDeltas(int128(uint128(payAmount)), -int128(uint128(swapOut)));
+            mockPM.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
         }
 
         // Pre-fund MockPoolManager with project tokens.
@@ -875,11 +876,11 @@ contract V4BuybackHookTest is Test {
         uint256 swapConsumed = 3 ether;
         uint256 swapOut = 300e18;
 
-        // Configure deltas for a partial fill.
+        // Configure deltas for a partial fill (V4 convention: negative=spent, positive=received).
         if (projectTokenIs0) {
-            mockPM.setMockDeltas(-int128(uint128(swapOut)), int128(uint128(swapConsumed)));
+            mockPM.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(swapConsumed)));
         } else {
-            mockPM.setMockDeltas(int128(uint128(swapConsumed)), -int128(uint128(swapOut)));
+            mockPM.setMockDeltas(-int128(uint128(swapConsumed)), int128(uint128(swapOut)));
         }
 
         // Pre-fund MockPoolManager with project tokens.

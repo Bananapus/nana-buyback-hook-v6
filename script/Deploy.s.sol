@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "@bananapus/core-v5/script/helpers/CoreDeploymentLib.sol";
+import "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
 
 import {Sphinx} from "@sphinx-labs/contracts/SphinxPlugin.sol";
 import {Script} from "forge-std/Script.sol";
@@ -25,7 +25,7 @@ contract DeployScript is Script, Sphinx {
     address trustedForwarder;
 
     function configureSphinx() public override {
-        sphinxConfig.projectName = "nana-buyback-hook-v5";
+        sphinxConfig.projectName = "nana-buyback-hook-v6";
         sphinxConfig.mainnets = ["ethereum", "optimism", "base", "arbitrum"];
         sphinxConfig.testnets = ["ethereum_sepolia", "optimism_sepolia", "base_sepolia", "arbitrum_sepolia"];
     }
@@ -33,7 +33,7 @@ contract DeployScript is Script, Sphinx {
     function run() public {
         // Get the deployment addresses for the nana CORE for this chain.
         core = CoreDeploymentLib.getDeployment(
-            vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v5/deployments/"))
+            vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v6/deployments/"))
         );
 
         trustedForwarder = core.permissions.trustedForwarder();

@@ -96,8 +96,14 @@ library JBSwapLib {
             // Get the quote at the mean tick.
             amountOut = getQuoteAtTick(arithmeticMeanTick, amountIn, baseToken, quoteToken);
         } catch {
-            // Oracle hook not supported — return 0.
-            return (0, 0, 0);
+            // Oracle hook not available — fall back to spot price from the PoolManager.
+            // This ensures buybacks still work for callers that don't provide their own quote.
+            PoolId poolId = key.toId();
+            (uint160 sqrtPriceX96, int24 tick,,) = poolManager.getSlot0(poolId);
+            if (sqrtPriceX96 == 0) return (0, 0, 0);
+            arithmeticMeanTick = tick;
+            harmonicMeanLiquidity = poolManager.getLiquidity(poolId);
+            amountOut = getQuoteAtTick(arithmeticMeanTick, amountIn, baseToken, quoteToken);
         }
     }
 
