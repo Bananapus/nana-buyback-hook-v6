@@ -65,10 +65,9 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
 
     /// @notice Set the pool to use for a given project and terminal token.
     /// @param projectId The ID of the project to set the pool for.
-    /// @param fee The fee used in the pool being set.
+    /// @param poolKey The V4 pool key for the pool being set.
     /// @param twapWindow The period of time over which the TWAP is computed.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
-    /// @return newPool The pool that was set for the project and terminal token.
     function setPoolFor(
         uint256 projectId,
         PoolKey calldata poolKey,
