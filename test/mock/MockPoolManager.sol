@@ -58,9 +58,8 @@ contract MockPoolManager {
         // POOLS_SLOT = bytes32(uint256(6)) per StateLibrary
         bytes32 stateSlot = keccak256(abi.encodePacked(PoolId.unwrap(poolId), bytes32(uint256(6))));
         // Pack: sqrtPriceX96 in lower 160, tick in next 24, protocolFee in next 24, lpFee in next 24
-        bytes32 data = bytes32(uint256(sqrtPriceX96))
-            | bytes32(uint256(uint24(tick)) << 160)
-            | bytes32(uint256(lpFee) << 208);
+        bytes32 data =
+            bytes32(uint256(sqrtPriceX96)) | bytes32(uint256(uint24(tick)) << 160) | bytes32(uint256(lpFee) << 208);
         slots[stateSlot] = data;
     }
 

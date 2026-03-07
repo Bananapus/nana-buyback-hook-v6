@@ -89,8 +89,7 @@ library JBSwapLib {
                 secondsPerLiquidityCumulativeX128s[1] - secondsPerLiquidityCumulativeX128s[0];
 
             if (secondsPerLiquidityDelta > 0) {
-                harmonicMeanLiquidity =
-                    uint128((uint256(twapWindow) << 128) / uint256(secondsPerLiquidityDelta));
+                harmonicMeanLiquidity = uint128((uint256(twapWindow) << 128) / uint256(secondsPerLiquidityDelta));
             }
 
             // Get the quote at the mean tick.
@@ -234,9 +233,7 @@ library JBSwapLib {
     {
         // No minimum specified → no limit (legacy behaviour).
         if (minimumAmountOut == 0 || amountIn == 0) {
-            return zeroForOne
-                ? TickMath.MIN_SQRT_PRICE + 1
-                : TickMath.MAX_SQRT_PRICE - 1;
+            return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
         }
 
         // sqrtPriceX96 = sqrt(price) * 2^96

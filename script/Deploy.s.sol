@@ -50,11 +50,11 @@ contract DeployScript is Script, Sphinx {
             // Optimism Mainnet
         } else if (block.chainid == 10) {
             weth = 0x4200000000000000000000000000000000000006;
-            poolManager = 0x9a13f98cb987694c9f086b1f5eb990eea8264ec3;
+            poolManager = 0x9a13F98Cb987694C9F086b1F5eB990EeA8264Ec3;
             // Base Mainnet
         } else if (block.chainid == 8453) {
             weth = 0x4200000000000000000000000000000000000006;
-            poolManager = 0x498581ff718922c3f8e6a244956af099b2652b2b;
+            poolManager = 0x498581fF718922c3f8e6A244956aF099B2652b2b;
             // Optimism Sepolia
         } else if (block.chainid == 11_155_420) {
             weth = 0x4200000000000000000000000000000000000006;
@@ -66,7 +66,7 @@ contract DeployScript is Script, Sphinx {
             // Arbitrum Mainnet
         } else if (block.chainid == 42_161) {
             weth = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
-            poolManager = 0x360e68faccca8ca495c1b759fd9eee466db9fb32;
+            poolManager = 0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32;
             // Arbitrum Sepolia
         } else if (block.chainid == 421_614) {
             weth = 0x980B62Da83eFf3D4576C647993b0c1D7faf17c73;
