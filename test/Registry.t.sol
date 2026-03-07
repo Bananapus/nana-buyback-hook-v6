@@ -349,7 +349,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
     }
 
     //*********************************************************************//
-    // --- hookOf default fallback (L-27) -------------------------------- //
+    // --- hookOf default fallback --------------------------------------- //
     //*********************************************************************//
 
     function test_hookOf_returnsDefaultWhenNoProjectHook() public {
@@ -402,7 +402,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
     }
 
     //*********************************************************************//
-    // --- L-26: disallowHook clears defaultHook ------------------------ //
+    // --- disallowHook clears defaultHook ------------------------------- //
     //*********************************************************************//
 
     function test_disallowHook_clearsDefaultIfMatch() public {
@@ -437,7 +437,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
     }
 
     //*********************************************************************//
-    // --- L-27: lockHookFor reverts when no hook set ------------------- //
+    // --- lockHookFor reverts when no hook set -------------------------- //
     //*********************************************************************//
 
     function test_lockHookFor_revertsWhenNoHookAndNoDefault() public {
@@ -450,7 +450,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
     }
 
     function test_lockHookFor_revertsWhenDefaultWasDisallowed() public {
-        // Set default, then disallow it (clears default via L-26).
+        // Set default, then disallow it (clears default).
         vm.prank(owner);
         registry.setDefaultHook(hookA);
         vm.prank(owner);
