@@ -1,4 +1,4 @@
-# nana-buyback-hook-v6
+# Juicebox Buyback Hook
 
 A Juicebox data hook and pay hook that automatically routes payments through the better of two paths: minting new project tokens from the terminal, or buying them from a Uniswap V4 pool -- whichever yields more tokens for the beneficiary. The project's reserved rate applies to either route.
 

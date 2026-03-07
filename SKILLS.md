@@ -1,4 +1,4 @@
-# nana-buyback-hook-v6
+# Juicebox Buyback Hook
 
 ## Purpose
 
