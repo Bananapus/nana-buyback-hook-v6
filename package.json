@@ -18,12 +18,12 @@
     "artifacts": "source ./.env && npx sphinx artifacts --org-id 'ea165b21-7cdc-4d7b-be59-ecdd4c26bee4' --project-name 'nana-buyback-hook-v6'"
   },
   "dependencies": {
-    "@bananapus/core-v6": "^0.0.5",
-    "@bananapus/permission-ids-v6": "^0.0.3",
+    "@bananapus/core-v6": "^0.0.9",
+    "@bananapus/permission-ids-v6": "^0.0.4",
     "@openzeppelin/contracts": "^5.2.0",
     "@uniswap/v4-core": "^1.0.2"
   },
   "devDependencies": {
-    "@sphinx-labs/plugins": "^0.33.1"
+    "@sphinx-labs/plugins": "^0.33.2"
   }
 }
