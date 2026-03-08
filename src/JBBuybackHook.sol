@@ -432,8 +432,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // Get a reference to the number of project tokens that was swapped for.
+        // `swapFailed` is true when the try/catch in _swap caught a revert (pool unavailable, etc.).
         // slither-disable-next-line reentrancy-events
-        uint256 exactSwapAmountOut = _swap({
+        (uint256 exactSwapAmountOut, bool swapFailed) = _swap({
             context: context,
             projectTokenIs0: projectTokenIs0,
             minimumSwapAmountOut: minimumSwapAmountOut,
@@ -441,7 +442,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
 
         // Ensure swap satisfies payer/client minimum amount or calculated TWAP.
-        if (exactSwapAmountOut < minimumSwapAmountOut) {
+        // Skip this check when the swap failed (caught revert) — in that case, fall through to the mint path.
+        if (!swapFailed && exactSwapAmountOut < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded(exactSwapAmountOut, minimumSwapAmountOut);
         }
 
@@ -693,6 +695,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param minimumSwapAmountOut The minimum acceptable output, used for sqrtPriceLimit computation.
     /// @param controller The controller used to mint and burn tokens.
     /// @return amountReceived The amount of project tokens received from the swap.
+    /// @return swapFailed True if the swap reverted and was caught by try/catch (triggers mint fallback).
     function _swap(
         JBAfterPayRecordedContext calldata context,
         bool projectTokenIs0,
@@ -700,7 +703,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         IJBController controller
     )
         internal
-        returns (uint256 amountReceived)
+        returns (uint256 amountReceived, bool swapFailed)
     {
         uint256 amountToSwapWith = context.forwardedAmount.value;
 
@@ -732,12 +735,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             })
         );
 
-        // Try the V4 unlock/callback swap. On failure, fall back to minting (return 0).
+        // Try the V4 unlock/callback swap. On failure, fall back to minting.
         // slither-disable-next-line reentrancy-events
         try POOL_MANAGER.unlock(callbackData) returns (bytes memory result) {
             amountReceived = abi.decode(result, (uint256));
         } catch {
-            return 0;
+            return (0, true);
         }
 
         emit Swap({
