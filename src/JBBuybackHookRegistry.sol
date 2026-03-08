@@ -81,77 +81,6 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     }
 
     //*********************************************************************//
-    // ------------------------- external views -------------------------- //
-    //*********************************************************************//
-
-    /// @notice To fulfill the `IJBRulesetDataHook` interface.
-    /// @dev Pass cash out context back to the terminal without changes.
-    /// @param context The cash out context passed in by the terminal.
-    function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
-        external
-        pure
-        override
-        returns (uint256, uint256, uint256, JBCashOutHookSpecification[] memory hookSpecifications)
-    {
-        return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
-    }
-
-    /// @notice Forward the call to the hook for the project.
-    function beforePayRecordedWith(JBBeforePayRecordedContext calldata context)
-        external
-        view
-        override
-        returns (uint256 weight, JBPayHookSpecification[] memory hookSpecifications)
-    {
-        // Get the hook for the project (falls back to default).
-        IJBRulesetDataHook hook = _hookOf[context.projectId];
-        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
-
-        // Forward the call to the hook.
-        // slither-disable-next-line unused-return
-        return hook.beforePayRecordedWith(context);
-    }
-
-    /// @notice Make sure the hook has mint permission.
-    /// @param projectId The ID of the project to check the mint permission for.
-    /// @param addr The address to check the mint permission for.
-    /// @return Whether the address has mint permission.
-    function hasMintPermissionFor(
-        uint256 projectId,
-        JBRuleset memory,
-        address addr
-    )
-        external
-        view
-        override
-        returns (bool)
-    {
-        // Get the hook for the project (falls back to default).
-        IJBRulesetDataHook hook = _hookOf[projectId];
-        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
-
-        // Make sure the hook has mint permission.
-        return addr == address(hook);
-    }
-
-    /// @notice The hook for the given project, or the default hook if none is set.
-    /// @param projectId The ID of the project to get the hook for.
-    /// @return hook The hook for the project.
-    function hookOf(uint256 projectId) external view override returns (IJBRulesetDataHook hook) {
-        hook = _hookOf[projectId];
-        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
-    }
-
-    //*********************************************************************//
-    // -------------------------- public views --------------------------- //
-    //*********************************************************************//
-
-    function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
-        return interfaceId == type(IJBBuybackHookRegistry).interfaceId
-            || interfaceId == type(IJBRulesetDataHook).interfaceId || interfaceId == type(IERC165).interfaceId;
-    }
-
-    //*********************************************************************//
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
@@ -246,6 +175,77 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         _hookOf[projectId] = hook;
 
         emit JBBuybackHookRegistry_SetHook(projectId, hook);
+    }
+
+    //*********************************************************************//
+    // ------------------------- external views -------------------------- //
+    //*********************************************************************//
+
+    /// @notice To fulfill the `IJBRulesetDataHook` interface.
+    /// @dev Pass cash out context back to the terminal without changes.
+    /// @param context The cash out context passed in by the terminal.
+    function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
+        external
+        pure
+        override
+        returns (uint256, uint256, uint256, JBCashOutHookSpecification[] memory hookSpecifications)
+    {
+        return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+    }
+
+    /// @notice Forward the call to the hook for the project.
+    function beforePayRecordedWith(JBBeforePayRecordedContext calldata context)
+        external
+        view
+        override
+        returns (uint256 weight, JBPayHookSpecification[] memory hookSpecifications)
+    {
+        // Get the hook for the project (falls back to default).
+        IJBRulesetDataHook hook = _hookOf[context.projectId];
+        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+
+        // Forward the call to the hook.
+        // slither-disable-next-line unused-return
+        return hook.beforePayRecordedWith(context);
+    }
+
+    /// @notice Make sure the hook has mint permission.
+    /// @param projectId The ID of the project to check the mint permission for.
+    /// @param addr The address to check the mint permission for.
+    /// @return Whether the address has mint permission.
+    function hasMintPermissionFor(
+        uint256 projectId,
+        JBRuleset memory,
+        address addr
+    )
+        external
+        view
+        override
+        returns (bool)
+    {
+        // Get the hook for the project (falls back to default).
+        IJBRulesetDataHook hook = _hookOf[projectId];
+        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+
+        // Make sure the hook has mint permission.
+        return addr == address(hook);
+    }
+
+    /// @notice The hook for the given project, or the default hook if none is set.
+    /// @param projectId The ID of the project to get the hook for.
+    /// @return hook The hook for the project.
+    function hookOf(uint256 projectId) external view override returns (IJBRulesetDataHook hook) {
+        hook = _hookOf[projectId];
+        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+    }
+
+    //*********************************************************************//
+    // -------------------------- public views --------------------------- //
+    //*********************************************************************//
+
+    function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
+        return interfaceId == type(IJBBuybackHookRegistry).interfaceId
+            || interfaceId == type(IJBRulesetDataHook).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 
     //*********************************************************************//

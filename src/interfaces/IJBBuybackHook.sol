@@ -13,28 +13,27 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {IWETH9} from "./external/IWETH9.sol";
 
-/// @notice A hook that facilitates buybacks of project tokens using Uniswap V4 pools.
 interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
-    /// @notice Emitted when tokens are minted instead of swapped.
-    /// @param projectId The ID of the project whose tokens were minted.
-    /// @param leftoverAmount The amount left over after minting.
-    /// @param tokenCount The number of tokens minted.
-    /// @param caller The address that called the function.
+    /// @notice Emitted when leftover terminal tokens are minted as project tokens.
+    /// @param projectId The ID of the project whose tokens are being minted.
+    /// @param leftoverAmount The amount of terminal tokens used for minting.
+    /// @param tokenCount The number of project tokens minted.
+    /// @param caller The address that triggered the mint.
     event Mint(uint256 indexed projectId, uint256 leftoverAmount, uint256 tokenCount, address caller);
 
-    /// @notice Emitted when a pool is added for a project and terminal token.
-    /// @param projectId The ID of the project the pool was added for.
-    /// @param terminalToken The terminal token address.
+    /// @notice Emitted when a pool is added for a project and terminal token pair.
+    /// @param projectId The ID of the project the pool is being added for.
+    /// @param terminalToken The address of the terminal token.
     /// @param poolId The ID of the Uniswap V4 pool.
-    /// @param caller The address that called the function.
+    /// @param caller The address that added the pool.
     event PoolAdded(uint256 indexed projectId, address indexed terminalToken, PoolId poolId, address caller);
 
-    /// @notice Emitted when a swap is performed through the buyback hook.
-    /// @param projectId The ID of the project the swap was performed for.
-    /// @param amountToSwapWith The amount used for the swap.
+    /// @notice Emitted when terminal tokens are swapped for project tokens via the Uniswap V4 pool.
+    /// @param projectId The ID of the project whose tokens are being swapped for.
+    /// @param amountToSwapWith The amount of terminal tokens used for the swap.
     /// @param poolId The ID of the Uniswap V4 pool used.
     /// @param amountReceived The amount of project tokens received from the swap.
-    /// @param caller The address that called the function.
+    /// @param caller The address that triggered the swap.
     event Swap(
         uint256 indexed projectId,
         uint256 amountToSwapWith,
@@ -43,11 +42,11 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
         address caller
     );
 
-    /// @notice Emitted when the TWAP window is changed for a project.
-    /// @param projectId The ID of the project whose TWAP window was changed.
-    /// @param oldWindow The previous TWAP window value.
-    /// @param newWindow The new TWAP window value.
-    /// @param caller The address that called the function.
+    /// @notice Emitted when the TWAP window for a project is changed.
+    /// @param projectId The ID of the project whose TWAP window is being changed.
+    /// @param oldWindow The previous TWAP window in seconds.
+    /// @param newWindow The new TWAP window in seconds.
+    /// @param caller The address that changed the TWAP window.
     event TwapWindowChanged(uint256 indexed projectId, uint256 oldWindow, uint256 newWindow, address caller);
 
     /// @notice The directory of terminals and controllers.
@@ -62,7 +61,7 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     /// @return The minimum TWAP window in seconds.
     function MIN_TWAP_WINDOW() external view returns (uint256);
 
-    /// @notice The Uniswap V4 pool manager.
+    /// @notice The Uniswap V4 PoolManager singleton.
     /// @return The pool manager contract.
     function POOL_MANAGER() external view returns (IPoolManager);
 
@@ -82,22 +81,22 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     /// @return The slippage denominator.
     function TWAP_SLIPPAGE_DENOMINATOR() external view returns (uint256);
 
-    /// @notice The WETH contract.
-    /// @return The WETH9 contract.
+    /// @notice The wETH contract.
+    /// @return The WETH contract.
     function WETH() external view returns (IWETH9);
 
-    /// @notice The Uniswap V4 pool key for a given project and terminal token.
+    /// @notice The PoolKey for a given project and terminal token pair.
     /// @param projectId The ID of the project.
     /// @param terminalToken The terminal token address.
-    /// @return key The pool key.
+    /// @return key The V4 PoolKey.
     function poolKeyOf(uint256 projectId, address terminalToken) external view returns (PoolKey memory key);
 
-    /// @notice The project token address for a given project.
+    /// @notice The address of each project's token.
     /// @param projectId The ID of the project.
-    /// @return projectTokenOf The project token address.
+    /// @return projectTokenOf The project's token address.
     function projectTokenOf(uint256 projectId) external view returns (address projectTokenOf);
 
-    /// @notice The TWAP window for a given project.
+    /// @notice The TWAP window for the given project.
     /// @param projectId The ID of the project.
     /// @return window The TWAP window in seconds.
     function twapWindowOf(uint256 projectId) external view returns (uint256 window);
@@ -115,8 +114,8 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     )
         external;
 
-    /// @notice Set the TWAP window for a given project.
-    /// @param projectId The ID of the project to set the TWAP window for.
-    /// @param newWindow The new TWAP window in seconds.
+    /// @notice Change the TWAP window for a project.
+    /// @param projectId The ID of the project to set the TWAP window of.
+    /// @param newWindow The new TWAP window.
     function setTwapWindowOf(uint256 projectId, uint256 newWindow) external;
 }
