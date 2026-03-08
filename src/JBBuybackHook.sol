@@ -576,11 +576,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         _poolKeyOf[projectId][normalizedTerminalToken] = poolKey;
         _poolIsSet[projectId][normalizedTerminalToken] = true;
 
+        // Read the current TWAP window before overwriting (for accurate event emission).
+        uint256 oldWindow = twapWindowOf[projectId];
+
         // Store the TWAP window and project token.
         twapWindowOf[projectId] = twapWindow;
         projectTokenOf[projectId] = projectToken;
 
-        emit TwapWindowChanged({projectId: projectId, oldWindow: 0, newWindow: twapWindow, caller: _msgSender()});
+        emit TwapWindowChanged({projectId: projectId, oldWindow: oldWindow, newWindow: twapWindow, caller: _msgSender()});
         emit PoolAdded({
             projectId: projectId, terminalToken: normalizedTerminalToken, poolId: poolId, caller: _msgSender()
         });
