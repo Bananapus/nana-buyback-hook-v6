@@ -37,7 +37,7 @@ Route project payments through the better of two paths -- minting from the termi
 | `beforeCashOutRecordedWith(context)` | Pass-through: returns cash-out context unchanged. |
 | `hasMintPermissionFor(projectId, ruleset, addr)` | Returns `true` only if `addr` is the hook registered (or defaulted) for the project. |
 | `setHookFor(projectId, hook)` | Route a project to a specific allowed buyback hook. Reverts if hook is locked or not on the allowlist. Permission: `SET_BUYBACK_HOOK` (ID 27). |
-| `lockHookFor(projectId)` | Lock the hook choice for a project (irreversible). If using default, snapshots it into storage first. Requires a non-zero hook. Permission: `SET_BUYBACK_HOOK` (ID 27). |
+| `lockHookFor(projectId, expectedHook)` | Lock the hook choice for a project (irreversible). If using default, snapshots it into storage first. Requires a non-zero hook. Reverts with `JBBuybackHookRegistry_HookMismatch` if the resolved hook differs from `expectedHook` (prevents race conditions). Permission: `SET_BUYBACK_HOOK` (ID 27). |
 | `allowHook(hook)` | Add a hook to the allowlist. Owner only. |
 | `disallowHook(hook)` | Remove a hook from the allowlist. If the disallowed hook is the current default, also clears the default. Owner only. |
 | `setDefaultHook(hook)` | Set the default hook (also adds to allowlist). Owner only. |
@@ -85,7 +85,6 @@ Route project payments through the better of two paths -- minting from the termi
 | `MIN_TWAP_WINDOW` | `5 minutes` (300s) | Minimum TWAP oracle window |
 | `MAX_TWAP_WINDOW` | `2 days` (172,800s) | Maximum TWAP oracle window |
 | `TWAP_SLIPPAGE_DENOMINATOR` | `10,000` | Basis points denominator for slippage |
-| `UNCERTAIN_TWAP_SLIPPAGE_TOLERANCE` | `1,050` | 10.5% tolerance (declared but not currently used in slippage path) |
 | `JBSwapLib.SLIPPAGE_DENOMINATOR` | `10,000` | Basis points denominator (internal to library) |
 | `JBSwapLib.MAX_SLIPPAGE` | `8,800` | 88% sigmoid ceiling |
 | `JBSwapLib.IMPACT_PRECISION` | `1e18` | Impact calculation precision |
@@ -142,8 +141,10 @@ Route project payments through the better of two paths -- minting from the termi
 | Error | When |
 |-------|------|
 | `JBBuybackHookRegistry_HookLocked(uint256 projectId)` | `setHookFor` called on a locked project |
+| `JBBuybackHookRegistry_HookMismatch(IJBRulesetDataHook currentHook, IJBRulesetDataHook expectedHook)` | `lockHookFor` called but resolved hook differs from the caller's `expectedHook` |
 | `JBBuybackHookRegistry_HookNotAllowed(IJBRulesetDataHook hook)` | `setHookFor` called with a hook not on the allowlist |
 | `JBBuybackHookRegistry_HookNotSet(uint256 projectId)` | `lockHookFor` called but no hook is set and no default exists |
+| `JBBuybackHookRegistry_ZeroHook()` | `setDefaultHook` called with `address(0)` |
 
 ## Gotchas
 
@@ -151,7 +152,7 @@ Route project payments through the better of two paths -- minting from the termi
 - **Pool immutability**: `setPoolFor` can only be called once per project+terminalToken pair. After the pool key is stored, calling again reverts with `JBBuybackHook_PoolAlreadySet`. This is intentional to prevent swap routing manipulation.
 - **PoolKey validation**: `setPoolFor` validates that the PoolKey's `currency0`/`currency1` match the project token and normalized terminal token. It also checks that the pool is initialized (sqrtPriceX96 != 0).
 - **Burn-and-remint**: Tokens received from the swap are burned via `controller.burnTokensOf`, then re-minted (along with any leftover-mint count) via `controller.mintTokensOf` with `useReservedPercent: true`. This ensures the reserved rate applies uniformly regardless of the payment route.
-- **Swap failure fallback**: If the V4 `POOL_MANAGER.unlock()` call reverts (slippage, insufficient liquidity, etc.), `_swap` catches it with try-catch and returns 0. Then `afterPayRecordedWith` reverts with `JBBuybackHook_SpecifiedSlippageExceeded(0, minimumSwapAmountOut)`, causing the terminal to fall back to default minting.
+- **Swap failure fallback**: If the V4 `POOL_MANAGER.unlock()` call reverts (slippage, insufficient liquidity, etc.), `_swap` catches it with try-catch and returns `(0, true)`. The `swapFailed` flag bypasses the slippage check, allowing the payment to fall through to the mint path. Any WETH wrapped for the swap is unwrapped back to ETH so leftover accounting remains correct.
 - **TWAP oracle fallback**: When the oracle hook is absent or `observe()` reverts, `JBSwapLib.getQuoteFromOracle` falls back to spot price from `poolManager.getSlot0()` and current liquidity from `poolManager.getLiquidity()`.
 - **Zero liquidity protection**: If the oracle/spot returns zero liquidity (`harmonicMeanLiquidity == 0`), `_getQuote` returns 0, which ensures the hook falls back to minting rather than attempting a swap in an empty pool.
 - **Sigmoid slippage ceiling**: If `getSlippageTolerance` returns `>= TWAP_SLIPPAGE_DENOMINATOR` (10,000 bps = 100%), `_getQuote` returns 0 to trigger mint fallback.
@@ -164,7 +165,8 @@ Route project payments through the better of two paths -- minting from the termi
 - **State variable names**: Public: `projectTokenOf[projectId]`, `twapWindowOf[projectId]`. Internal with public getter: `poolKeyOf(projectId, terminalToken)` (backed by `_poolKeyOf`). Internal only: `_poolIsSet[projectId][terminalToken]`.
 - **ERC-2771**: `_msgSender()` (ERC-2771) is used instead of `msg.sender` for meta-transaction compatibility in permissioned functions (`setPoolFor`, `setTwapWindowOf`).
 - **Mint permission**: `hasMintPermissionFor` returns `false` on `JBBuybackHook` but returns `addr == address(hook)` on `JBBuybackHookRegistry`. The registry grants mint permission to whichever hook is active for the project.
-- **Registry locking**: `lockHookFor` snapshots the default into `_hookOf[projectId]` if the project hasn't explicitly set one. This prevents a later `setDefaultHook` from changing the locked project's hook.
+- **Registry locking**: `lockHookFor(projectId, expectedHook)` snapshots the default into `_hookOf[projectId]` if the project hasn't explicitly set one. The `expectedHook` parameter prevents race conditions: if the resolved hook differs from what the caller expects, it reverts with `HookMismatch`. This prevents a later `setDefaultHook` from changing the locked project's hook.
+- **Registry setDefaultHook**: `setDefaultHook(address(0))` reverts with `ZeroHook` to prevent DoS when projects without a specific hook try to use the default.
 - **Registry disallowHook**: If `disallowHook` removes the current default, it also clears `defaultHook` to `address(0)`.
 - **Currency conversion**: When the payment currency differs from the ruleset's base currency, the hook queries `PRICES.pricePerUnitOf(...)` for the conversion factor. This is used both in `beforePayRecordedWith` (for comparing mint vs swap) and in `afterPayRecordedWith` (for computing leftover mint tokens).
 
