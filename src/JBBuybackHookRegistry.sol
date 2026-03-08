@@ -27,6 +27,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     error JBBuybackHookRegistry_HookLocked(uint256 projectId);
     error JBBuybackHookRegistry_HookNotAllowed(IJBRulesetDataHook hook);
     error JBBuybackHookRegistry_HookNotSet(uint256 projectId);
+    error JBBuybackHookRegistry_ZeroHook();
 
     //*********************************************************************//
     // -------------------- public immutable properties ------------------ //
@@ -227,6 +228,10 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @param hook The hook to set as the default.
 
     function setDefaultHook(IJBRulesetDataHook hook) external onlyOwner {
+        // Prevent setting address(0) as the default hook — it would mark address(0) as allowed,
+        // causing payments to revert when projects without a specific hook try to use the default.
+        if (address(hook) == address(0)) revert JBBuybackHookRegistry_ZeroHook();
+
         // Set the default hook.
         defaultHook = hook;
 
