@@ -4,16 +4,28 @@ pragma solidity ^0.8.0;
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 
+/// @notice A registry that manages which buyback hooks are used by projects.
 interface IJBBuybackHookRegistry is IJBRulesetDataHook {
+    /// @notice Emitted when a hook is allowed to be used by projects.
+    /// @param hook The hook that was allowed.
     event JBBuybackHookRegistry_AllowHook(IJBRulesetDataHook hook);
-    event JBBuybackHookRegistry_DisallowHook(IJBRulesetDataHook hook);
-    event JBBuybackHookRegistry_LockHook(uint256 projectId);
-    event JBBuybackHookRegistry_SetDefaultHook(IJBRulesetDataHook hook);
-    event JBBuybackHookRegistry_SetHook(uint256 indexed projectId, IJBRulesetDataHook hook);
 
-    /// @notice The project registry.
-    /// @return The projects contract.
-    function PROJECTS() external view returns (IJBProjects);
+    /// @notice Emitted when a hook is disallowed from being used by projects.
+    /// @param hook The hook that was disallowed.
+    event JBBuybackHookRegistry_DisallowHook(IJBRulesetDataHook hook);
+
+    /// @notice Emitted when the hook for a project is locked.
+    /// @param projectId The ID of the project whose hook was locked.
+    event JBBuybackHookRegistry_LockHook(uint256 projectId);
+
+    /// @notice Emitted when the default hook is set.
+    /// @param hook The hook that was set as the default.
+    event JBBuybackHookRegistry_SetDefaultHook(IJBRulesetDataHook hook);
+
+    /// @notice Emitted when a hook is set for a specific project.
+    /// @param projectId The ID of the project the hook was set for.
+    /// @param hook The hook that was set.
+    event JBBuybackHookRegistry_SetHook(uint256 indexed projectId, IJBRulesetDataHook hook);
 
     /// @notice The default hook used when a project has not set a specific hook.
     /// @return The default data hook.
@@ -33,6 +45,10 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @param hook The hook to check.
     /// @return Whether the hook is allowed.
     function isHookAllowed(IJBRulesetDataHook hook) external view returns (bool);
+
+    /// @notice The project registry.
+    /// @return The projects contract.
+    function PROJECTS() external view returns (IJBProjects);
 
     /// @notice Allow a hook to be used by projects.
     /// @param hook The hook to allow.

@@ -17,29 +17,27 @@ import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
-import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
 import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
+import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
 import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
 import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
-import {Context} from "@openzeppelin/contracts/utils/Context.sol";
-import {mulDiv} from "@prb/math/src/Common.sol";
 import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
-
-// Uniswap V4
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Context} from "@openzeppelin/contracts/utils/Context.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {mulDiv} from "@prb/math/src/Common.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 import {IJBBuybackHook} from "./interfaces/IJBBuybackHook.sol";
 import {IWETH9} from "./interfaces/external/IWETH9.sol";
@@ -187,6 +185,17 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
+    /// @notice To fulfill the `IJBRulesetDataHook` interface.
+    /// @dev Pass cash out context back to the terminal without changes.
+    function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
+        external
+        pure
+        override
+        returns (uint256, uint256, uint256, JBCashOutHookSpecification[] memory hookSpecifications)
+    {
+        return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+    }
+
     /// @notice The `IJBRulesetDataHook` implementation which determines whether tokens should be minted from the
     /// project or bought from the pool.
     /// @param context Payment context passed to the data hook by `terminalStore.recordPaymentFrom(...)`.
@@ -289,17 +298,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
     }
 
-    /// @notice To fulfill the `IJBRulesetDataHook` interface.
-    /// @dev Pass cash out context back to the terminal without changes.
-    function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
-        external
-        pure
-        override
-        returns (uint256, uint256, uint256, JBCashOutHookSpecification[] memory hookSpecifications)
-    {
-        return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
-    }
-
     /// @notice Required by the `IJBRulesetDataHook` interfaces. Return false to not leak any permissions.
     function hasMintPermissionFor(uint256, JBRuleset memory, address) external pure override returns (bool) {
         return false;
@@ -309,12 +307,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // -------------------------- public views --------------------------- //
     //*********************************************************************//
 
-    function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
-        return interfaceId == type(IJBRulesetDataHook).interfaceId || interfaceId == type(IJBPayHook).interfaceId
-            || interfaceId == type(IJBBuybackHook).interfaceId || interfaceId == type(IJBPermissioned).interfaceId
-            || interfaceId == type(IERC165).interfaceId;
-    }
-
     /// @notice Returns the PoolKey for a given project and terminal token pair.
     /// @param projectId The ID of the project.
     /// @param terminalToken The terminal token address (normalized to WETH for native).
@@ -323,91 +315,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         return _poolKeyOf[projectId][terminalToken];
     }
 
-    //*********************************************************************//
-    // -------------------------- internal views ------------------------- //
-    //*********************************************************************//
-
-    /// @dev `ERC-2771` specifies the context as being a single address (20 bytes).
-    function _contextSuffixLength() internal view override(ERC2771Context, Context) returns (uint256) {
-        return super._contextSuffixLength();
-    }
-
-    /// @notice Get a quote based on the oracle hook TWAP or spot price.
-    /// @param projectId The ID of the project.
-    /// @param projectToken The project token being swapped for.
-    /// @param amountIn The number of terminal tokens being used to swap.
-    /// @param terminalToken The terminal token being paid in (normalized to WETH for native).
-    /// @return amountOut The minimum number of tokens to receive based on the TWAP and slippage.
-    function _getQuote(
-        uint256 projectId,
-        address projectToken,
-        uint256 amountIn,
-        address terminalToken
-    )
-        internal
-        view
-        returns (uint256 amountOut)
-    {
-        // Get the pool key for this project/terminal token pair.
-        PoolKey memory key = _poolKeyOf[projectId][terminalToken];
-
-        // Make sure a pool has been configured.
-        if (!_poolIsSet[projectId][terminalToken]) return 0;
-
-        // Get the TWAP window.
-        uint256 twapWindow = twapWindowOf[projectId];
-
-        // Query the oracle hook (or spot if twapWindow is 0).
-        int24 arithmeticMeanTick;
-        uint128 meanLiquidity;
-        (amountOut, arithmeticMeanTick, meanLiquidity) = JBSwapLib.getQuoteFromOracle({
-            poolManager: POOL_MANAGER,
-            key: key,
-            twapWindow: uint32(twapWindow),
-            amountIn: uint128(amountIn),
-            baseToken: terminalToken,
-            quoteToken: projectToken
-        });
-
-        // If oracle returned 0, no quote available — trigger mint fallback.
-        if (amountOut == 0) return 0;
-
-        // If there's no liquidity data, return 0 to trigger mint.
-        if (meanLiquidity == 0) return 0;
-
-        // Calculate price impact.
-        bool zeroForOne = terminalToken < projectToken;
-        uint160 sqrtP = TickMath.getSqrtPriceAtTick(arithmeticMeanTick);
-        uint256 impact = JBSwapLib.calculateImpact(amountIn, meanLiquidity, sqrtP, zeroForOne);
-
-        // Get the pool fee in bps (V4 fees are in hundredths of a bip, so divide by 100).
-        uint256 poolFeeBps = uint256(key.fee) / 100;
-
-        // Calculate continuous sigmoid slippage tolerance.
-        uint256 slippageTolerance = JBSwapLib.getSlippageTolerance(impact, poolFeeBps);
-
-        // If the slippage tolerance is the maximum, return 0 to trigger mint.
-        if (slippageTolerance >= TWAP_SLIPPAGE_DENOMINATOR) return 0;
-
-        // Apply slippage to the oracle quote.
-        amountOut -= (amountOut * slippageTolerance) / TWAP_SLIPPAGE_DENOMINATOR;
-    }
-
-    /// @notice Returns this contract's balance of the given terminal token.
-    /// @param token The terminal token address (NATIVE_TOKEN for ETH).
-    /// @return balance The current balance held by this contract.
-    function _terminalTokenBalance(address token) internal view returns (uint256 balance) {
-        return token == JBConstants.NATIVE_TOKEN ? address(this).balance : IERC20(token).balanceOf(address(this));
-    }
-
-    /// @notice The calldata. Preferred to use over `msg.data`.
-    function _msgData() internal view override(ERC2771Context, Context) returns (bytes calldata) {
-        return ERC2771Context._msgData();
-    }
-
-    /// @notice The message's sender. Preferred to use over `msg.sender`.
-    function _msgSender() internal view override(ERC2771Context, Context) returns (address sender) {
-        return ERC2771Context._msgSender();
+    function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
+        return interfaceId == type(IJBRulesetDataHook).interfaceId || interfaceId == type(IJBPayHook).interfaceId
+            || interfaceId == type(IJBBuybackHook).interfaceId || interfaceId == type(IJBPermissioned).interfaceId
+            || interfaceId == type(IERC165).interfaceId;
     }
 
     //*********************************************************************//
@@ -707,6 +618,93 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice Receive native ETH. Required for V4 native ETH take() and WETH unwrap.
     receive() external payable {}
+
+    //*********************************************************************//
+    // -------------------------- internal views ------------------------- //
+    //*********************************************************************//
+
+    /// @dev `ERC-2771` specifies the context as being a single address (20 bytes).
+    function _contextSuffixLength() internal view override(ERC2771Context, Context) returns (uint256) {
+        return super._contextSuffixLength();
+    }
+
+    /// @notice Get a quote based on the oracle hook TWAP or spot price.
+    /// @param projectId The ID of the project.
+    /// @param projectToken The project token being swapped for.
+    /// @param amountIn The number of terminal tokens being used to swap.
+    /// @param terminalToken The terminal token being paid in (normalized to WETH for native).
+    /// @return amountOut The minimum number of tokens to receive based on the TWAP and slippage.
+    function _getQuote(
+        uint256 projectId,
+        address projectToken,
+        uint256 amountIn,
+        address terminalToken
+    )
+        internal
+        view
+        returns (uint256 amountOut)
+    {
+        // Get the pool key for this project/terminal token pair.
+        PoolKey memory key = _poolKeyOf[projectId][terminalToken];
+
+        // Make sure a pool has been configured.
+        if (!_poolIsSet[projectId][terminalToken]) return 0;
+
+        // Get the TWAP window.
+        uint256 twapWindow = twapWindowOf[projectId];
+
+        // Query the oracle hook (or spot if twapWindow is 0).
+        int24 arithmeticMeanTick;
+        uint128 meanLiquidity;
+        (amountOut, arithmeticMeanTick, meanLiquidity) = JBSwapLib.getQuoteFromOracle({
+            poolManager: POOL_MANAGER,
+            key: key,
+            twapWindow: uint32(twapWindow),
+            amountIn: uint128(amountIn),
+            baseToken: terminalToken,
+            quoteToken: projectToken
+        });
+
+        // If oracle returned 0, no quote available — trigger mint fallback.
+        if (amountOut == 0) return 0;
+
+        // If there's no liquidity data, return 0 to trigger mint.
+        if (meanLiquidity == 0) return 0;
+
+        // Calculate price impact.
+        bool zeroForOne = terminalToken < projectToken;
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(arithmeticMeanTick);
+        uint256 impact = JBSwapLib.calculateImpact(amountIn, meanLiquidity, sqrtP, zeroForOne);
+
+        // Get the pool fee in bps (V4 fees are in hundredths of a bip, so divide by 100).
+        uint256 poolFeeBps = uint256(key.fee) / 100;
+
+        // Calculate continuous sigmoid slippage tolerance.
+        uint256 slippageTolerance = JBSwapLib.getSlippageTolerance(impact, poolFeeBps);
+
+        // If the slippage tolerance is the maximum, return 0 to trigger mint.
+        if (slippageTolerance >= TWAP_SLIPPAGE_DENOMINATOR) return 0;
+
+        // Apply slippage to the oracle quote.
+        amountOut -= (amountOut * slippageTolerance) / TWAP_SLIPPAGE_DENOMINATOR;
+    }
+
+    /// @notice The calldata. Preferred to use over `msg.data`.
+    function _msgData() internal view override(ERC2771Context, Context) returns (bytes calldata) {
+        return ERC2771Context._msgData();
+    }
+
+    /// @notice The message's sender. Preferred to use over `msg.sender`.
+    function _msgSender() internal view override(ERC2771Context, Context) returns (address sender) {
+        return ERC2771Context._msgSender();
+    }
+
+    /// @notice Returns this contract's balance of the given terminal token.
+    /// @param token The terminal token address (NATIVE_TOKEN for ETH).
+    /// @return balance The current balance held by this contract.
+    function _terminalTokenBalance(address token) internal view returns (uint256 balance) {
+        return token == JBConstants.NATIVE_TOKEN ? address(this).balance : IERC20(token).balanceOf(address(this));
+    }
 
     //*********************************************************************//
     // ---------------------- internal functions ------------------------- //
