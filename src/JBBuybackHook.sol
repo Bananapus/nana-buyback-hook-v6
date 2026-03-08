@@ -396,6 +396,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         amountOut -= (amountOut * slippageTolerance) / TWAP_SLIPPAGE_DENOMINATOR;
     }
 
+    /// @notice Returns this contract's balance of the given terminal token.
+    /// @param token The terminal token address (NATIVE_TOKEN for ETH).
+    /// @return balance The current balance held by this contract.
+    function _terminalTokenBalance(address token) internal view returns (uint256 balance) {
+        return token == JBConstants.NATIVE_TOKEN ? address(this).balance : IERC20(token).balanceOf(address(this));
+    }
+
     /// @notice The calldata. Preferred to use over `msg.data`.
     function _msgData() internal view override(ERC2771Context, Context) returns (bytes calldata) {
         return ERC2771Context._msgData();
@@ -431,6 +438,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 .safeTransferFrom(msg.sender, address(this), context.forwardedAmount.value);
         }
 
+        // Record the terminal token balance before the swap so we can compute leftover as a delta.
+        // This prevents pre-existing balances from inflating the leftover accounting.
+        uint256 balanceBefore = _terminalTokenBalance(context.forwardedAmount.token);
+
         // Get a reference to the number of project tokens that was swapped for.
         // slither-disable-next-line reentrancy-events
         uint256 exactSwapAmountOut = _swap({
@@ -445,10 +456,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             revert JBBuybackHook_SpecifiedSlippageExceeded(exactSwapAmountOut, minimumSwapAmountOut);
         }
 
-        // Get a reference to any terminal tokens which are still held by this contract.
-        uint256 leftoverAmountInThisContract = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN
-            ? address(this).balance
-            : IERC20(context.forwardedAmount.token).balanceOf(address(this));
+        // Compute leftover terminal tokens as a delta (balanceAfter - balanceBefore).
+        uint256 leftoverAmountInThisContract = _terminalTokenBalance(context.forwardedAmount.token) - balanceBefore;
 
         // Get a reference to the ruleset.
         // slither-disable-next-line unused-return
