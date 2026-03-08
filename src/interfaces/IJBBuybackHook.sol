@@ -53,10 +53,6 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     /// @return The slippage denominator.
     function TWAP_SLIPPAGE_DENOMINATOR() external view returns (uint256);
 
-    /// @notice The uncertain slippage tolerance allowed when the swap size relative to liquidity is ambiguous.
-    /// @return The uncertain TWAP slippage tolerance.
-    function UNCERTAIN_TWAP_SLIPPAGE_TOLERANCE() external view returns (uint256);
-
     function POOL_MANAGER() external view returns (IPoolManager);
     function WETH() external view returns (IWETH9);
 
