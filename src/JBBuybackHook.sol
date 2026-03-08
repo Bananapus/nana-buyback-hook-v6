@@ -91,9 +91,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice The denominator used when calculating TWAP slippage percent values.
     uint256 public constant override TWAP_SLIPPAGE_DENOMINATOR = 10_000;
 
-    /// @notice The uncertain slippage tolerance allowed when there is no liquidity data.
-    uint256 public constant override UNCERTAIN_TWAP_SLIPPAGE_TOLERANCE = 1050;
-
     //*********************************************************************//
     // -------------------- public immutable properties ------------------ //
     //*********************************************************************//
