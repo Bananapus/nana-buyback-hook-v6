@@ -429,15 +429,20 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         (bool projectTokenIs0, uint256 amountToMintWith, uint256 minimumSwapAmountOut, IJBController controller) =
             abi.decode(context.hookMetadata, (bool, uint256, uint256, IJBController));
 
+        // Record the terminal token balance BEFORE pulling payment tokens so we can compute leftover as a delta.
+        // For native ETH, `msg.value` is already included in `address(this).balance` at this point,
+        // so we subtract it. For ERC-20, we capture BEFORE safeTransferFrom.
+        // This prevents both pre-existing balances AND the payment itself from inflating leftovers.
+        uint256 balanceBefore = _terminalTokenBalance(context.forwardedAmount.token);
+        if (context.forwardedAmount.token == JBConstants.NATIVE_TOKEN) {
+            balanceBefore -= msg.value;
+        }
+
         // If the token paid in isn't the native token, pull the amount to swap from the terminal.
         if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
             IERC20(context.forwardedAmount.token)
                 .safeTransferFrom(msg.sender, address(this), context.forwardedAmount.value);
         }
-
-        // Record the terminal token balance before the swap so we can compute leftover as a delta.
-        // This prevents pre-existing balances from inflating the leftover accounting.
-        uint256 balanceBefore = _terminalTokenBalance(context.forwardedAmount.token);
 
         // Get a reference to the number of project tokens that was swapped for.
         // `swapFailed` is true when the try/catch in _swap caught a revert (pool unavailable, etc.).
@@ -453,6 +458,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Skip this check when the swap failed (caught revert) — in that case, fall through to the mint path.
         if (!swapFailed && exactSwapAmountOut < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded(exactSwapAmountOut, minimumSwapAmountOut);
+        }
+
+        // If native ETH was wrapped to WETH for the swap (pool uses WETH), unwrap any leftover WETH
+        // back to ETH so the balance delta below correctly captures leftovers.
+        if (context.forwardedAmount.token == JBConstants.NATIVE_TOKEN) {
+            uint256 wethBalance = IERC20(address(WETH)).balanceOf(address(this));
+            if (wethBalance != 0) WETH.withdraw(wethBalance);
         }
 
         // Compute leftover terminal tokens as a delta (balanceAfter - balanceBefore).

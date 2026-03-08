@@ -1,6 +1,7 @@
 [profile.default]
 solc = '0.8.26'
 evm_version = 'cancun'                 # Required for V4 transient storage (TSTORE/TLOAD)
+via_ir = true                           # Required to avoid stack-too-deep in JBBuybackHook
 sizes = true
 verbosity = 3                           # display errors
 optimizer_runs = 100000000
