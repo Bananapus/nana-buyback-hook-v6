@@ -44,7 +44,9 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
 
     /// @notice Lock the hook for a project, preventing it from being changed.
     /// @param projectId The ID of the project to lock the hook for.
-    function lockHookFor(uint256 projectId) external;
+    /// @param expectedHook The hook the caller expects to lock. Prevents race conditions where the hook changes
+    /// between transaction submission and execution.
+    function lockHookFor(uint256 projectId, IJBRulesetDataHook expectedHook) external;
 
     /// @notice Set the default hook used when a project has not set a specific hook.
     /// @param hook The hook to set as the default.
