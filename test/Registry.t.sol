@@ -159,7 +159,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Lock.
         vm.prank(projectOwner);
-        registry.lockHookFor(projectId);
+        registry.lockHookFor(projectId, hookA);
 
         // Try to set again.
         vm.prank(projectOwner);
@@ -207,7 +207,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Lock.
         vm.prank(projectOwner);
-        registry.lockHookFor(projectId);
+        registry.lockHookFor(projectId, hookA);
 
         assertTrue(registry.hasLockedHook(projectId), "should be locked");
     }
@@ -221,7 +221,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         assertEq(address(registry.hookOf(projectId)), address(hookA), "hookOf should return default before lock");
 
         vm.prank(projectOwner);
-        registry.lockHookFor(projectId);
+        registry.lockHookFor(projectId, hookA);
 
         assertEq(address(registry.hookOf(projectId)), address(hookA), "lockHookFor should copy default");
         assertTrue(registry.hasLockedHook(projectId), "should be locked");
@@ -446,7 +446,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.expectRevert(
             abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotSet.selector, projectId)
         );
-        registry.lockHookFor(projectId);
+        registry.lockHookFor(projectId, hookA);
     }
 
     function test_lockHookFor_revertsWhenDefaultWasDisallowed() public {
@@ -461,7 +461,22 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.expectRevert(
             abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotSet.selector, projectId)
         );
-        registry.lockHookFor(projectId);
+        registry.lockHookFor(projectId, hookA);
+    }
+
+    function test_lockHookFor_revertsOnMismatch() public {
+        // Allow and set hookA.
+        vm.prank(owner);
+        registry.allowHook(hookA);
+        vm.prank(projectOwner);
+        registry.setHookFor(projectId, hookA);
+
+        // Try to lock with hookB as expected — should revert.
+        vm.prank(projectOwner);
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookMismatch.selector, hookA, hookB)
+        );
+        registry.lockHookFor(projectId, hookB);
     }
 
     //*********************************************************************//

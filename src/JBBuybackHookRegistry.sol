@@ -25,6 +25,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     //*********************************************************************//
 
     error JBBuybackHookRegistry_HookLocked(uint256 projectId);
+    error JBBuybackHookRegistry_HookMismatch(IJBRulesetDataHook currentHook, IJBRulesetDataHook expectedHook);
     error JBBuybackHookRegistry_HookNotAllowed(IJBRulesetDataHook hook);
     error JBBuybackHookRegistry_HookNotSet(uint256 projectId);
     error JBBuybackHookRegistry_ZeroHook();
@@ -203,7 +204,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
     /// owner can lock a hook for a project.
     /// @param projectId The ID of the project to lock the hook for.
-    function lockHookFor(uint256 projectId) external {
+    /// @param expectedHook The hook the caller expects to lock. Prevents race conditions where the hook changes
+    /// between transaction submission and execution.
+    function lockHookFor(uint256 projectId, IJBRulesetDataHook expectedHook) external {
         // Enforce permissions.
         _requirePermissionFrom({
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_HOOK
@@ -215,6 +218,11 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
             hook = defaultHook;
             if (hook == IJBRulesetDataHook(address(0))) revert JBBuybackHookRegistry_HookNotSet(projectId);
             _hookOf[projectId] = hook;
+        }
+
+        // Verify the resolved hook matches what the caller expects to lock.
+        if (hook != expectedHook) {
+            revert JBBuybackHookRegistry_HookMismatch(hook, expectedHook);
         }
 
         // Set the hook to locked.
