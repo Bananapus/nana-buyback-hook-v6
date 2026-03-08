@@ -48,16 +48,12 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Mock PROJECTS.ownerOf to return projectOwner for the test project.
         vm.mockCall(
-            address(projects),
-            abi.encodeWithSelector(IERC721.ownerOf.selector, projectId),
-            abi.encode(projectOwner)
+            address(projects), abi.encodeWithSelector(IERC721.ownerOf.selector, projectId), abi.encode(projectOwner)
         );
 
         // Mock permissions to return true by default (for authorized calls).
         vm.mockCall(
-            address(permissions),
-            abi.encodeWithSelector(IJBPermissions.hasPermission.selector),
-            abi.encode(true)
+            address(permissions), abi.encodeWithSelector(IJBPermissions.hasPermission.selector), abi.encode(true)
         );
     }
 
@@ -167,14 +163,18 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Try to set again.
         vm.prank(projectOwner);
-        vm.expectRevert(abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookLocked.selector, projectId));
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookLocked.selector, projectId)
+        );
         registry.setHookFor(projectId, hookB);
     }
 
     function test_setHookFor_revertsIfNotAllowed() public {
         // hookA is not allowed.
         vm.prank(projectOwner);
-        vm.expectRevert(abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotAllowed.selector, hookA));
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotAllowed.selector, hookA)
+        );
         registry.setHookFor(projectId, hookA);
     }
 
@@ -184,9 +184,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Mock permissions to return false.
         vm.mockCall(
-            address(permissions),
-            abi.encodeWithSelector(IJBPermissions.hasPermission.selector),
-            abi.encode(false)
+            address(permissions), abi.encodeWithSelector(IJBPermissions.hasPermission.selector), abi.encode(false)
         );
 
         vm.prank(dude);
@@ -319,8 +317,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         JBRuleset memory ruleset;
         assertFalse(
-            registry.hasMintPermissionFor(projectId, ruleset, dude),
-            "random address should not have mint permission"
+            registry.hasMintPermissionFor(projectId, ruleset, dude), "random address should not have mint permission"
         );
     }
 
@@ -346,13 +343,9 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
     function test_supportsInterface() public view {
         assertTrue(
-            registry.supportsInterface(type(IJBRulesetDataHook).interfaceId),
-            "should support IJBRulesetDataHook"
+            registry.supportsInterface(type(IJBRulesetDataHook).interfaceId), "should support IJBRulesetDataHook"
         );
-        assertTrue(
-            registry.supportsInterface(type(IERC165).interfaceId),
-            "should support IERC165"
-        );
+        assertTrue(registry.supportsInterface(type(IERC165).interfaceId), "should support IERC165");
     }
 
     //*********************************************************************//

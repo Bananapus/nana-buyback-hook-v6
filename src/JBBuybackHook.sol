@@ -473,9 +473,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
 
         // If the token paid in isn't the native token, pull the amount to swap from the terminal.
         if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
-            IERC20(context.forwardedAmount.token).safeTransferFrom(
-                msg.sender, address(this), context.forwardedAmount.value
-            );
+            IERC20(context.forwardedAmount.token)
+                .safeTransferFrom(msg.sender, address(this), context.forwardedAmount.value);
         }
 
         // Get a reference to the number of project tokens that was swapped for.
@@ -586,9 +585,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     {
         // Enforce permissions.
         _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId),
-            projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_POOL
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });
 
         // Make sure this pool hasn't already been set in this hook.
@@ -656,10 +653,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
 
         emit TwapWindowChanged({projectId: projectId, oldWindow: 0, newWindow: twapWindow, caller: _msgSender()});
         emit PoolAdded({
-            projectId: projectId,
-            terminalToken: terminalToken,
-            pool: address(newPool),
-            caller: _msgSender()
+            projectId: projectId, terminalToken: terminalToken, pool: address(newPool), caller: _msgSender()
         });
     }
 
@@ -672,9 +666,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
     function setTwapWindowOf(uint256 projectId, uint256 newWindow) external {
         // Enforce permissions.
         _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId),
-            projectId: projectId,
-            permissionId: JBPermissionIds.SET_BUYBACK_TWAP
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_TWAP
         });
 
         // Make sure the specified window is within reasonable bounds.
@@ -749,11 +741,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         // Compute a dynamic sqrtPriceLimit from the minimum acceptable output (MEV protection).
         // When selling terminalToken for projectToken:
         //   zeroForOne = !projectTokenIs0
-        uint160 sqrtPriceLimit = JBSwapLib.sqrtPriceLimitFromAmounts(
-            amountToSwapWith,
-            minimumSwapAmountOut,
-            !projectTokenIs0
-        );
+        uint160 sqrtPriceLimit =
+            JBSwapLib.sqrtPriceLimitFromAmounts(amountToSwapWith, minimumSwapAmountOut, !projectTokenIs0);
 
         // Try swapping.
         // slither-disable-next-line reentrancy-events
@@ -763,7 +752,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
             amountSpecified: int256(amountToSwapWith),
             sqrtPriceLimitX96: sqrtPriceLimit,
             data: abi.encode(context.projectId, context.forwardedAmount.token)
-        }) returns (int256 amount0, int256 amount1) {
+        }) returns (
+            int256 amount0, int256 amount1
+        ) {
             // If the swap succeded, take note of the amount of tokens received.
             // This will be returned as a negative value, which Uniswap uses to represent the outputs of exact input
             // swaps.
@@ -785,10 +776,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IJBBuybackHook {
         // Burn the whole amount received.
         if (amountReceived != 0) {
             controller.burnTokensOf({
-                holder: address(this),
-                projectId: context.projectId,
-                tokenCount: amountReceived,
-                memo: ""
+                holder: address(this), projectId: context.projectId, tokenCount: amountReceived, memo: ""
             });
         }
     }

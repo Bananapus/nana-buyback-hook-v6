@@ -76,10 +76,7 @@ contract Test_BuybackHook_Unit is TestBaseWorkflow, JBTest {
         terminal: address(multiTerminal),
         payer: dude,
         amount: JBTokenAmount({
-            token: address(weth),
-            value: 1 ether,
-            decimals: 18,
-            currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            token: address(weth), value: 1 ether, decimals: 18, currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
         }),
         projectId: projectId,
         rulesetId: 0,
@@ -805,8 +802,7 @@ contract Test_BuybackHook_Unit is TestBaseWorkflow, JBTest {
 
         // Compute the dynamic sqrtPriceLimit the production code will use.
         bool zeroForOne_swapETH = address(weth) < address(projectToken);
-        uint160 sqrtPriceLimit_swapETH =
-            JBSwapLib.sqrtPriceLimitFromAmounts(1 ether, tokenCount, zeroForOne_swapETH);
+        uint160 sqrtPriceLimit_swapETH = JBSwapLib.sqrtPriceLimitFromAmounts(1 ether, tokenCount, zeroForOne_swapETH);
 
         // Mock and expect the swap call.
         vm.mockCall(
@@ -962,8 +958,7 @@ contract Test_BuybackHook_Unit is TestBaseWorkflow, JBTest {
 
         // Compute the dynamic sqrtPriceLimit the production code will use.
         bool zeroForOne_extra = address(weth) < address(projectToken);
-        uint160 sqrtPriceLimit_extra =
-            JBSwapLib.sqrtPriceLimitFromAmounts(1 ether, twapQuote, zeroForOne_extra);
+        uint160 sqrtPriceLimit_extra = JBSwapLib.sqrtPriceLimitFromAmounts(1 ether, twapQuote, zeroForOne_extra);
 
         // Mock and expect the swap call.
         vm.mockCall(
@@ -1123,8 +1118,7 @@ contract Test_BuybackHook_Unit is TestBaseWorkflow, JBTest {
         // Note: projectTokenIs0 from hookMetadata is `address(projectToken) < address(weth)`,
         // so zeroForOne = !projectTokenIs0 = !(address(projectToken) < address(weth)).
         bool zeroForOne_erc20 = !(address(projectToken) < address(weth));
-        uint160 sqrtPriceLimit_erc20 =
-            JBSwapLib.sqrtPriceLimitFromAmounts(1 ether, tokenCount, zeroForOne_erc20);
+        uint160 sqrtPriceLimit_erc20 = JBSwapLib.sqrtPriceLimitFromAmounts(1 ether, tokenCount, zeroForOne_erc20);
 
         // Mock and expect the swap call.
         vm.mockCall(
@@ -1294,8 +1288,7 @@ contract Test_BuybackHook_Unit is TestBaseWorkflow, JBTest {
 
         // Compute the dynamic sqrtPriceLimit the production code will use.
         bool zeroForOne_revert = address(weth) < address(projectToken);
-        uint160 sqrtPriceLimit_revert =
-            JBSwapLib.sqrtPriceLimitFromAmounts(1 ether, tokenCount, zeroForOne_revert);
+        uint160 sqrtPriceLimit_revert = JBSwapLib.sqrtPriceLimitFromAmounts(1 ether, tokenCount, zeroForOne_revert);
 
         // Mock the swap call reverting.
         vm.mockCallRevert(
@@ -1841,13 +1834,7 @@ contract Test_BuybackHook_Unit is TestBaseWorkflow, JBTest {
     /// @notice Test whether calling `setPoolFor` with the same parameters as an existing pool reverts.
     /// @dev This is to avoid bypassing the TWAP delta and TWAP window authorization.
     /// @dev A new fee tier results in a new pool.
-    function test_setPoolFor_revertIfPoolAlreadyExists(
-        uint256 _twapWindow,
-        address _projectToken,
-        uint24 _fee
-    )
-        public
-    {
+    function test_setPoolFor_revertIfPoolAlreadyExists(uint256 _twapWindow, address _projectToken, uint24 _fee) public {
         address _terminalToken = address(weth);
 
         vm.assume(_projectToken != address(0) && _fee != 0);

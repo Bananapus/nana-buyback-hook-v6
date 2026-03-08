@@ -234,9 +234,7 @@ contract TestBaseWorkflowV3 is Test {
         JBTerminalConfig[] memory terminalConfigurations = new JBTerminalConfig[](1);
         JBAccountingContext[] memory accountingContextsToAccept = new JBAccountingContext[](1);
         accountingContextsToAccept[0] = JBAccountingContext({
-            token: JBConstants.NATIVE_TOKEN,
-            currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-            decimals: 18
+            token: JBConstants.NATIVE_TOKEN, currency: uint32(uint160(JBConstants.NATIVE_TOKEN)), decimals: 18
         });
         terminalConfigurations[0] =
             JBTerminalConfig({terminal: jbMultiTerminal, accountingContextsToAccept: accountingContextsToAccept});

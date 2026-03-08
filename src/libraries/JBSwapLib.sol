@@ -110,9 +110,7 @@ library JBSwapLib {
         returns (uint160 sqrtPriceLimit)
     {
         if (minimumAmountOut == 0 || amountIn == 0) {
-            return zeroForOne
-                ? TickMath.MIN_SQRT_RATIO + 1
-                : TickMath.MAX_SQRT_RATIO - 1;
+            return zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1;
         }
 
         uint256 num;
@@ -127,9 +125,7 @@ library JBSwapLib {
 
         // Overflow guard: if num / den >= 2^64, mulDiv result won't fit in uint256.
         if (num / den >= (uint256(1) << 64)) {
-            return zeroForOne
-                ? TickMath.MIN_SQRT_RATIO + 1
-                : TickMath.MAX_SQRT_RATIO - 1;
+            return zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1;
         }
 
         uint256 ratioX192 = mulDiv(num, uint256(1) << 192, den);
