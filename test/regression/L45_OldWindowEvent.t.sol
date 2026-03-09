@@ -33,7 +33,7 @@ contract L45_MockToken is ERC20 {
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
 }
 
-/// @notice Regression test for L-45: setPoolFor should emit TwapWindowChanged with the correct
+/// @notice setPoolFor should emit TwapWindowChanged with the correct
 ///         oldWindow value. Before the fix, oldWindow was hardcoded to 0 even when a previous
 ///         TWAP window had been set via setTwapWindowOf for the same project.
 contract L45_OldWindowEvent is Test {
