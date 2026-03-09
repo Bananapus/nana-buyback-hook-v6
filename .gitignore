@@ -27,3 +27,4 @@ backup/
 .secret
 
 publish.sh
+.claude/
