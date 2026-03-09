@@ -33,7 +33,7 @@ contract MockExternalToken is IJBToken {
     function mint(address, uint256) external override {}
 }
 
-/// @notice Proves FP-2 is a false positive: JBTokens prevents token migration.
+/// @notice JBTokens prevents token migration, so the projectTokenOf cache can never become stale.
 ///
 /// The nemesis auditor claimed that projectTokenOf[projectId] cached in setPoolFor()
 /// could become stale if the project migrates its token via setTokenFor or deployERC20For.
@@ -41,7 +41,7 @@ contract MockExternalToken is IJBToken {
 /// This test deploys a REAL JBTokens contract (not a mock) and demonstrates that once a
 /// project has an ERC-20 token, BOTH setTokenFor() and deployERC20For() revert with
 /// JBTokens_ProjectAlreadyHasToken. Therefore the projectTokenOf cache in JBBuybackHook
-/// can NEVER become stale, proving FP-2 is a false positive.
+/// can NEVER become stale.
 contract JBBuybackHook_FalsePositives is Test {
     JBTokens tokensContract;
     JBERC20 tokenImpl;
@@ -71,7 +71,7 @@ contract JBBuybackHook_FalsePositives is Test {
         );
     }
 
-    /// @notice Proves FP-2 is a false positive: JBTokens prevents token migration.
+    /// @notice JBTokens prevents token migration, so projectTokenOf is guaranteed stable.
     /// The nemesis auditor assumed setTokenFor could succeed after a token is set,
     /// but both deployERC20For and setTokenFor revert with JBTokens_ProjectAlreadyHasToken.
     /// Therefore projectTokenOf cache in JBBuybackHook can never become stale.

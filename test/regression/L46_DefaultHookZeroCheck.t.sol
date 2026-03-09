@@ -9,7 +9,7 @@ import "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 
 import "src/JBBuybackHookRegistry.sol";
 
-/// @notice Regression test for L-46: setDefaultHook(address(0)) should revert.
+/// @notice setDefaultHook(address(0)) should revert.
 contract L46_DefaultHookZeroCheck is Test {
     JBBuybackHookRegistry registry;
 
