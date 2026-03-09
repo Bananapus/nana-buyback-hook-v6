@@ -98,7 +98,7 @@ contract M34_ForTest_BuybackHook is JBBuybackHook {
     }
 }
 
-/// @notice Regression test for M-34: When POOL_MANAGER.unlock() reverts, the hook should
+/// @notice When POOL_MANAGER.unlock() reverts, the hook should
 ///         fall through to the mint path even when minimumSwapAmountOut > 0.
 ///         Before the fix, `0 < minimumSwapAmountOut` would revert with SpecifiedSlippageExceeded.
 contract M34_SwapFailureMintFallback is Test {

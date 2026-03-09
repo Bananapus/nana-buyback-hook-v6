@@ -107,7 +107,7 @@ contract L44_ForTest_BuybackHook is JBBuybackHook {
     }
 }
 
-/// @notice Regression test for L-44: Leftover accounting should use balance deltas
+/// @notice Leftover accounting should use balance deltas
 ///         instead of absolute balanceOf, preventing pre-existing balances from inflating
 ///         the leftover amount. Verifies both native ETH and ERC-20 paths do not underflow.
 contract L44_BalanceDeltaLeftover is Test {
