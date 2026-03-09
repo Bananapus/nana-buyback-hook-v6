@@ -29,11 +29,11 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {mulDiv} from "@prb/math/src/Common.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -179,146 +179,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         PRICES = prices;
         POOL_MANAGER = poolManager;
         WETH = weth;
-    }
-
-    //*********************************************************************//
-    // ------------------------- external views -------------------------- //
-    //*********************************************************************//
-
-    /// @notice To fulfill the `IJBRulesetDataHook` interface.
-    /// @dev Pass cash out context back to the terminal without changes.
-    function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
-        external
-        pure
-        override
-        returns (uint256, uint256, uint256, JBCashOutHookSpecification[] memory hookSpecifications)
-    {
-        return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
-    }
-
-    /// @notice The `IJBRulesetDataHook` implementation which determines whether tokens should be minted from the
-    /// project or bought from the pool.
-    /// @param context Payment context passed to the data hook by `terminalStore.recordPaymentFrom(...)`.
-    /// `context.metadata` can specify a Uniswap quote and specify how much of the payment should be used to swap.
-    /// If `context.metadata` does not specify a quote, one will be calculated based on the TWAP.
-    /// If `context.metadata` does not specify how much of the payment should be used, the hook uses the full amount
-    /// paid in.
-    /// @return weight The weight to use for minting. 0 if all tokens come from the swap.
-    /// @return hookSpecifications Specifications containing pay hooks, as well as the amount and metadata to send to
-    /// them. Empty if only minting.
-    function beforePayRecordedWith(JBBeforePayRecordedContext calldata context)
-        external
-        view
-        override
-        returns (uint256 weight, JBPayHookSpecification[] memory hookSpecifications)
-    {
-        // Keep a reference to the amount paid in.
-        uint256 totalPaid = context.amount.value;
-
-        // Keep a reference to the weight.
-        weight = context.weight;
-
-        // Keep a reference to the minimum number of tokens expected from the swap.
-        uint256 minimumSwapAmountOut;
-
-        // Keep a reference to the amount to be used to swap (out of `totalPaid`).
-        uint256 amountToSwapWith;
-
-        // Scoped section to prevent stack too deep.
-        {
-            // Unpack the quote specified by the payer/client (typically from the pool).
-            bytes4 metadataId = JBMetadataResolver.getId("quote");
-            (bool quoteExists, bytes memory metadata) = JBMetadataResolver.getDataFor(metadataId, context.metadata);
-            if (quoteExists) (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
-        }
-
-        // If the amount to swap with is greater than the actual amount paid in, revert.
-        if (amountToSwapWith > totalPaid) revert JBBuybackHook_InsufficientPayAmount(amountToSwapWith, totalPaid);
-
-        // If the payer/client did not specify an amount to use towards the swap, use the `totalPaid`.
-        if (amountToSwapWith == 0) amountToSwapWith = totalPaid;
-
-        // Get a reference to the controller.
-        IJBController controller = IJBController(address(DIRECTORY.controllerOf(context.projectId)));
-
-        // Get a reference to the ruleset.
-        // slither-disable-next-line unused-return
-        (JBRuleset memory ruleset,) = controller.currentRulesetOf(context.projectId);
-
-        // If the hook should base its weight on a currency other than the terminal's currency, determine the factor.
-        uint256 weightRatio = context.amount.currency == ruleset.baseCurrency()
-            ? 10 ** context.amount.decimals
-            : PRICES.pricePerUnitOf({
-                projectId: context.projectId,
-                pricingCurrency: context.amount.currency,
-                unitCurrency: ruleset.baseCurrency(),
-                decimals: context.amount.decimals
-            });
-
-        // Calculate how many tokens would be minted by a direct payment to the project.
-        uint256 tokenCountWithoutHook = mulDiv(amountToSwapWith, weight, weightRatio);
-
-        // Keep a reference to the project's token.
-        address projectToken = projectTokenOf[context.projectId];
-
-        // Keep a reference to the token being used by the terminal. Default to wETH if the terminal uses native.
-        address terminalToken = context.amount.token == JBConstants.NATIVE_TOKEN ? address(WETH) : context.amount.token;
-
-        // Always compute the TWAP-based minimum.
-        uint256 twapMinimum = _getQuote({
-            projectId: context.projectId,
-            projectToken: projectToken,
-            amountIn: amountToSwapWith,
-            terminalToken: terminalToken
-        });
-
-        // Use the higher of the payer's quote and the TWAP quote.
-        // This prevents a stale/malicious payer quote from getting a worse deal than the oracle suggests.
-        if (twapMinimum > minimumSwapAmountOut) minimumSwapAmountOut = twapMinimum;
-
-        // If the minimum amount from the swap exceeds what minting directly would yield, swap.
-        if (tokenCountWithoutHook < minimumSwapAmountOut) {
-            bool projectTokenIs0 = address(projectToken) < terminalToken;
-
-            // Specify this hook as the one to use.
-            hookSpecifications = new JBPayHookSpecification[](1);
-            hookSpecifications[0] = JBPayHookSpecification({
-                hook: IJBPayHook(this),
-                amount: amountToSwapWith,
-                metadata: abi.encode(
-                    projectTokenIs0,
-                    totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith,
-                    minimumSwapAmountOut,
-                    controller
-                )
-            });
-
-            // All the minting will be done in `afterPayRecordedWith`. Return a weight of 0.
-            return (0, hookSpecifications);
-        }
-    }
-
-    /// @notice Required by the `IJBRulesetDataHook` interfaces. Return false to not leak any permissions.
-    function hasMintPermissionFor(uint256, JBRuleset memory, address) external pure override returns (bool) {
-        return false;
-    }
-
-    //*********************************************************************//
-    // -------------------------- public views --------------------------- //
-    //*********************************************************************//
-
-    /// @notice Returns the PoolKey for a given project and terminal token pair.
-    /// @param projectId The ID of the project.
-    /// @param terminalToken The terminal token address (normalized to WETH for native).
-    /// @return key The V4 PoolKey.
-    function poolKeyOf(uint256 projectId, address terminalToken) public view override returns (PoolKey memory key) {
-        return _poolKeyOf[projectId][terminalToken];
-    }
-
-    function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
-        return interfaceId == type(IJBRulesetDataHook).interfaceId || interfaceId == type(IJBPayHook).interfaceId
-            || interfaceId == type(IJBBuybackHook).interfaceId || interfaceId == type(IJBPermissioned).interfaceId
-            || interfaceId == type(IERC165).interfaceId;
     }
 
     //*********************************************************************//
@@ -620,6 +480,220 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     receive() external payable {}
 
     //*********************************************************************//
+    // ------------------------- external views -------------------------- //
+    //*********************************************************************//
+
+    /// @notice To fulfill the `IJBRulesetDataHook` interface.
+    /// @dev Pass cash out context back to the terminal without changes.
+    function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
+        external
+        pure
+        override
+        returns (uint256, uint256, uint256, JBCashOutHookSpecification[] memory hookSpecifications)
+    {
+        return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+    }
+
+    /// @notice The `IJBRulesetDataHook` implementation which determines whether tokens should be minted from the
+    /// project or bought from the pool.
+    /// @param context Payment context passed to the data hook by `terminalStore.recordPaymentFrom(...)`.
+    /// `context.metadata` can specify a Uniswap quote and specify how much of the payment should be used to swap.
+    /// If `context.metadata` does not specify a quote, one will be calculated based on the TWAP.
+    /// If `context.metadata` does not specify how much of the payment should be used, the hook uses the full amount
+    /// paid in.
+    /// @return weight The weight to use for minting. 0 if all tokens come from the swap.
+    /// @return hookSpecifications Specifications containing pay hooks, as well as the amount and metadata to send to
+    /// them. Empty if only minting.
+    function beforePayRecordedWith(JBBeforePayRecordedContext calldata context)
+        external
+        view
+        override
+        returns (uint256 weight, JBPayHookSpecification[] memory hookSpecifications)
+    {
+        // Keep a reference to the amount paid in.
+        uint256 totalPaid = context.amount.value;
+
+        // Keep a reference to the weight.
+        weight = context.weight;
+
+        // Keep a reference to the minimum number of tokens expected from the swap.
+        uint256 minimumSwapAmountOut;
+
+        // Keep a reference to the amount to be used to swap (out of `totalPaid`).
+        uint256 amountToSwapWith;
+
+        // Scoped section to prevent stack too deep.
+        {
+            // Unpack the quote specified by the payer/client (typically from the pool).
+            bytes4 metadataId = JBMetadataResolver.getId("quote");
+            (bool quoteExists, bytes memory metadata) = JBMetadataResolver.getDataFor(metadataId, context.metadata);
+            if (quoteExists) (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
+        }
+
+        // If the amount to swap with is greater than the actual amount paid in, revert.
+        if (amountToSwapWith > totalPaid) revert JBBuybackHook_InsufficientPayAmount(amountToSwapWith, totalPaid);
+
+        // If the payer/client did not specify an amount to use towards the swap, use the `totalPaid`.
+        if (amountToSwapWith == 0) amountToSwapWith = totalPaid;
+
+        // Get a reference to the controller.
+        IJBController controller = IJBController(address(DIRECTORY.controllerOf(context.projectId)));
+
+        // Get a reference to the ruleset.
+        // slither-disable-next-line unused-return
+        (JBRuleset memory ruleset,) = controller.currentRulesetOf(context.projectId);
+
+        // If the hook should base its weight on a currency other than the terminal's currency, determine the factor.
+        uint256 weightRatio = context.amount.currency == ruleset.baseCurrency()
+            ? 10 ** context.amount.decimals
+            : PRICES.pricePerUnitOf({
+                projectId: context.projectId,
+                pricingCurrency: context.amount.currency,
+                unitCurrency: ruleset.baseCurrency(),
+                decimals: context.amount.decimals
+            });
+
+        // Calculate how many tokens would be minted by a direct payment to the project.
+        uint256 tokenCountWithoutHook = mulDiv(amountToSwapWith, weight, weightRatio);
+
+        // Keep a reference to the project's token.
+        address projectToken = projectTokenOf[context.projectId];
+
+        // Keep a reference to the token being used by the terminal. Default to wETH if the terminal uses native.
+        address terminalToken = context.amount.token == JBConstants.NATIVE_TOKEN ? address(WETH) : context.amount.token;
+
+        // Always compute the TWAP-based minimum.
+        uint256 twapMinimum = _getQuote({
+            projectId: context.projectId,
+            projectToken: projectToken,
+            amountIn: amountToSwapWith,
+            terminalToken: terminalToken
+        });
+
+        // Use the higher of the payer's quote and the TWAP quote.
+        // This prevents a stale/malicious payer quote from getting a worse deal than the oracle suggests.
+        if (twapMinimum > minimumSwapAmountOut) minimumSwapAmountOut = twapMinimum;
+
+        // If the minimum amount from the swap exceeds what minting directly would yield, swap.
+        if (tokenCountWithoutHook < minimumSwapAmountOut) {
+            bool projectTokenIs0 = address(projectToken) < terminalToken;
+
+            // Specify this hook as the one to use.
+            hookSpecifications = new JBPayHookSpecification[](1);
+            hookSpecifications[0] = JBPayHookSpecification({
+                hook: IJBPayHook(this),
+                amount: amountToSwapWith,
+                metadata: abi.encode(
+                    projectTokenIs0,
+                    totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith,
+                    minimumSwapAmountOut,
+                    controller
+                )
+            });
+
+            // All the minting will be done in `afterPayRecordedWith`. Return a weight of 0.
+            return (0, hookSpecifications);
+        }
+    }
+
+    /// @notice Required by the `IJBRulesetDataHook` interfaces. Return false to not leak any permissions.
+    function hasMintPermissionFor(uint256, JBRuleset memory, address) external pure override returns (bool) {
+        return false;
+    }
+
+    //*********************************************************************//
+    // -------------------------- public views --------------------------- //
+    //*********************************************************************//
+
+    /// @notice Returns the PoolKey for a given project and terminal token pair.
+    /// @param projectId The ID of the project.
+    /// @param terminalToken The terminal token address (normalized to WETH for native).
+    /// @return key The V4 PoolKey.
+    function poolKeyOf(uint256 projectId, address terminalToken) public view override returns (PoolKey memory key) {
+        return _poolKeyOf[projectId][terminalToken];
+    }
+
+    function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
+        return interfaceId == type(IJBRulesetDataHook).interfaceId || interfaceId == type(IJBPayHook).interfaceId
+            || interfaceId == type(IJBBuybackHook).interfaceId || interfaceId == type(IJBPermissioned).interfaceId
+            || interfaceId == type(IERC165).interfaceId;
+    }
+
+    //*********************************************************************//
+    // ---------------------- internal transactions ---------------------- //
+    //*********************************************************************//
+
+    /// @notice Swap the terminal token to receive project tokens via V4.
+    /// @param context The `afterPayRecordedContext` passed in by the terminal.
+    /// @param projectTokenIs0 Whether the project token is currency0 in the pool.
+    /// @param minimumSwapAmountOut The minimum acceptable output, used for sqrtPriceLimit computation.
+    /// @param controller The controller used to mint and burn tokens.
+    /// @return amountReceived The amount of project tokens received from the swap.
+    /// @return swapFailed True if the swap reverted and was caught by try/catch (triggers mint fallback).
+    function _swap(
+        JBAfterPayRecordedContext calldata context,
+        bool projectTokenIs0,
+        uint256 minimumSwapAmountOut,
+        IJBController controller
+    )
+        internal
+        returns (uint256 amountReceived, bool swapFailed)
+    {
+        uint256 amountToSwapWith = context.forwardedAmount.value;
+
+        // Get the terminal token, normalized to WETH.
+        address terminalTokenWithWETH =
+            context.forwardedAmount.token == JBConstants.NATIVE_TOKEN ? address(WETH) : context.forwardedAmount.token;
+
+        // Get the pool key for this project/token pair.
+        PoolKey memory key = _poolKeyOf[context.projectId][terminalTokenWithWETH];
+
+        // Wrap native tokens to WETH if needed (for ERC-20 settle path).
+        // For native ETH pools (currency0 or currency1 is address(0)), we use settle{value:} instead.
+        bool inputIsNative = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN;
+        Currency inputCurrency = projectTokenIs0 ? key.currency1 : key.currency0;
+
+        if (inputIsNative && !inputCurrency.isAddressZero()) {
+            // Pool uses WETH, but we received ETH — wrap it.
+            WETH.deposit{value: amountToSwapWith}();
+        }
+
+        // Encode the callback data.
+        bytes memory callbackData = abi.encode(
+            SwapCallbackData({
+                key: key,
+                projectTokenIs0: projectTokenIs0,
+                amountIn: amountToSwapWith,
+                minimumSwapAmountOut: minimumSwapAmountOut,
+                terminalToken: context.forwardedAmount.token
+            })
+        );
+
+        // Try the V4 unlock/callback swap. On failure, fall back to minting.
+        // slither-disable-next-line reentrancy-events
+        try POOL_MANAGER.unlock(callbackData) returns (bytes memory result) {
+            amountReceived = abi.decode(result, (uint256));
+        } catch {
+            return (0, true);
+        }
+
+        emit Swap({
+            projectId: context.projectId,
+            amountToSwapWith: amountToSwapWith,
+            poolId: key.toId(),
+            amountReceived: amountReceived,
+            caller: msg.sender
+        });
+
+        // Burn the project tokens received from the swap (they'll be re-minted with reserves applied).
+        if (amountReceived != 0) {
+            controller.burnTokensOf({
+                holder: address(this), projectId: context.projectId, tokenCount: amountReceived, memo: ""
+            });
+        }
+    }
+
+    //*********************************************************************//
     // -------------------------- internal views ------------------------- //
     //*********************************************************************//
 
@@ -704,79 +778,5 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @return balance The current balance held by this contract.
     function _terminalTokenBalance(address token) internal view returns (uint256 balance) {
         return token == JBConstants.NATIVE_TOKEN ? address(this).balance : IERC20(token).balanceOf(address(this));
-    }
-
-    //*********************************************************************//
-    // ---------------------- internal functions ------------------------- //
-    //*********************************************************************//
-
-    /// @notice Swap the terminal token to receive project tokens via V4.
-    /// @param context The `afterPayRecordedContext` passed in by the terminal.
-    /// @param projectTokenIs0 Whether the project token is currency0 in the pool.
-    /// @param minimumSwapAmountOut The minimum acceptable output, used for sqrtPriceLimit computation.
-    /// @param controller The controller used to mint and burn tokens.
-    /// @return amountReceived The amount of project tokens received from the swap.
-    /// @return swapFailed True if the swap reverted and was caught by try/catch (triggers mint fallback).
-    function _swap(
-        JBAfterPayRecordedContext calldata context,
-        bool projectTokenIs0,
-        uint256 minimumSwapAmountOut,
-        IJBController controller
-    )
-        internal
-        returns (uint256 amountReceived, bool swapFailed)
-    {
-        uint256 amountToSwapWith = context.forwardedAmount.value;
-
-        // Get the terminal token, normalized to WETH.
-        address terminalTokenWithWETH =
-            context.forwardedAmount.token == JBConstants.NATIVE_TOKEN ? address(WETH) : context.forwardedAmount.token;
-
-        // Get the pool key for this project/token pair.
-        PoolKey memory key = _poolKeyOf[context.projectId][terminalTokenWithWETH];
-
-        // Wrap native tokens to WETH if needed (for ERC-20 settle path).
-        // For native ETH pools (currency0 or currency1 is address(0)), we use settle{value:} instead.
-        bool inputIsNative = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN;
-        Currency inputCurrency = projectTokenIs0 ? key.currency1 : key.currency0;
-
-        if (inputIsNative && !inputCurrency.isAddressZero()) {
-            // Pool uses WETH, but we received ETH — wrap it.
-            WETH.deposit{value: amountToSwapWith}();
-        }
-
-        // Encode the callback data.
-        bytes memory callbackData = abi.encode(
-            SwapCallbackData({
-                key: key,
-                projectTokenIs0: projectTokenIs0,
-                amountIn: amountToSwapWith,
-                minimumSwapAmountOut: minimumSwapAmountOut,
-                terminalToken: context.forwardedAmount.token
-            })
-        );
-
-        // Try the V4 unlock/callback swap. On failure, fall back to minting.
-        // slither-disable-next-line reentrancy-events
-        try POOL_MANAGER.unlock(callbackData) returns (bytes memory result) {
-            amountReceived = abi.decode(result, (uint256));
-        } catch {
-            return (0, true);
-        }
-
-        emit Swap({
-            projectId: context.projectId,
-            amountToSwapWith: amountToSwapWith,
-            poolId: key.toId(),
-            amountReceived: amountReceived,
-            caller: msg.sender
-        });
-
-        // Burn the project tokens received from the swap (they'll be re-minted with reserves applied).
-        if (amountReceived != 0) {
-            controller.burnTokensOf({
-                holder: address(this), projectId: context.projectId, tokenCount: amountReceived, memo: ""
-            });
-        }
     }
 }
