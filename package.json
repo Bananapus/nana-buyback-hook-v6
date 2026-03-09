@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@bananapus/core-v6": "^0.0.11",
-    "@bananapus/permission-ids-v6": "^0.0.5",
+    "@bananapus/permission-ids-v6": "^0.0.6",
     "@openzeppelin/contracts": "^5.2.0",
     "@uniswap/v4-core": "^1.0.2"
   },
