@@ -72,7 +72,7 @@ contract L45_OldWindowEvent is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            weth: IWETH9(address(wethToken)),
+            wrappedNativeToken: IWETH9(address(wethToken)),
             poolManager: IPoolManager(address(mockPM)),
             trustedForwarder: address(0)
         });

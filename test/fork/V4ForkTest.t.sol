@@ -152,11 +152,11 @@ contract ForTest_ForkBuybackHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IWETH9 weth,
+        IWETH9 wrappedNativeToken,
         IPoolManager poolManager,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, weth, poolManager, trustedForwarder)
+        JBBuybackHook(directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder)
     {}
 }
 
@@ -253,7 +253,7 @@ contract V4ForkTest is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            weth: weth,
+            wrappedNativeToken: weth,
             poolManager: poolManager,
             trustedForwarder: address(0)
         });

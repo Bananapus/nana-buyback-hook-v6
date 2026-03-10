@@ -81,9 +81,9 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     /// @return The slippage denominator.
     function TWAP_SLIPPAGE_DENOMINATOR() external view returns (uint256);
 
-    /// @notice The wETH contract.
-    /// @return The WETH contract.
-    function WETH() external view returns (IWETH9);
+    /// @notice The wrapped native token contract (e.g. WETH on Ethereum, WMATIC on Polygon).
+    /// @return The wrapped native token contract.
+    function WRAPPED_NATIVE_TOKEN() external view returns (IWETH9);
 
     /// @notice The PoolKey for a given project and terminal token pair.
     /// @param projectId The ID of the project.
@@ -109,6 +109,23 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     function setPoolFor(
         uint256 projectId,
         PoolKey calldata poolKey,
+        uint256 twapWindow,
+        address terminalToken
+    )
+        external;
+
+    /// @notice Set the pool to use for a given project and terminal token, constructing the PoolKey internally.
+    /// @dev Uses address(0) for the hooks field. The hook sorts the project token and terminal token into the correct
+    /// currency order.
+    /// @param projectId The ID of the project to set the pool for.
+    /// @param fee The Uniswap V4 pool fee tier.
+    /// @param tickSpacing The Uniswap V4 pool tick spacing.
+    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param terminalToken The address of the terminal token that payments to the project are made in.
+    function setPoolFor(
+        uint256 projectId,
+        uint24 fee,
+        int24 tickSpacing,
         uint256 twapWindow,
         address terminalToken
     )

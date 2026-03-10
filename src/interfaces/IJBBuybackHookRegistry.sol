@@ -71,4 +71,20 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @param projectId The ID of the project to set the hook for.
     /// @param hook The hook to set.
     function setHookFor(uint256 projectId, IJBRulesetDataHook hook) external;
+
+    /// @notice Set the Uniswap V4 pool for a project, forwarding to the resolved buyback hook implementation.
+    /// @dev Resolves the hook for the project (or the default), then calls setPoolFor on it.
+    /// @param projectId The ID of the project to set the pool for.
+    /// @param fee The Uniswap V4 pool fee tier.
+    /// @param tickSpacing The Uniswap V4 pool tick spacing.
+    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param terminalToken The address of the terminal token that payments to the project are made in.
+    function setPoolFor(
+        uint256 projectId,
+        uint24 fee,
+        int24 tickSpacing,
+        uint256 twapWindow,
+        address terminalToken
+    )
+        external;
 }
