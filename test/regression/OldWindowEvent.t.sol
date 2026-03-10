@@ -16,7 +16,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
@@ -29,20 +29,20 @@ import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 import {MockPoolManager} from "../mock/MockPoolManager.sol";
 
 /// @notice Simple ERC20 for testing.
-contract L45_MockToken is ERC20 {
+contract OWE_MockToken is ERC20 {
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
 }
 
 /// @notice setPoolFor should emit TwapWindowChanged with the correct
 ///         oldWindow value. Before the fix, oldWindow was hardcoded to 0 even when a previous
 ///         TWAP window had been set via setTwapWindowOf for the same project.
-contract L45_OldWindowEvent is Test {
+contract OWE_OldWindowEvent is Test {
     using PoolIdLibrary for PoolKey;
 
     JBBuybackHook hook;
     MockPoolManager mockPM;
-    L45_MockToken projectToken;
-    L45_MockToken wethToken;
+    OWE_MockToken projectToken;
+    OWE_MockToken wethToken;
 
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions permissions = IJBPermissions(makeAddr("permissions"));
@@ -57,8 +57,8 @@ contract L45_OldWindowEvent is Test {
 
     function setUp() public {
         mockPM = new MockPoolManager();
-        projectToken = new L45_MockToken("ProjectToken", "PT");
-        wethToken = new L45_MockToken("WETH", "WETH");
+        projectToken = new OWE_MockToken("ProjectToken", "PT");
+        wethToken = new OWE_MockToken("WETH", "WETH");
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");

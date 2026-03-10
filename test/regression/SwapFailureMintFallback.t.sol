@@ -20,7 +20,6 @@ import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterP
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Uniswap V4
@@ -33,7 +32,6 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
-import {IJBBuybackHook} from "src/interfaces/IJBBuybackHook.sol";
 import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 
 // Test mocks
@@ -41,7 +39,7 @@ import {MockPoolManager} from "../mock/MockPoolManager.sol";
 import {MockOracleHook} from "../mock/MockOracleHook.sol";
 
 /// @notice Simple ERC20 token for testing.
-contract M34_MockProjectToken is ERC20 {
+contract SFMF_MockProjectToken is ERC20 {
     constructor() ERC20("ProjectToken", "PT") {}
 
     function mint(address to, uint256 amount) external {
@@ -50,7 +48,7 @@ contract M34_MockProjectToken is ERC20 {
 }
 
 /// @notice Minimal mock WETH9 for testing.
-contract M34_MockWETH9 is ERC20 {
+contract SFMF_MockWETH9 is ERC20 {
     constructor() ERC20("Wrapped Ether", "WETH") {}
 
     function deposit() external payable {
@@ -69,7 +67,7 @@ contract M34_MockWETH9 is ERC20 {
 }
 
 /// @notice Test harness exposing JBBuybackHook internals.
-contract M34_ForTest_BuybackHook is JBBuybackHook {
+contract SFMF_ForTest_BuybackHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -103,15 +101,15 @@ contract M34_ForTest_BuybackHook is JBBuybackHook {
 /// @notice When POOL_MANAGER.unlock() reverts, the hook should
 ///         fall through to the mint path even when minimumSwapAmountOut > 0.
 ///         Before the fix, `0 < minimumSwapAmountOut` would revert with SpecifiedSlippageExceeded.
-contract M34_SwapFailureMintFallback is Test {
+contract SFMF_SwapFailureMintFallback is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
-    M34_ForTest_BuybackHook hook;
+    SFMF_ForTest_BuybackHook hook;
     MockPoolManager mockPM;
     MockOracleHook mockOracle;
-    M34_MockProjectToken projectToken;
-    M34_MockWETH9 mockWeth;
+    SFMF_MockProjectToken projectToken;
+    SFMF_MockWETH9 mockWeth;
 
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions permissions = IJBPermissions(makeAddr("permissions"));
@@ -132,8 +130,8 @@ contract M34_SwapFailureMintFallback is Test {
     function setUp() public {
         mockPM = new MockPoolManager();
         mockOracle = new MockOracleHook();
-        projectToken = new M34_MockProjectToken();
-        mockWeth = new M34_MockWETH9();
+        projectToken = new SFMF_MockProjectToken();
+        mockWeth = new SFMF_MockWETH9();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -143,7 +141,7 @@ contract M34_SwapFailureMintFallback is Test {
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
 
-        hook = new M34_ForTest_BuybackHook({
+        hook = new SFMF_ForTest_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,

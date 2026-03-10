@@ -7,7 +7,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {IJBBuybackHook} from "../../src/interfaces/IJBBuybackHook.sol";
 import {IJBBuybackHookRegistry} from "../../src/interfaces/IJBBuybackHookRegistry.sol";
 
-import {SphinxConstants, NetworkInfo} from "@sphinx-labs/contracts/contracts/foundry/SphinxConstants.sol";
+import {SphinxConstants, NetworkInfo} from "@sphinx-labs/contracts/SphinxConstants.sol";
 
 struct BuybackDeployment {
     IJBBuybackHook hook;

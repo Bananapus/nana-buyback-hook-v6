@@ -17,7 +17,6 @@ import "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 
 import "src/JBBuybackHookRegistry.sol";
-import {IJBBuybackHook} from "src/interfaces/IJBBuybackHook.sol";
 
 /// @notice Unit tests for `JBBuybackHookRegistry`.
 contract Test_BuybackHookRegistry_Unit is Test {

@@ -27,13 +27,12 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
-import {IJBBuybackHook} from "src/interfaces/IJBBuybackHook.sol";
 import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 
 // Test mocks
@@ -41,7 +40,7 @@ import {MockPoolManager} from "../mock/MockPoolManager.sol";
 import {MockOracleHook} from "../mock/MockOracleHook.sol";
 
 /// @notice Simple ERC20 token for testing.
-contract L44_MockProjectToken is ERC20 {
+contract BDL_MockProjectToken is ERC20 {
     constructor() ERC20("ProjectToken", "PT") {}
 
     function mint(address to, uint256 amount) external {
@@ -50,7 +49,7 @@ contract L44_MockProjectToken is ERC20 {
 }
 
 /// @notice Simple ERC20 terminal token for testing.
-contract L44_MockTerminalToken is ERC20 {
+contract BDL_MockTerminalToken is ERC20 {
     constructor() ERC20("TerminalToken", "TT") {}
 
     function mint(address to, uint256 amount) external {
@@ -59,7 +58,7 @@ contract L44_MockTerminalToken is ERC20 {
 }
 
 /// @notice Minimal mock WETH9 for testing.
-contract L44_MockWETH9 is ERC20 {
+contract BDL_MockWETH9 is ERC20 {
     constructor() ERC20("Wrapped Ether", "WETH") {}
 
     function deposit() external payable {
@@ -78,7 +77,7 @@ contract L44_MockWETH9 is ERC20 {
 }
 
 /// @notice Test harness exposing JBBuybackHook internals.
-contract L44_ForTest_BuybackHook is JBBuybackHook {
+contract BDL_ForTest_BuybackHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -112,16 +111,16 @@ contract L44_ForTest_BuybackHook is JBBuybackHook {
 /// @notice Leftover accounting should use balance deltas
 ///         instead of absolute balanceOf, preventing pre-existing balances from inflating
 ///         the leftover amount. Verifies both native ETH and ERC-20 paths do not underflow.
-contract L44_BalanceDeltaLeftover is Test {
+contract BDL_BalanceDeltaLeftover is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
-    L44_ForTest_BuybackHook hook;
+    BDL_ForTest_BuybackHook hook;
     MockPoolManager mockPM;
     MockOracleHook mockOracle;
-    L44_MockProjectToken projectToken;
-    L44_MockWETH9 mockWeth;
-    L44_MockTerminalToken terminalToken;
+    BDL_MockProjectToken projectToken;
+    BDL_MockWETH9 mockWeth;
+    BDL_MockTerminalToken terminalToken;
 
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions permissions = IJBPermissions(makeAddr("permissions"));
@@ -142,9 +141,9 @@ contract L44_BalanceDeltaLeftover is Test {
     function setUp() public {
         mockPM = new MockPoolManager();
         mockOracle = new MockOracleHook();
-        projectToken = new L44_MockProjectToken();
-        mockWeth = new L44_MockWETH9();
-        terminalToken = new L44_MockTerminalToken();
+        projectToken = new BDL_MockProjectToken();
+        mockWeth = new BDL_MockWETH9();
+        terminalToken = new BDL_MockTerminalToken();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -154,7 +153,7 @@ contract L44_BalanceDeltaLeftover is Test {
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
 
-        hook = new L44_ForTest_BuybackHook({
+        hook = new BDL_ForTest_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,

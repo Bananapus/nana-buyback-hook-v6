@@ -3,7 +3,7 @@ pragma solidity 0.8.26;
 
 import "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
 
-import {Sphinx} from "@sphinx-labs/contracts/contracts/foundry/SphinxPlugin.sol";
+import {Sphinx} from "@sphinx-labs/contracts/SphinxPlugin.sol";
 import {Script} from "forge-std/Script.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";

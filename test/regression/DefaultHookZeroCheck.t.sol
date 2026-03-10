@@ -10,7 +10,7 @@ import "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 import "src/JBBuybackHookRegistry.sol";
 
 /// @notice setDefaultHook(address(0)) should revert.
-contract L46_DefaultHookZeroCheck is Test {
+contract DefaultHookZeroCheck is Test {
     JBBuybackHookRegistry registry;
 
     IJBPermissions permissions = IJBPermissions(makeAddr("permissions"));
