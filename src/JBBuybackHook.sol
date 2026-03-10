@@ -377,6 +377,49 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         _setPoolFor(projectId, poolKey, twapWindow, normalizedTerminalToken, projectToken);
     }
 
+    /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
+    /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`. Uses
+    /// `TickMath.getSqrtPriceAtTick(0)` as the initial price (1:1 ratio, suitable for an empty pool).
+    /// @dev Does not check permissions — callers (e.g. the registry) are responsible for authorization.
+    /// @param projectId The ID of the project to set the pool for.
+    /// @param fee The Uniswap V4 pool fee tier.
+    /// @param tickSpacing The Uniswap V4 pool tick spacing.
+    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param terminalToken The address of the terminal token that payments to the project are made in.
+    function initializePoolFor(
+        uint256 projectId,
+        uint24 fee,
+        int24 tickSpacing,
+        uint256 twapWindow,
+        address terminalToken
+    )
+        external
+        override
+    {
+        // Normalize the terminal token — use wrapped native token for native.
+        address normalizedTerminalToken =
+            terminalToken == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : terminalToken;
+
+        // Get the project's token.
+        address projectToken = address(TOKENS.tokenOf(projectId));
+
+        // Sort currencies numerically (lower address = currency0).
+        (Currency currency0, Currency currency1) = normalizedTerminalToken < projectToken
+            ? (Currency.wrap(normalizedTerminalToken), Currency.wrap(projectToken))
+            : (Currency.wrap(projectToken), Currency.wrap(normalizedTerminalToken));
+
+        // Construct the pool key with no hooks.
+        PoolKey memory poolKey = PoolKey({
+            currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: IHooks(address(0))
+        });
+
+        // Initialize pool in PoolManager if not already initialized.
+        try POOL_MANAGER.initialize(poolKey, TickMath.getSqrtPriceAtTick(0)) {} catch {}
+
+        // Now call _setPoolFor — pool is guaranteed to exist.
+        _setPoolFor(projectId, poolKey, twapWindow, normalizedTerminalToken, projectToken);
+    }
+
     /// @notice Change the TWAP window for a project.
     /// @param projectId The ID of the project to set the TWAP window of.
     /// @param newWindow The new TWAP window.

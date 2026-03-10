@@ -607,6 +607,81 @@ contract Test_BuybackHookRegistry_Unit is Test {
     }
 
     //*********************************************************************//
+    // --- initializePoolFor --------------------------------------------- //
+    //*********************************************************************//
+
+    function test_initializePoolFor_forwardsToResolvedHook() public {
+        // Set hookA as default.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // Build the expected calldata for initializePoolFor.
+        bytes memory expectedCalldata = abi.encodeWithSignature(
+            "initializePoolFor(uint256,uint24,int24,uint256,address)",
+            projectId,
+            uint24(10_000),
+            int24(200),
+            uint256(2 days),
+            address(0xEEEe)
+        );
+
+        // Mock and expect the call on hookA.
+        vm.mockCall(address(hookA), expectedCalldata, abi.encode());
+        vm.expectCall(address(hookA), expectedCalldata);
+
+        registry.initializePoolFor({
+            projectId: projectId, fee: 10_000, tickSpacing: 200, twapWindow: 2 days, terminalToken: address(0xEEEe)
+        });
+    }
+
+    function test_initializePoolFor_usesProjectSpecificHook() public {
+        // Allow and set hookB for this project.
+        vm.prank(owner);
+        registry.allowHook(hookB);
+        vm.prank(projectOwner);
+        registry.setHookFor(projectId, hookB);
+
+        // Set a different default (hookA) to prove the project hook is used.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // Build the expected calldata.
+        bytes memory expectedCalldata = abi.encodeWithSignature(
+            "initializePoolFor(uint256,uint24,int24,uint256,address)",
+            projectId,
+            uint24(10_000),
+            int24(200),
+            uint256(2 days),
+            address(0xEEEe)
+        );
+
+        // Mock and expect the call goes to hookB, NOT hookA.
+        vm.mockCall(address(hookB), expectedCalldata, abi.encode());
+        vm.expectCall(address(hookB), expectedCalldata);
+
+        registry.initializePoolFor({
+            projectId: projectId, fee: 10_000, tickSpacing: 200, twapWindow: 2 days, terminalToken: address(0xEEEe)
+        });
+    }
+
+    function test_initializePoolFor_revertsIfUnauthorized() public {
+        // Set hookA as default.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // Mock permissions to return false.
+        vm.mockCall(
+            address(permissions), abi.encodeWithSelector(IJBPermissions.hasPermission.selector), abi.encode(false)
+        );
+
+        vm.prank(dude);
+        vm.expectRevert();
+        registry.initializePoolFor({
+            projectId: projectId, fee: 10_000, tickSpacing: 200, twapWindow: 2 days, terminalToken: address(0xEEEe)
+        });
+    }
+
+    //*********************************************************************//
     // --- Helpers ------------------------------------------------------- //
     //*********************************************************************//
 

@@ -131,6 +131,23 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     )
         external;
 
+    /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
+    /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`. Uses
+    /// `TickMath.getSqrtPriceAtTick(0)` as the initial price (1:1 ratio, suitable for an empty pool).
+    /// @param projectId The ID of the project to set the pool for.
+    /// @param fee The Uniswap V4 pool fee tier.
+    /// @param tickSpacing The Uniswap V4 pool tick spacing.
+    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param terminalToken The address of the terminal token that payments to the project are made in.
+    function initializePoolFor(
+        uint256 projectId,
+        uint24 fee,
+        int24 tickSpacing,
+        uint256 twapWindow,
+        address terminalToken
+    )
+        external;
+
     /// @notice Change the TWAP window for a project.
     /// @param projectId The ID of the project to set the TWAP window of.
     /// @param newWindow The new TWAP window.

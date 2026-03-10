@@ -111,6 +111,18 @@ contract MockPoolManager {
     // ---------------------- IPoolManager methods ---------------------- //
     //*********************************************************************//
 
+    /// @notice Mock pool initialization. Sets slot0 data so the pool appears initialized.
+    function initialize(PoolKey memory key, uint160 sqrtPriceX96) external returns (int24 tick) {
+        PoolId poolId = key.toId();
+        // Derive tick from sqrtPriceX96 (approximation: use 0 for getSqrtPriceAtTick(0)).
+        tick = 0;
+        // Pack slot0: sqrtPriceX96 in lower 160 bits, tick in next 24, lpFee in next 24.
+        bytes32 stateSlot = keccak256(abi.encodePacked(PoolId.unwrap(poolId), bytes32(uint256(6))));
+        bytes32 data =
+            bytes32(uint256(sqrtPriceX96)) | bytes32(uint256(uint24(tick)) << 160) | bytes32(uint256(key.fee) << 208);
+        slots[stateSlot] = data;
+    }
+
     /// @notice Calls unlockCallback on msg.sender (simulates V4 unlock flow).
     function unlock(bytes calldata data) external returns (bytes memory) {
         if (shouldRevertOnUnlock) revert("MockPoolManager: forced revert");

@@ -1054,4 +1054,121 @@ contract V4BuybackHookTest is Test {
 
         assertEq(hook.twapWindowOf(newProjectId), 5 minutes, "TWAP window should be 5 minutes");
     }
+
+    //*********************************************************************//
+    // -------------------- initializePoolFor tests -------------------- //
+    //*********************************************************************//
+
+    /// @notice initializePoolFor creates pool in PoolManager and configures buyback hook.
+    function test_initializePoolFor_createsPoolAndConfigures() public {
+        uint256 newProjectId = 300;
+
+        vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (newProjectId)), abi.encode(owner));
+        vm.mockCall(
+            address(tokens), abi.encodeCall(tokens.tokenOf, (newProjectId)), abi.encode(IJBToken(address(projectToken)))
+        );
+
+        // Call initializePoolFor — should initialize the pool AND configure the hook.
+        vm.prank(owner);
+        hook.initializePoolFor({
+            projectId: newProjectId,
+            fee: poolKey.fee,
+            tickSpacing: poolKey.tickSpacing,
+            twapWindow: twapWindow,
+            terminalToken: address(mockWeth)
+        });
+
+        // Verify the pool key was stored.
+        PoolKey memory storedKey = hook.poolKeyOf(newProjectId, address(mockWeth));
+        assertEq(Currency.unwrap(storedKey.currency0), Currency.unwrap(poolKey.currency0), "currency0 mismatch");
+        assertEq(Currency.unwrap(storedKey.currency1), Currency.unwrap(poolKey.currency1), "currency1 mismatch");
+        assertEq(storedKey.fee, poolKey.fee, "fee mismatch");
+        assertEq(storedKey.tickSpacing, poolKey.tickSpacing, "tickSpacing mismatch");
+
+        // Verify TWAP window was stored.
+        assertEq(hook.twapWindowOf(newProjectId), twapWindow, "TWAP window mismatch");
+
+        // Verify project token was stored.
+        assertEq(hook.projectTokenOf(newProjectId), address(projectToken), "project token mismatch");
+    }
+
+    /// @notice initializePoolFor is idempotent for pool initialization — if pool already exists, it still configures.
+    function test_initializePoolFor_idempotentIfPoolExists() public {
+        uint256 newProjectId = 301;
+
+        vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (newProjectId)), abi.encode(owner));
+        vm.mockCall(
+            address(tokens), abi.encodeCall(tokens.tokenOf, (newProjectId)), abi.encode(IJBToken(address(projectToken)))
+        );
+
+        // Pre-initialize the pool manually.
+        uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
+        mockPM.setSlot0(poolId, sqrtPrice, 0, poolKey.fee);
+
+        // Call initializePoolFor — pool already exists, should still configure without reverting.
+        vm.prank(owner);
+        hook.initializePoolFor({
+            projectId: newProjectId,
+            fee: poolKey.fee,
+            tickSpacing: poolKey.tickSpacing,
+            twapWindow: twapWindow,
+            terminalToken: address(mockWeth)
+        });
+
+        // Verify configuration succeeded.
+        assertEq(hook.twapWindowOf(newProjectId), twapWindow, "TWAP window mismatch");
+        assertEq(hook.projectTokenOf(newProjectId), address(projectToken), "project token mismatch");
+    }
+
+    /// @notice initializePoolFor reverts if pool already set for this project/token pair.
+    function test_initializePoolFor_revertsIfAlreadySet() public {
+        uint256 newProjectId = 302;
+
+        vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (newProjectId)), abi.encode(owner));
+        vm.mockCall(
+            address(tokens), abi.encodeCall(tokens.tokenOf, (newProjectId)), abi.encode(IJBToken(address(projectToken)))
+        );
+
+        // First call succeeds.
+        vm.prank(owner);
+        hook.initializePoolFor({
+            projectId: newProjectId,
+            fee: poolKey.fee,
+            tickSpacing: poolKey.tickSpacing,
+            twapWindow: twapWindow,
+            terminalToken: address(mockWeth)
+        });
+
+        // Compute the actual poolId that initializePoolFor creates (hooks: address(0), not mockOracle).
+        address token0;
+        address token1;
+        if (address(mockWeth) < address(projectToken)) {
+            token0 = address(mockWeth);
+            token1 = address(projectToken);
+        } else {
+            token0 = address(projectToken);
+            token1 = address(mockWeth);
+        }
+        PoolKey memory expectedKey = PoolKey({
+            currency0: Currency.wrap(token0),
+            currency1: Currency.wrap(token1),
+            fee: poolKey.fee,
+            tickSpacing: poolKey.tickSpacing,
+            hooks: IHooks(address(0))
+        });
+        PoolId expectedPoolId = expectedKey.toId();
+
+        // Second call reverts with PoolAlreadySet.
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector, expectedPoolId));
+        hook.initializePoolFor({
+            projectId: newProjectId,
+            fee: poolKey.fee,
+            tickSpacing: poolKey.tickSpacing,
+            twapWindow: twapWindow,
+            terminalToken: address(mockWeth)
+        });
+    }
+
+    /// @notice initializePoolFor reverts if caller is not authorized.
 }
