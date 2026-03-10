@@ -204,13 +204,14 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
 
         // Forward the call to the resolved hook.
-        IJBBuybackHook(address(hook)).setPoolFor({
-            projectId: projectId,
-            fee: fee,
-            tickSpacing: tickSpacing,
-            twapWindow: twapWindow,
-            terminalToken: terminalToken
-        });
+        IJBBuybackHook(address(hook))
+            .setPoolFor({
+                projectId: projectId,
+                fee: fee,
+                tickSpacing: tickSpacing,
+                twapWindow: twapWindow,
+                terminalToken: terminalToken
+            });
     }
 
     //*********************************************************************//

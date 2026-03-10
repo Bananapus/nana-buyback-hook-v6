@@ -86,7 +86,9 @@ contract ForTest_V4BuybackHook is JBBuybackHook {
         IPoolManager poolManager,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder)
+        JBBuybackHook(
+            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
+        )
     {}
 
     /// @notice Directly initialize pool state for testing without going through setPoolFor permission checks.

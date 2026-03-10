@@ -325,7 +325,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
 
         // Normalize the terminal token — use wrapped native token for native.
-        address normalizedTerminalToken = terminalToken == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : terminalToken;
+        address normalizedTerminalToken =
+            terminalToken == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : terminalToken;
 
         // Get the project's token.
         address projectToken = address(TOKENS.tokenOf(projectId));
@@ -357,7 +358,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
 
         // Normalize the terminal token — use wrapped native token for native.
-        address normalizedTerminalToken = terminalToken == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : terminalToken;
+        address normalizedTerminalToken =
+            terminalToken == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : terminalToken;
 
         // Get the project's token.
         address projectToken = address(TOKENS.tokenOf(projectId));
@@ -369,11 +371,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Construct the pool key with no hooks.
         PoolKey memory poolKey = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: fee,
-            tickSpacing: tickSpacing,
-            hooks: IHooks(address(0))
+            currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: IHooks(address(0))
         });
 
         _setPoolFor(projectId, poolKey, twapWindow, normalizedTerminalToken, projectToken);
@@ -557,7 +555,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         address projectToken = projectTokenOf[context.projectId];
 
         // Keep a reference to the token being used by the terminal. Default to wETH if the terminal uses native.
-        address terminalToken = context.amount.token == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : context.amount.token;
+        address terminalToken =
+            context.amount.token == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : context.amount.token;
 
         // Always compute the TWAP-based minimum.
         uint256 twapMinimum = _getQuote({
@@ -708,8 +707,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 amountToSwapWith = context.forwardedAmount.value;
 
         // Get the terminal token, normalized to the wrapped native token.
-        address terminalTokenWithWETH =
-            context.forwardedAmount.token == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : context.forwardedAmount.token;
+        address terminalTokenWithWETH = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN
+            ? address(WRAPPED_NATIVE_TOKEN)
+            : context.forwardedAmount.token;
 
         // Get the pool key for this project/token pair.
         PoolKey memory key = _poolKeyOf[context.projectId][terminalTokenWithWETH];

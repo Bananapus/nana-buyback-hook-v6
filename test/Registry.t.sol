@@ -504,11 +504,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.expectCall(address(hookA), expectedCalldata);
 
         registry.setPoolFor({
-            projectId: projectId,
-            fee: 10_000,
-            tickSpacing: 60,
-            twapWindow: 2 days,
-            terminalToken: address(0xEEEe)
+            projectId: projectId, fee: 10_000, tickSpacing: 60, twapWindow: 2 days, terminalToken: address(0xEEEe)
         });
     }
 
@@ -538,11 +534,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.expectCall(address(hookB), expectedCalldata);
 
         registry.setPoolFor({
-            projectId: projectId,
-            fee: 3000,
-            tickSpacing: 10,
-            twapWindow: 1 days,
-            terminalToken: address(0xEEEe)
+            projectId: projectId, fee: 3000, tickSpacing: 10, twapWindow: 1 days, terminalToken: address(0xEEEe)
         });
     }
 
@@ -559,11 +551,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.prank(dude);
         vm.expectRevert();
         registry.setPoolFor({
-            projectId: projectId,
-            fee: 10_000,
-            tickSpacing: 60,
-            twapWindow: 2 days,
-            terminalToken: address(0xEEEe)
+            projectId: projectId, fee: 10_000, tickSpacing: 60, twapWindow: 2 days, terminalToken: address(0xEEEe)
         });
     }
 
@@ -589,11 +577,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         // Project owner should be able to call setPoolFor.
         vm.prank(projectOwner);
         registry.setPoolFor({
-            projectId: projectId,
-            fee: 10_000,
-            tickSpacing: 60,
-            twapWindow: 2 days,
-            terminalToken: address(0xEEEe)
+            projectId: projectId, fee: 10_000, tickSpacing: 60, twapWindow: 2 days, terminalToken: address(0xEEEe)
         });
     }
 
@@ -619,11 +603,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         // Dude (not project owner) has permission via mock — should succeed.
         vm.prank(dude);
         registry.setPoolFor({
-            projectId: projectId,
-            fee: 10_000,
-            tickSpacing: 60,
-            twapWindow: 2 days,
-            terminalToken: address(0xEEEe)
+            projectId: projectId, fee: 10_000, tickSpacing: 60, twapWindow: 2 days, terminalToken: address(0xEEEe)
         });
     }
 

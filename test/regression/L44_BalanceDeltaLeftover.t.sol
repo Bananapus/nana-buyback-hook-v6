@@ -89,7 +89,9 @@ contract L44_ForTest_BuybackHook is JBBuybackHook {
         IPoolManager poolManager,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder)
+        JBBuybackHook(
+            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
+        )
     {}
 
     function ForTest_initPool(

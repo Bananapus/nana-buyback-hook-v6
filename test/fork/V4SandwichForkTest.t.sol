@@ -231,7 +231,9 @@ contract ForTest_SandwichBuybackHook is JBBuybackHook {
         IPoolManager poolManager,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder)
+        JBBuybackHook(
+            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
+        )
     {}
 }
 
