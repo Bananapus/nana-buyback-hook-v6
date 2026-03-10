@@ -225,7 +225,7 @@ contract V4ForkTest is Test {
 
     function setUp() public {
         // Fork Ethereum mainnet.
-        vm.createSelectFork("ethereum");
+        vm.createSelectFork("ethereum", 21_700_000);
 
         // Verify V4 PoolManager is deployed.
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");

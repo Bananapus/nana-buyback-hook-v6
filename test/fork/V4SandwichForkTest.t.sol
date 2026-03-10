@@ -297,7 +297,7 @@ contract V4SandwichForkTest is Test {
     //*********************************************************************//
 
     function setUp() public {
-        vm.createSelectFork("ethereum");
+        vm.createSelectFork("ethereum", 21_700_000);
 
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
