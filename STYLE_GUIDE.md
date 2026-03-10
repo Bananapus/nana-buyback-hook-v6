@@ -468,13 +468,36 @@ jobs:
 
 ### remappings.txt
 
-Every repo has a `remappings.txt`. Minimal content:
+Every repo has a `remappings.txt` as the **single source of truth** for import remappings. Never add remappings to `foundry.toml`.
+
+**Principle:** Import paths in Solidity source must match npm package names exactly. With `libs = ["node_modules", "lib"]`, Foundry auto-resolves `@scope/package/path/File.sol` → `node_modules/@scope/package/path/File.sol`. No remapping needed for packages installed as real directories.
+
+**Note:** Auto-resolution does **not** work for symlinked packages (e.g. npm workspace links). Workspace repos like `deploy-all-v6` and `nana-cli-v6` need explicit `@scope/package/=node_modules/@scope/package/` remappings for each symlinked dependency.
+
+**Minimal content** (most repos):
 
 ```
-@sphinx-labs/contracts/=lib/sphinx/packages/contracts/contracts/foundry
+forge-std/=lib/forge-std/src/
 ```
 
-Additional mappings as needed for repo-specific dependencies.
+Only add extra remappings for:
+- **`forge-std`** — always needed (git submodule with `src/` subdirectory)
+- **Repo-specific `lib/` submodules** that have no npm package (e.g., `hookmate/=lib/hookmate/src/`)
+- **Symlinked npm packages** — need explicit `@scope/package/=node_modules/@scope/package/` entries
+- **Nested transitive deps** — e.g., `@chainlink/contracts-ccip/` nested inside `@bananapus/suckers-v6/node_modules/`
+
+**Never add remappings for:**
+- npm packages that match their import path and are installed as real directories — they auto-resolve
+- Short-form aliases (e.g., `@bananapus/core/` → `@bananapus/core-v6/src/`) — fix the import instead
+- Packages available via npm that are also git submodules — remove the submodule, use npm
+
+**Import path convention:**
+
+| Package | Import path | Resolves to |
+|---------|------------|-------------|
+| `@bananapus/core-v6` | `@bananapus/core-v6/src/libraries/JBConstants.sol` | `node_modules/@bananapus/core-v6/src/...` |
+| `@openzeppelin/contracts` | `@openzeppelin/contracts/token/ERC20/IERC20.sol` | `node_modules/@openzeppelin/contracts/...` |
+| `@uniswap/v4-core` | `@uniswap/v4-core/src/interfaces/IPoolManager.sol` | `node_modules/@uniswap/v4-core/src/...` |
 
 ### Linting
 
@@ -529,3 +552,7 @@ CI checks formatting via `forge fmt --check`.
 ### Contract Size Checks
 
 CI runs `forge build --sizes` to catch contracts approaching the 24KB limit. When the repo's default `optimizer_runs` differs from what you want for size checking, use `FOUNDRY_PROFILE=ci_sizes forge build --sizes` with a `[profile.ci_sizes]` section in `foundry.toml`.
+
+## Repo-Specific Deviations
+
+- **`via_ir = true`** — required for stack-too-deep in buyback hook
