@@ -194,6 +194,11 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         external
         override
     {
+        // Enforce permissions.
+        _requirePermissionFrom({
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
+        });
+
         // Get the hook for the project (falls back to default).
         IJBRulesetDataHook hook = _hookOf[projectId];
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
