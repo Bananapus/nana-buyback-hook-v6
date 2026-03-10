@@ -225,12 +225,7 @@ contract V4ForkTest is Test {
 
     function setUp() public {
         // Fork Ethereum mainnet.
-        string memory rpcUrl = vm.envOr("RPC_ETHEREUM_MAINNET", string(""));
-        if (bytes(rpcUrl).length == 0) {
-            // Skip gracefully if no RPC URL is configured.
-            return;
-        }
-        vm.createSelectFork(rpcUrl);
+        vm.createSelectFork("ethereum");
 
         // Verify V4 PoolManager is deployed.
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
@@ -274,10 +269,6 @@ contract V4ForkTest is Test {
     }
 
     modifier onlyFork() {
-        string memory rpcUrl = vm.envOr("RPC_ETHEREUM_MAINNET", string(""));
-        if (bytes(rpcUrl).length == 0) {
-            return;
-        }
         _;
     }
 

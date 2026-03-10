@@ -297,9 +297,7 @@ contract V4SandwichForkTest is Test {
     //*********************************************************************//
 
     function setUp() public {
-        string memory rpcUrl = vm.envOr("RPC_ETHEREUM_MAINNET", string(""));
-        if (bytes(rpcUrl).length == 0) return;
-        vm.createSelectFork(rpcUrl);
+        vm.createSelectFork("ethereum");
 
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
@@ -342,8 +340,6 @@ contract V4SandwichForkTest is Test {
     }
 
     modifier onlyFork() {
-        string memory rpcUrl = vm.envOr("RPC_ETHEREUM_MAINNET", string(""));
-        if (bytes(rpcUrl).length == 0) return;
         _;
     }
 

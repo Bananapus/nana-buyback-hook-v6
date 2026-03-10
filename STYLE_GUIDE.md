@@ -17,8 +17,6 @@ src/
 
 One contract/interface/struct/enum per file. Name the file after the type it contains.
 
-**Structs, enums, libraries, and interfaces always go in their subdirectories** (`src/structs/`, `src/enums/`, `src/libraries/`, `src/interfaces/`) — never inline in contract files or placed in `src/` root. This keeps type definitions discoverable and import paths consistent across repos.
-
 ## Pragma Versions
 
 ```solidity
@@ -107,14 +105,6 @@ contract JBExample is JBPermissioned, IJBExample {
     //*********************************************************************//
 
     //*********************************************************************//
-    // ---------------------- receive / fallback ------------------------- //
-    //*********************************************************************//
-
-    //*********************************************************************//
-    // --------------------------- modifiers ----------------------------- //
-    //*********************************************************************//
-
-    //*********************************************************************//
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
@@ -141,27 +131,22 @@ contract JBExample is JBPermissioned, IJBExample {
 ```
 
 **Section order:**
-1. `using` declarations
-2. Custom errors
-3. Public constants
-4. Internal constants
-5. Public immutable stored properties
-6. Internal immutable stored properties
-7. Public stored properties
-8. Internal stored properties
-9. Constructor
-10. `receive` / `fallback`
-11. Modifiers
-12. External transactions
-13. External views
-14. Public transactions
-15. Internal helpers
-16. Internal views
-17. Private helpers
+1. Custom errors
+2. Public constants
+3. Internal constants
+4. Public immutable stored properties
+5. Internal immutable stored properties
+6. Public stored properties
+7. Internal stored properties
+8. Constructor
+9. External transactions
+10. External views
+11. Public transactions
+12. Internal helpers
+13. Internal views
+14. Private helpers
 
 Functions are alphabetized within each section.
-
-**Events:** Events are declared in interfaces only, never in implementation contracts. Implementations inherit events from their interface and emit them unqualified. This keeps the ABI definition in one place and allows tests to use interface-qualified event expectations (e.g., `emit IJBController.LaunchProject(...)`).
 
 ## Interface Structure
 
@@ -329,7 +314,7 @@ Standard config across all repos:
 ```toml
 [profile.default]
 solc = '0.8.26'
-evm_version = 'paris'
+evm_version = 'cancun'
 optimizer_runs = 200
 libs = ["node_modules", "lib"]
 fs_permissions = [{ access = "read-write", path = "./"}]
@@ -349,14 +334,16 @@ fail_on_revert = false
 number_underscore = "thousands"
 multiline_func_header = "all"
 wrap_comments = true
+
+[rpc_endpoints]
+ethereum = "${RPC_ETHEREUM_MAINNET}"
 ```
 
 **Variations:**
-- `evm_version = 'cancun'` for repos using transient storage (buyback-hook, router-terminal, univ4-router)
-- `via_ir = true` for repos hitting stack-too-deep (buyback-hook, banny-retail, univ4-lp-split-hook, deploy-all)
+- `via_ir = true` for repos hitting stack-too-deep (buyback-hook, banny-retail, univ4-lp-split-hook, deploy-all, omnichain-deployers)
 - `optimizer = false` only for deploy-all-v6 (stack-too-deep with optimization)
-
-> **This repo's deviations:** `evm_version = 'cancun'` (transient storage), `via_ir = true` (stack depth). RPC endpoints configured for mainnet fork tests.
+- `optimizer_runs = 100` for revnet-core-v6 (stack-too-deep at 200 runs due to deep struct nesting in `_deploy721RevnetFor`)
+- Additional `[rpc_endpoints]` for multi-chain repos (e.g. suckers adds `arbitrum`, `optimism`, `base`, `celo`)
 
 ### CI Workflows
 
@@ -386,8 +373,6 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
       - name: Run tests
         run: forge test --fail-fast --summary --detailed --skip "*/script/**"
-        env:
-          RPC_ETHEREUM_MAINNET: ${{ secrets.RPC_ETHEREUM_MAINNET }}
       - name: Check contract sizes
         run: FOUNDRY_PROFILE=ci_sizes forge build --sizes --skip "*/test/**" --skip "*/script/**" --skip SphinxUtils
 ```
@@ -411,11 +396,60 @@ jobs:
         run: forge fmt --check
 ```
 
+**slither.yml** (repos with `src/` contracts only):
+```yaml
+name: slither
+on:
+    pull_request:
+      branches:
+        - main
+    push:
+      branches:
+        - main
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: latest
+      - name: Install npm dependencies
+        run: npm install --omit=dev
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+      - name: Run slither
+        uses: crytic/slither-action@v0.3.1
+        with:
+            slither-config: slither-ci.config.json
+            fail-on: medium
+```
+
+**slither-ci.config.json:**
+```json
+{
+  "detectors_to_exclude": "timestamp,uninitialized-local,naming-convention,solc-version,shadowing-local",
+  "exclude_informational": true,
+  "exclude_low": false,
+  "exclude_medium": false,
+  "exclude_high": false,
+  "disable_color": false,
+  "filter_paths": "(mocks/|test/|node_modules/|lib/)",
+  "legacy_ast": false
+}
+```
+
+**Variations:**
+- Deployer-only repos (no `src/`, only `script/`) skip slither entirely — the action's internal `forge build` skips `test/` and `script/` by default, leaving nothing to compile.
+- Use inline `// slither-disable-next-line <detector>` to suppress known false positives rather than adding to `detectors_to_exclude` in the config. The comment must be on the line immediately before the flagged expression.
+
 ### package.json
 
 ```json
 {
-  "name": "@bananapus/buyback-hook-v6",
+  "name": "@bananapus/package-name-v6",
   "version": "x.x.x",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/Org/repo.git" },
@@ -443,6 +477,32 @@ Every repo has a `remappings.txt`. Minimal content:
 
 Additional mappings as needed for repo-specific dependencies.
 
+### Linting
+
+Solar (Foundry's built-in linter) runs automatically during `forge build`. It scans all `.sol` files in `libs` directories, including `node_modules`.
+
+**All test helpers must use relative imports** (e.g. `../../src/structs/JBRuleset.sol`), not bare `src/` imports. This ensures solar can resolve paths when the helper is consumed via npm in downstream repos.
+
+### Fork Tests
+
+Fork tests use named RPC endpoints defined in `[rpc_endpoints]` of `foundry.toml`. No skip guards — fork tests should hard-fail if the RPC endpoint is unavailable, making CI failures explicit.
+
+```solidity
+function setUp() public {
+    vm.createSelectFork("ethereum");
+    // ... setup code
+}
+```
+
+The endpoint name (e.g. `"ethereum"`) maps to an env var via `foundry.toml`:
+
+```toml
+[rpc_endpoints]
+ethereum = "${RPC_ETHEREUM_MAINNET}"
+```
+
+For multi-chain fork tests, add all needed endpoints.
+
 ### Formatting
 
 Run `forge fmt` before committing. The `[fmt]` config in `foundry.toml` enforces:
@@ -451,15 +511,6 @@ Run `forge fmt` before committing. The `[fmt]` config in `foundry.toml` enforces
 - Wrapped comments at reasonable width
 
 CI checks formatting via `forge fmt --check`.
-
-### CI Secrets
-
-| Secret | Purpose |
-|--------|--------|
-| `NPM_TOKEN` | npm publish access (used by `publish.yml`) |
-| `RPC_ETHEREUM_MAINNET` | Ethereum mainnet RPC URL for fork tests (used by `test.yml`) |
-
-Fork tests require `RPC_ETHEREUM_MAINNET` — they fail if it's missing.
 
 ### Branching
 
@@ -478,4 +529,4 @@ Fork tests require `RPC_ETHEREUM_MAINNET` — they fail if it's missing.
 
 ### Contract Size Checks
 
-CI runs `FOUNDRY_PROFILE=ci_sizes forge build --sizes` to catch contracts approaching the 24KB limit. The `ci_sizes` profile uses `optimizer_runs = 200` for realistic size measurement even when the default profile has different optimizer settings.
+CI runs `forge build --sizes` to catch contracts approaching the 24KB limit.
