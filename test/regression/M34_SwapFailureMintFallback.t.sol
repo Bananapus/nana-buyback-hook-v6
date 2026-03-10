@@ -76,11 +76,13 @@ contract M34_ForTest_BuybackHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IWETH9 weth,
+        IWETH9 wrappedNativeToken,
         IPoolManager poolManager,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, weth, poolManager, trustedForwarder)
+        JBBuybackHook(
+            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
+        )
     {}
 
     function ForTest_initPool(
@@ -147,7 +149,7 @@ contract M34_SwapFailureMintFallback is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            weth: IWETH9(address(mockWeth)),
+            wrappedNativeToken: IWETH9(address(mockWeth)),
             poolManager: IPoolManager(address(mockPM)),
             trustedForwarder: address(0)
         });

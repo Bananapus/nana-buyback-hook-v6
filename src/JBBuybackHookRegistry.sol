@@ -16,6 +16,7 @@ import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol"
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {IJBBuybackHook} from "./interfaces/IJBBuybackHook.sol";
 import {IJBBuybackHookRegistry} from "./interfaces/IJBBuybackHookRegistry.sol";
 
 contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPermissioned, Ownable {
@@ -175,6 +176,42 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         _hookOf[projectId] = hook;
 
         emit JBBuybackHookRegistry_SetHook(projectId, hook);
+    }
+
+    /// @notice Set the Uniswap V4 pool for a project by forwarding to the resolved buyback hook implementation.
+    /// @param projectId The ID of the project to set the pool for.
+    /// @param fee The Uniswap V4 pool fee tier.
+    /// @param tickSpacing The Uniswap V4 pool tick spacing.
+    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param terminalToken The address of the terminal token that payments to the project are made in.
+    function setPoolFor(
+        uint256 projectId,
+        uint24 fee,
+        int24 tickSpacing,
+        uint256 twapWindow,
+        address terminalToken
+    )
+        external
+        override
+    {
+        // Enforce permissions.
+        _requirePermissionFrom({
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
+        });
+
+        // Get the hook for the project (falls back to default).
+        IJBRulesetDataHook hook = _hookOf[projectId];
+        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+
+        // Forward the call to the resolved hook.
+        IJBBuybackHook(address(hook))
+            .setPoolFor({
+                projectId: projectId,
+                fee: fee,
+                tickSpacing: tickSpacing,
+                twapWindow: twapWindow,
+                terminalToken: terminalToken
+            });
     }
 
     //*********************************************************************//

@@ -17,6 +17,7 @@ import "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 
 import "src/JBBuybackHookRegistry.sol";
+import {IJBBuybackHook} from "src/interfaces/IJBBuybackHook.sol";
 
 /// @notice Unit tests for `JBBuybackHookRegistry`.
 contract Test_BuybackHookRegistry_Unit is Test {
@@ -477,6 +478,133 @@ contract Test_BuybackHookRegistry_Unit is Test {
             abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookMismatch.selector, hookA, hookB)
         );
         registry.lockHookFor(projectId, hookB);
+    }
+
+    //*********************************************************************//
+    // --- setPoolFor ---------------------------------------------------- //
+    //*********************************************************************//
+
+    function test_setPoolFor_forwardsToResolvedHook() public {
+        // Set hookA as default.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // Build the expected calldata for the simplified setPoolFor overload.
+        bytes memory expectedCalldata = abi.encodeWithSignature(
+            "setPoolFor(uint256,uint24,int24,uint256,address)",
+            projectId,
+            uint24(10_000),
+            int24(60),
+            uint256(2 days),
+            address(0xEEEe)
+        );
+
+        // Mock and expect the call on hookA.
+        vm.mockCall(address(hookA), expectedCalldata, abi.encode());
+        vm.expectCall(address(hookA), expectedCalldata);
+
+        registry.setPoolFor({
+            projectId: projectId, fee: 10_000, tickSpacing: 60, twapWindow: 2 days, terminalToken: address(0xEEEe)
+        });
+    }
+
+    function test_setPoolFor_usesProjectSpecificHook() public {
+        // Allow and set hookB for this project.
+        vm.prank(owner);
+        registry.allowHook(hookB);
+        vm.prank(projectOwner);
+        registry.setHookFor(projectId, hookB);
+
+        // Set a different default (hookA) to prove the project hook is used.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // Build the expected calldata.
+        bytes memory expectedCalldata = abi.encodeWithSignature(
+            "setPoolFor(uint256,uint24,int24,uint256,address)",
+            projectId,
+            uint24(3000),
+            int24(10),
+            uint256(1 days),
+            address(0xEEEe)
+        );
+
+        // Mock and expect the call goes to hookB, NOT hookA.
+        vm.mockCall(address(hookB), expectedCalldata, abi.encode());
+        vm.expectCall(address(hookB), expectedCalldata);
+
+        registry.setPoolFor({
+            projectId: projectId, fee: 3000, tickSpacing: 10, twapWindow: 1 days, terminalToken: address(0xEEEe)
+        });
+    }
+
+    function test_setPoolFor_revertsIfUnauthorized() public {
+        // Set hookA as default.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // Mock permissions to return false — caller has no SET_BUYBACK_POOL permission.
+        vm.mockCall(
+            address(permissions), abi.encodeWithSelector(IJBPermissions.hasPermission.selector), abi.encode(false)
+        );
+
+        vm.prank(dude);
+        vm.expectRevert();
+        registry.setPoolFor({
+            projectId: projectId, fee: 10_000, tickSpacing: 60, twapWindow: 2 days, terminalToken: address(0xEEEe)
+        });
+    }
+
+    function test_setPoolFor_succeedsForProjectOwner() public {
+        // Set hookA as default.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // Build expected calldata.
+        bytes memory expectedCalldata = abi.encodeWithSignature(
+            "setPoolFor(uint256,uint24,int24,uint256,address)",
+            projectId,
+            uint24(10_000),
+            int24(60),
+            uint256(2 days),
+            address(0xEEEe)
+        );
+
+        // Mock the forwarded call on hookA.
+        vm.mockCall(address(hookA), expectedCalldata, abi.encode());
+        vm.expectCall(address(hookA), expectedCalldata);
+
+        // Project owner should be able to call setPoolFor.
+        vm.prank(projectOwner);
+        registry.setPoolFor({
+            projectId: projectId, fee: 10_000, tickSpacing: 60, twapWindow: 2 days, terminalToken: address(0xEEEe)
+        });
+    }
+
+    function test_setPoolFor_succeedsForPermissionedOperator() public {
+        // Set hookA as default.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // Build expected calldata.
+        bytes memory expectedCalldata = abi.encodeWithSignature(
+            "setPoolFor(uint256,uint24,int24,uint256,address)",
+            projectId,
+            uint24(10_000),
+            int24(60),
+            uint256(2 days),
+            address(0xEEEe)
+        );
+
+        // Mock the forwarded call on hookA.
+        vm.mockCall(address(hookA), expectedCalldata, abi.encode());
+        vm.expectCall(address(hookA), expectedCalldata);
+
+        // Dude (not project owner) has permission via mock — should succeed.
+        vm.prank(dude);
+        registry.setPoolFor({
+            projectId: projectId, fee: 10_000, tickSpacing: 60, twapWindow: 2 days, terminalToken: address(0xEEEe)
+        });
     }
 
     //*********************************************************************//
