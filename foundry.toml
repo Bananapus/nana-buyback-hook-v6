@@ -6,9 +6,6 @@ optimizer_runs = 200
 libs = ["node_modules", "lib"]
 fs_permissions = [{ access = "read-write", path = "./"}]
 
-[profile.ci_sizes]
-optimizer_runs = 200
-
 [rpc_endpoints]
 ethereum = "${RPC_ETHEREUM_MAINNET}"
 
