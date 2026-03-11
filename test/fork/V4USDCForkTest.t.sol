@@ -554,7 +554,7 @@ contract V4USDCForkTest is Test {
         JBRulesetMetadata memory meta = JBRulesetMetadata({
             reservedPercent: 0,
             cashOutTaxRate: 0,
-            baseCurrency: uint32(uint160(address(usdc))),
+            baseCurrency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
             pausePay: false,
             pauseCreditTransfers: false,
             allowOwnerMinting: true,
@@ -615,13 +615,13 @@ contract V4USDCForkTest is Test {
             amount: JBTokenAmount({
                 token: address(usdc),
                 decimals: 6,
-                currency: uint32(uint160(address(usdc))),
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                 value: orderSize
             }),
             forwardedAmount: JBTokenAmount({
                 token: address(usdc),
                 decimals: 6,
-                currency: uint32(uint160(address(usdc))),
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                 value: orderSize
             }),
             weight: 0.5e18,
@@ -681,7 +681,7 @@ contract V4USDCForkTest is Test {
                 amount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(address(usdc))),
+                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: orderSize
                 }),
                 projectId: projectId,
@@ -710,13 +710,13 @@ contract V4USDCForkTest is Test {
                 amount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(address(usdc))),
+                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: orderSize
                 }),
                 forwardedAmount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(address(usdc))),
+                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: specAmount
                 }),
                 weight: 0.5e18,
@@ -769,7 +769,7 @@ contract V4USDCForkTest is Test {
                 amount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(address(usdc))),
+                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: orderSize
                 }),
                 projectId: projectId,
@@ -797,13 +797,13 @@ contract V4USDCForkTest is Test {
                 amount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(address(usdc))),
+                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: orderSize
                 }),
                 forwardedAmount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(address(usdc))),
+                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: specAmount
                 }),
                 weight: 0.5e18,
