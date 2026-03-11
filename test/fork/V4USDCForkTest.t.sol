@@ -465,14 +465,13 @@ contract V4USDCForkTest is Test {
             hooks: IHooks(address(0))
         });
 
-        // Initialize pool at price = 1.0 (tick 0).
+        // Initialize pool at price = 1.0 (tick 0) in raw token terms.
+        // For a 6-decimal/18-decimal pair, tick 0 means 1 raw USDC = 1 raw projectToken.
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
         poolManager.initialize(key, sqrtPrice);
 
         // Fund LiquidityHelper with both tokens.
-        // Project tokens are 18 decimals, USDC is 6 decimals.
         // At tick 0 (1:1 price ratio in raw terms), we need matching raw amounts.
-        // Use the USDC amount for both sides since the pool sees raw token amounts.
         usdc.mint(address(liqHelper), liquidityUSDCAmount);
         projectToken.mint(address(liqHelper), liquidityUSDCAmount);
 
@@ -499,7 +498,7 @@ contract V4USDCForkTest is Test {
     }
 
     /// @notice Mock the IGeomeanOracle at address(0) for hookless pools.
-    /// @dev Returns tick cumulatives for tick=0 (1:1 price) and liquidity-based secondsPerLiquidity.
+    /// @dev Returns tick cumulatives for tick=0 (1:1 raw price) and liquidity-based secondsPerLiquidity.
     function _mockOracle(PoolKey memory, int256 liquidity) internal {
         // Etch minimal bytecode at address(0) so it's treated as a contract.
         vm.etch(address(0), hex"00");
@@ -507,11 +506,11 @@ contract V4USDCForkTest is Test {
         // Build the return data: tick=0 cumulates, and secondsPerLiquidity based on pool liquidity.
         int56[] memory tickCumulatives = new int56[](2);
         tickCumulatives[0] = 0;
-        tickCumulatives[1] = 0; // tick=0 -> no delta
+        tickCumulatives[1] = 0; // tick=0 → no delta
 
         uint160[] memory secondsPerLiquidityCumulativeX128s = new uint160[](2);
         secondsPerLiquidityCumulativeX128s[0] = 0;
-        // delta = twapWindow * 2^128 / liquidity (so harmonicMeanLiquidity ~ actual liquidity)
+        // delta = twapWindow * 2^128 / liquidity (so harmonicMeanLiquidity ≈ actual liquidity).
         uint256 liq = uint256(liquidity > 0 ? liquidity : -liquidity);
         if (liq == 0) liq = 1;
         secondsPerLiquidityCumulativeX128s[1] = uint160((uint256(300) << 128) / liq);
@@ -546,8 +545,11 @@ contract V4USDCForkTest is Test {
             address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );
 
-        // Mock currentRulesetOf with weight = 0.5e18 (so swap path wins over mint at 1:1 pool).
-        _mockRuleset(projectId, 0.5e18);
+        // Mock currentRulesetOf with very low weight so swap path wins over mint.
+        // For USDC (6 decimals), weightRatio = 1e6, so mint gives: orderSize * weight / 1e6.
+        // With weight = 1e6 (0.000000000001e18), mint gives ~orderSize raw tokens (negligible).
+        // The pool at tick-0 will always give more, so the hook should choose swap.
+        _mockRuleset(projectId, 1e6);
     }
 
     function _mockRuleset(uint256 projectId, uint256 weight) internal {
@@ -675,6 +677,9 @@ contract V4USDCForkTest is Test {
         uint256 specAmount;
         bytes memory specMetadata;
         {
+            // Weight is set to 1 (near-zero) so the TWAP swap quote at tick 0
+            // (~orderSize raw tokens after slippage) easily beats the mint amount
+            // (orderSize * 1 / 1e6 ≈ 0), forcing the hook to choose the swap path.
             JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
                 terminal: address(terminal),
                 payer: payer,
@@ -687,7 +692,7 @@ contract V4USDCForkTest is Test {
                 projectId: projectId,
                 rulesetId: 1,
                 beneficiary: beneficiary,
-                weight: 0.5e18,
+                weight: 1,
                 reservedPercent: 0,
                 metadata: fullMetadata
             });
@@ -719,7 +724,7 @@ contract V4USDCForkTest is Test {
                     currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: specAmount
                 }),
-                weight: 0.5e18,
+                weight: 1,
                 newlyIssuedTokenCount: 0,
                 beneficiary: beneficiary,
                 hookMetadata: specMetadata,
@@ -763,6 +768,7 @@ contract V4USDCForkTest is Test {
         uint256 specAmount;
         bytes memory specMetadata;
         {
+            // Weight is set to 1 (near-zero) so the TWAP swap quote beats mint.
             JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
                 terminal: address(terminal),
                 payer: payer,
@@ -775,7 +781,7 @@ contract V4USDCForkTest is Test {
                 projectId: projectId,
                 rulesetId: 1,
                 beneficiary: beneficiary,
-                weight: 0.5e18,
+                weight: 1,
                 reservedPercent: 0,
                 metadata: "" // No quote metadata -- this is the point of the test.
             });
@@ -806,7 +812,7 @@ contract V4USDCForkTest is Test {
                     currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: specAmount
                 }),
-                weight: 0.5e18,
+                weight: 1,
                 newlyIssuedTokenCount: 0,
                 beneficiary: beneficiary,
                 hookMetadata: specMetadata,
