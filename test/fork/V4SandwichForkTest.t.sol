@@ -41,7 +41,6 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 
 //*********************************************************************//
 // ----------------------------- Helpers ----------------------------- //
@@ -226,13 +225,10 @@ contract ForTest_SandwichBuybackHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IWETH9 wrappedNativeToken,
         IPoolManager poolManager,
         address trustedForwarder
     )
-        JBBuybackHook(
-            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
-        )
+        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, trustedForwarder)
     {}
 }
 
@@ -258,7 +254,6 @@ contract V4SandwichForkTest is Test {
     //*********************************************************************//
 
     address constant POOL_MANAGER_ADDR = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-    address constant WETH_ADDR = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     int24 constant TICK_LOWER = -887_220;
     int24 constant TICK_UPPER = 887_220;
@@ -270,7 +265,6 @@ contract V4SandwichForkTest is Test {
     //*********************************************************************//
 
     IPoolManager poolManager;
-    IWETH9 weth;
     SandwichLiquidityHelper liqHelper;
     SwapHelper swapHelper;
     ForTest_SandwichBuybackHook hook;
@@ -301,7 +295,6 @@ contract V4SandwichForkTest is Test {
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
         poolManager = IPoolManager(POOL_MANAGER_ADDR);
-        weth = IWETH9(WETH_ADDR);
         liqHelper = new SandwichLiquidityHelper(poolManager);
         swapHelper = new SwapHelper(poolManager);
 
@@ -320,7 +313,6 @@ contract V4SandwichForkTest is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            wrappedNativeToken: weth,
             poolManager: poolManager,
             trustedForwarder: address(0)
         });
@@ -375,9 +367,9 @@ contract V4SandwichForkTest is Test {
             // Snapshot before attack.
             uint256 snapId = vm.snapshotState();
 
-            // Step 1: Attacker frontrun — swap WETH for project tokens (push price down).
-            bool projectTokenIs0 = address(projectToken) < WETH_ADDR;
-            bool attackZeroForOne = !projectTokenIs0; // Attacker sells WETH to buy project tokens.
+            // Step 1: Attacker frontrun — swap ETH for project tokens (push price down).
+            bool projectTokenIs0 = false; // Native ETH (address(0)) is always currency0.
+            bool attackZeroForOne = !projectTokenIs0; // Attacker sells ETH to buy project tokens.
 
             _fundSwapHelper(attackSize);
 
@@ -391,7 +383,7 @@ contract V4SandwichForkTest is Test {
             // Step 2: Victim buyback via hook.
             uint256 victimReceived = _executeNativeSwap(pid, key, projectToken, victimAmount);
 
-            // Step 3: Attacker backrun — sell project tokens back for WETH.
+            // Step 3: Attacker backrun — sell project tokens back for ETH.
             uint256 attackerTokenBalance;
             {
                 // Calculate tokens the attacker received from frontrun.
@@ -402,7 +394,7 @@ contract V4SandwichForkTest is Test {
             int256 attackerProfit = 0;
             if (attackerTokenBalance > 0) {
                 // Attacker sells project tokens back.
-                bool backrunZeroForOne = projectTokenIs0; // Sell project token (token0) for WETH.
+                bool backrunZeroForOne = projectTokenIs0; // Sell project token (token0) for ETH.
 
                 // Fund swap helper with project tokens for backrun.
                 projectToken.mint(address(swapHelper), attackerTokenBalance);
@@ -414,10 +406,10 @@ contract V4SandwichForkTest is Test {
                     backrunZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
                 );
 
-                // Attacker profit = WETH received from backrun - WETH spent on frontrun.
-                int128 wethReceived = projectTokenIs0 ? backrunDelta.amount1() : backrunDelta.amount0();
+                // Attacker profit = ETH received from backrun - ETH spent on frontrun.
+                int128 ethReceived = projectTokenIs0 ? backrunDelta.amount1() : backrunDelta.amount0();
                 attackerProfit =
-                    int256(uint256(uint128(wethReceived > 0 ? wethReceived : int128(0)))) - int256(attackSize);
+                    int256(uint256(uint128(ethReceived > 0 ? ethReceived : int128(0)))) - int256(attackSize);
             }
 
             // Compute victim loss vs baseline.
@@ -484,7 +476,7 @@ contract V4SandwichForkTest is Test {
                 uint256 snapId = vm.snapshotState();
 
                 // Frontrun.
-                bool projectTokenIs0 = address(projectToken) < WETH_ADDR;
+                bool projectTokenIs0 = false; // Native ETH (address(0)) is always currency0.
                 bool attackZeroForOne = !projectTokenIs0;
 
                 _fundSwapHelper(attackSize);
@@ -536,7 +528,7 @@ contract V4SandwichForkTest is Test {
         // Use an attack so large it will certainly trigger the circuit breaker.
         uint256 attackSize = liquidityAmount / 4; // 25% of pool liquidity.
 
-        bool projectTokenIs0 = address(projectToken) < WETH_ADDR;
+        bool projectTokenIs0 = false; // Native ETH (address(0)) is always currency0.
         bool attackZeroForOne = !projectTokenIs0;
 
         // Frontrun.
@@ -584,9 +576,9 @@ contract V4SandwichForkTest is Test {
                 backrunZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             );
 
-            int128 wethReceived = projectTokenIs0 ? backrunDelta.amount1() : backrunDelta.amount0();
+            int128 ethReceived = projectTokenIs0 ? backrunDelta.amount1() : backrunDelta.amount0();
             int256 attackerProfit =
-                int256(uint256(uint128(wethReceived > 0 ? wethReceived : int128(0)))) - int256(attackSize);
+                int256(uint256(uint128(ethReceived > 0 ? ethReceived : int128(0)))) - int256(attackSize);
 
             if (attackerProfit < 0) {
                 console.log("  Attacker LOST: %s ETH (paid 2x pool fees)", _formatEther(uint256(-attackerProfit)));
@@ -632,7 +624,7 @@ contract V4SandwichForkTest is Test {
 
         // Attacker frontruns with 3% of pool (should move price ~2%).
         uint256 attackSize = 3 ether;
-        bool projectTokenIs0 = address(projectToken) < WETH_ADDR;
+        bool projectTokenIs0 = false; // Native ETH (address(0)) is always currency0.
         bool attackZeroForOne = !projectTokenIs0;
 
         _fundSwapHelper(attackSize);
@@ -692,19 +684,10 @@ contract V4SandwichForkTest is Test {
     {
         projectToken = new SandwichProjectToken();
 
-        address token0;
-        address token1;
-        if (address(projectToken) < WETH_ADDR) {
-            token0 = address(projectToken);
-            token1 = WETH_ADDR;
-        } else {
-            token0 = WETH_ADDR;
-            token1 = address(projectToken);
-        }
-
+        // Native ETH (address(0)) is always currency0.
         key = PoolKey({
-            currency0: Currency.wrap(token0),
-            currency1: Currency.wrap(token1),
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(projectToken)),
             fee: POOL_FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
@@ -713,39 +696,31 @@ contract V4SandwichForkTest is Test {
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
         poolManager.initialize(key, sqrtPrice);
 
-        // Fund LiquidityHelper.
+        // Fund LiquidityHelper with project tokens and native ETH.
         projectToken.mint(address(liqHelper), liquidityTokenAmount);
         vm.deal(address(liqHelper), liquidityTokenAmount);
-        vm.prank(address(liqHelper));
-        IWETH9(WETH_ADDR).deposit{value: liquidityTokenAmount}();
 
-        vm.startPrank(address(liqHelper));
+        vm.prank(address(liqHelper));
         IERC20(address(projectToken)).approve(address(poolManager), type(uint256).max);
-        IERC20(WETH_ADDR).approve(address(poolManager), type(uint256).max);
-        vm.stopPrank();
 
         int256 liquidityDelta = int256(liquidityTokenAmount / 2);
         vm.prank(address(liqHelper));
-        liqHelper.addLiquidity(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
+        liqHelper.addLiquidity{value: liquidityTokenAmount}(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
 
-        // Approve SwapHelper for both tokens.
-        vm.startPrank(address(swapHelper));
+        // Approve SwapHelper for project tokens (native ETH is sent via msg.value).
+        vm.prank(address(swapHelper));
         IERC20(address(projectToken)).approve(address(poolManager), type(uint256).max);
-        IERC20(WETH_ADDR).approve(address(poolManager), type(uint256).max);
-        vm.stopPrank();
 
         _mockJBCore(projectId, projectToken);
         _mockOracle(key, liquidityDelta);
 
         vm.prank(owner);
-        hook.setPoolFor(projectId, key, 5 minutes, address(weth));
+        hook.setPoolFor(projectId, key, 5 minutes, JBConstants.NATIVE_TOKEN);
     }
 
-    /// @dev Fund the SwapHelper with WETH for attacks.
+    /// @dev Fund the SwapHelper with native ETH for attacks.
     function _fundSwapHelper(uint256 amount) internal {
         vm.deal(address(swapHelper), amount);
-        vm.prank(address(swapHelper));
-        IWETH9(WETH_ADDR).deposit{value: amount}();
     }
 
     function _mockOracle(PoolKey memory, int256 liquidity) internal {
@@ -844,7 +819,7 @@ contract V4SandwichForkTest is Test {
         internal
         returns (uint256 received)
     {
-        bool projectTokenIs0 = address(projectToken) < WETH_ADDR;
+        bool projectTokenIs0 = false; // Native ETH (address(0)) is always currency0.
 
         JBAfterPayRecordedContext memory ctx = JBAfterPayRecordedContext({
             payer: payer,

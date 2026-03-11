@@ -41,7 +41,6 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 
 //*********************************************************************//
 // ----------------------------- Helpers ----------------------------- //
@@ -150,13 +149,10 @@ contract ForTest_ForkBuybackHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IWETH9 wrappedNativeToken,
         IPoolManager poolManager,
         address trustedForwarder
     )
-        JBBuybackHook(
-            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
-        )
+        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, trustedForwarder)
     {}
 }
 
@@ -184,9 +180,6 @@ contract V4ForkTest is Test {
     /// @notice Real V4 PoolManager on Ethereum mainnet (canonical address).
     address constant POOL_MANAGER_ADDR = 0x000000000004444c5dc75cB358380D2e3dE08A90;
 
-    /// @notice Real WETH on Ethereum mainnet.
-    address constant WETH_ADDR = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-
     /// @notice Full-range tick bounds for tickSpacing = 60.
     int24 constant TICK_LOWER = -887_220;
     int24 constant TICK_UPPER = 887_220;
@@ -198,7 +191,6 @@ contract V4ForkTest is Test {
     //*********************************************************************//
 
     IPoolManager poolManager;
-    IWETH9 weth;
     LiquidityHelper liqHelper;
     ForTest_ForkBuybackHook hook;
 
@@ -229,7 +221,6 @@ contract V4ForkTest is Test {
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
         poolManager = IPoolManager(POOL_MANAGER_ADDR);
-        weth = IWETH9(WETH_ADDR);
         liqHelper = new LiquidityHelper(poolManager);
 
         // Etch code at mock addresses.
@@ -248,7 +239,6 @@ contract V4ForkTest is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            wrappedNativeToken: weth,
             poolManager: poolManager,
             trustedForwarder: address(0)
         });
@@ -458,7 +448,7 @@ contract V4ForkTest is Test {
         return nextProjectId++;
     }
 
-    /// @notice Deploy a project token, initialize a V4 pool with WETH, add liquidity, register in hook.
+    /// @notice Deploy a project token, initialize a native ETH V4 pool, add liquidity, register in hook.
     function _setupProjectWithPool(
         uint256 projectId,
         uint256 liquidityTokenAmount
@@ -468,20 +458,10 @@ contract V4ForkTest is Test {
     {
         projectToken = new ForkProjectToken();
 
-        // Build sorted pool key.
-        address token0;
-        address token1;
-        if (address(projectToken) < WETH_ADDR) {
-            token0 = address(projectToken);
-            token1 = WETH_ADDR;
-        } else {
-            token0 = WETH_ADDR;
-            token1 = address(projectToken);
-        }
-
+        // Native ETH (address(0)) is always currency0 since it's the smallest address.
         key = PoolKey({
-            currency0: Currency.wrap(token0),
-            currency1: Currency.wrap(token1),
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(projectToken)),
             fee: POOL_FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
@@ -491,24 +471,18 @@ contract V4ForkTest is Test {
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
         poolManager.initialize(key, sqrtPrice);
 
-        // Fund LiquidityHelper with both tokens.
+        // Fund LiquidityHelper with project tokens and native ETH.
         projectToken.mint(address(liqHelper), liquidityTokenAmount);
         vm.deal(address(liqHelper), liquidityTokenAmount);
-        vm.prank(address(liqHelper));
-        IWETH9(WETH_ADDR).deposit{value: liquidityTokenAmount}();
 
-        // Approve PoolManager to spend tokens from LiquidityHelper.
-        vm.startPrank(address(liqHelper));
+        // Approve PoolManager to spend project tokens from LiquidityHelper.
+        vm.prank(address(liqHelper));
         IERC20(address(projectToken)).approve(address(poolManager), type(uint256).max);
-        IERC20(WETH_ADDR).approve(address(poolManager), type(uint256).max);
-        vm.stopPrank();
 
         // Add full-range liquidity.
-        // liquidityDelta = liquidity units (not token amounts). Use a reasonable value.
-        // For full-range at tick 0 with ~liquidityTokenAmount of each token.
         int256 liquidityDelta = int256(liquidityTokenAmount / 2);
         vm.prank(address(liqHelper));
-        liqHelper.addLiquidity(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
+        liqHelper.addLiquidity{value: liquidityTokenAmount}(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
 
         // Mock JB core for this project.
         _mockJBCore(projectId, projectToken);
@@ -518,7 +492,7 @@ contract V4ForkTest is Test {
 
         // Register pool in hook via setPoolFor (sets _poolIsSet = true).
         vm.prank(owner);
-        hook.setPoolFor(projectId, key, 5 minutes, address(weth));
+        hook.setPoolFor(projectId, key, 5 minutes, JBConstants.NATIVE_TOKEN);
     }
 
     /// @notice Deploy a project token + ERC-20 terminal token, initialize pool, add liquidity.
@@ -688,7 +662,8 @@ contract V4ForkTest is Test {
         internal
         returns (uint256 received)
     {
-        bool projectTokenIs0 = address(projectToken) < WETH_ADDR;
+        // With native ETH pools, address(0) is always currency0, so projectToken is never token0.
+        bool projectTokenIs0 = false;
 
         JBAfterPayRecordedContext memory ctx = JBAfterPayRecordedContext({
             payer: payer,

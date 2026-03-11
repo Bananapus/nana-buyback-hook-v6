@@ -15,6 +15,7 @@ import "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 import "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 import "src/JBBuybackHookRegistry.sol";
 
@@ -617,12 +618,13 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Build the expected calldata for initializePoolFor.
         bytes memory expectedCalldata = abi.encodeWithSignature(
-            "initializePoolFor(uint256,uint24,int24,uint256,address)",
+            "initializePoolFor(uint256,uint24,int24,uint256,address,uint160)",
             projectId,
             uint24(10_000),
             int24(200),
             uint256(2 days),
-            address(0xEEEe)
+            address(0xEEEe),
+            TickMath.getSqrtPriceAtTick(0)
         );
 
         // Mock and expect the call on hookA.
@@ -630,7 +632,12 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.expectCall(address(hookA), expectedCalldata);
 
         registry.initializePoolFor({
-            projectId: projectId, fee: 10_000, tickSpacing: 200, twapWindow: 2 days, terminalToken: address(0xEEEe)
+            projectId: projectId,
+            fee: 10_000,
+            tickSpacing: 200,
+            twapWindow: 2 days,
+            terminalToken: address(0xEEEe),
+            sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
         });
     }
 
@@ -647,12 +654,13 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Build the expected calldata.
         bytes memory expectedCalldata = abi.encodeWithSignature(
-            "initializePoolFor(uint256,uint24,int24,uint256,address)",
+            "initializePoolFor(uint256,uint24,int24,uint256,address,uint160)",
             projectId,
             uint24(10_000),
             int24(200),
             uint256(2 days),
-            address(0xEEEe)
+            address(0xEEEe),
+            TickMath.getSqrtPriceAtTick(0)
         );
 
         // Mock and expect the call goes to hookB, NOT hookA.
@@ -660,7 +668,12 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.expectCall(address(hookB), expectedCalldata);
 
         registry.initializePoolFor({
-            projectId: projectId, fee: 10_000, tickSpacing: 200, twapWindow: 2 days, terminalToken: address(0xEEEe)
+            projectId: projectId,
+            fee: 10_000,
+            tickSpacing: 200,
+            twapWindow: 2 days,
+            terminalToken: address(0xEEEe),
+            sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
         });
     }
 
@@ -677,7 +690,12 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.prank(dude);
         vm.expectRevert();
         registry.initializePoolFor({
-            projectId: projectId, fee: 10_000, tickSpacing: 200, twapWindow: 2 days, terminalToken: address(0xEEEe)
+            projectId: projectId,
+            fee: 10_000,
+            tickSpacing: 200,
+            twapWindow: 2 days,
+            terminalToken: address(0xEEEe),
+            sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
         });
     }
 

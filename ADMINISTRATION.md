@@ -65,7 +65,6 @@ The following are set at deploy time and cannot be changed:
 | `PROJECTS` | `IJBProjects` | The project registry (determines project ownership). |
 | `TOKENS` | `IJBTokens` | The token registry. |
 | `POOL_MANAGER` | `IPoolManager` | The Uniswap V4 PoolManager singleton. |
-| `WETH` | `IWETH9` | The WETH contract. |
 | `PERMISSIONS` | `IJBPermissions` | The permissions contract (inherited from `JBPermissioned`). |
 | Trusted forwarder | `address` | The ERC-2771 trusted forwarder for meta-transactions. |
 

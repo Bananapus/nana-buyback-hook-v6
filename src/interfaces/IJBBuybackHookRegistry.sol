@@ -85,7 +85,8 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
         uint24 fee,
         int24 tickSpacing,
         uint256 twapWindow,
-        address terminalToken
+        address terminalToken,
+        uint160 sqrtPriceX96
     )
         external;
 

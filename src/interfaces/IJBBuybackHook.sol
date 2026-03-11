@@ -11,8 +11,6 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {IWETH9} from "./external/IWETH9.sol";
-
 interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     /// @notice Emitted when leftover terminal tokens are minted as project tokens.
     /// @param projectId The ID of the project whose tokens are being minted.
@@ -81,10 +79,6 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     /// @return The slippage denominator.
     function TWAP_SLIPPAGE_DENOMINATOR() external view returns (uint256);
 
-    /// @notice The wrapped native token contract (e.g. WETH on Ethereum, WMATIC on Polygon).
-    /// @return The wrapped native token contract.
-    function WRAPPED_NATIVE_TOKEN() external view returns (IWETH9);
-
     /// @notice The PoolKey for a given project and terminal token pair.
     /// @param projectId The ID of the project.
     /// @param terminalToken The terminal token address.
@@ -132,19 +126,20 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
         external;
 
     /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
-    /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`. Uses
-    /// `TickMath.getSqrtPriceAtTick(0)` as the initial price (1:1 ratio, suitable for an empty pool).
+    /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`.
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
     /// @param tickSpacing The Uniswap V4 pool tick spacing.
     /// @param twapWindow The period of time over which the TWAP is computed.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
+    /// @param sqrtPriceX96 The initial sqrtPriceX96 for the pool (if not already initialized).
     function initializePoolFor(
         uint256 projectId,
         uint24 fee,
         int24 tickSpacing,
         uint256 twapWindow,
-        address terminalToken
+        address terminalToken,
+        uint160 sqrtPriceX96
     )
         external;
 

@@ -112,9 +112,7 @@ nana-buyback-hook-v6/
 │   └── interfaces/
 │       ├── IJBBuybackHook.sol        # Buyback hook interface
 │       ├── IJBBuybackHookRegistry.sol # Registry interface
-│       ├── IGeomeanOracle.sol        # V4 oracle hook interface (TWAP observation)
-│       └── external/
-│           └── IWETH9.sol            # WETH wrapper interface
+│       └── IGeomeanOracle.sol        # V4 oracle hook interface (TWAP observation)
 ├── script/
 │   └── Deploy.s.sol                  # Multi-chain deployment script (Ethereum, Optimism, Base, Arbitrum)
 └── test/
@@ -138,7 +136,7 @@ Call `setPoolFor(projectId, poolKey, twapWindow, terminalToken)` to configure th
 
 - `poolKey` is a Uniswap V4 `PoolKey` struct containing `currency0`, `currency1`, `fee`, `tickSpacing`, and `hooks`. The pool must already be initialized in the V4 PoolManager.
 - The `PoolKey` currencies must match the project token and the terminal token (in either order). The hook validates this on-chain.
-- If using ETH, pass `JBConstants.NATIVE_TOKEN` (`0x000000000000000000000000000000000000EEEe`) as `terminalToken`. The hook normalizes this to WETH internally.
+- If using ETH, pass `JBConstants.NATIVE_TOKEN` (`0x000000000000000000000000000000000000EEEe`) as `terminalToken`. The hook normalizes this to `address(0)` internally, matching Uniswap V4's native ETH representation.
 - The project must have already issued an ERC-20 token (via `JBTokens`).
 - Permission: `SET_BUYBACK_POOL` (ID 26).
 
@@ -188,12 +186,12 @@ The hook reads metadata with key `"quote"` (resolved via `JBMetadataResolver`), 
 
 The deployment script (`Deploy.s.sol`) supports:
 
-| Chain | WETH | PoolManager |
-|-------|------|-------------|
-| Ethereum Mainnet | `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` | `0x000000000004444c5dc75cB358380D2e3dE08A90` |
-| Optimism | `0x4200000000000000000000000000000000000006` | `0x9a13f98cb987694c9f086b1f5eb990eea8264ec3` |
-| Base | `0x4200000000000000000000000000000000000006` | `0x498581ff718922c3f8e6a244956af099b2652b2b` |
-| Arbitrum | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` | `0x360e68faccca8ca495c1b759fd9eee466db9fb32` |
+| Chain | PoolManager |
+|-------|-------------|
+| Ethereum Mainnet | `0x000000000004444c5dc75cB358380D2e3dE08A90` |
+| Optimism | `0x9a13f98cb987694c9f086b1f5eb990eea8264ec3` |
+| Base | `0x498581ff718922c3f8e6a244956af099b2652b2b` |
+| Arbitrum | `0x360e68faccca8ca495c1b759fd9eee466db9fb32` |
 
 Sepolia testnets for all four chains are also supported.
 

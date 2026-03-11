@@ -35,7 +35,6 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 import {JBSwapLib} from "src/libraries/JBSwapLib.sol";
 
 // Test mocks
@@ -51,25 +50,6 @@ contract MockProjectToken is ERC20 {
     }
 }
 
-/// @notice Minimal mock WETH9 for testing -- supports deposit/withdraw/transfer.
-contract MockWETH9 is ERC20 {
-    constructor() ERC20("Wrapped Ether", "WETH") {}
-
-    function deposit() external payable {
-        _mint(msg.sender, msg.value);
-    }
-
-    function withdraw(uint256 amount) external {
-        _burn(msg.sender, amount);
-        (bool success,) = msg.sender.call{value: amount}("");
-        require(success, "MockWETH9: ETH transfer failed");
-    }
-
-    receive() external payable {
-        _mint(msg.sender, msg.value);
-    }
-}
-
 /// @notice Test harness that exposes JBBuybackHook internals for direct pool configuration.
 contract ForTest_V4BuybackHook is JBBuybackHook {
     constructor(
@@ -78,12 +58,11 @@ contract ForTest_V4BuybackHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IWETH9 wrappedNativeToken,
         IPoolManager poolManager,
         address trustedForwarder
     )
         JBBuybackHook(
-            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
+            directory, permissions, prices, projects, tokens, poolManager, trustedForwarder
         )
     {}
 
@@ -122,7 +101,6 @@ contract V4BuybackHookTest is Test {
     MockPoolManager mockPM;
     MockOracleHook mockOracle;
     MockProjectToken projectToken;
-    MockWETH9 mockWeth;
 
     // Mock JB core contracts (address-only, mocked via vm.mockCall)
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
@@ -153,7 +131,6 @@ contract V4BuybackHookTest is Test {
         mockPM = new MockPoolManager();
         mockOracle = new MockOracleHook();
         projectToken = new MockProjectToken();
-        mockWeth = new MockWETH9();
 
         // Etch code at mock addresses so calls don't revert with "no code"
         vm.etch(address(directory), "0x01");
@@ -168,7 +145,6 @@ contract V4BuybackHookTest is Test {
         vm.label(address(mockPM), "MockPoolManager");
         vm.label(address(mockOracle), "MockOracleHook");
         vm.label(address(projectToken), "ProjectToken");
-        vm.label(address(mockWeth), "WETH");
 
         // Deploy hook
         hook = new ForTest_V4BuybackHook({
@@ -177,25 +153,14 @@ contract V4BuybackHookTest is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            wrappedNativeToken: IWETH9(address(mockWeth)),
             poolManager: IPoolManager(address(mockPM)),
             trustedForwarder: address(0)
         });
 
-        // Build pool key: currency0 < currency1 (sorted)
-        address token0;
-        address token1;
-        if (address(projectToken) < address(mockWeth)) {
-            token0 = address(projectToken);
-            token1 = address(mockWeth);
-        } else {
-            token0 = address(mockWeth);
-            token1 = address(projectToken);
-        }
-
+        // Build pool key: native ETH (address(0)) is always currency0 (smallest address).
         poolKey = PoolKey({
-            currency0: Currency.wrap(token0),
-            currency1: Currency.wrap(token1),
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(projectToken)),
             fee: 3000, // 0.3% in hundredths of a bip
             tickSpacing: 60,
             hooks: IHooks(address(mockOracle))
@@ -237,8 +202,7 @@ contract V4BuybackHookTest is Test {
         mockPM.setLiquidity(poolId, 1_000_000 ether);
 
         // Initialize the pool in the hook (bypass permissions)
-        address terminalTokenNormalized = address(mockWeth);
-        hook.ForTest_initPool(projectId, poolKey, twapWindow, address(projectToken), terminalTokenNormalized);
+        hook.ForTest_initPool(projectId, poolKey, twapWindow, address(projectToken), address(0));
     }
 
     //*********************************************************************//
@@ -341,7 +305,7 @@ contract V4BuybackHookTest is Test {
     ///      returns project tokens, and verifies the unlock -> callback -> swap -> settle/take
     ///      flow completes successfully.
     function test_swapViaV4PoolManager() public {
-        bool projectTokenIs0 = address(projectToken) < address(mockWeth);
+        bool projectTokenIs0 = address(projectToken) < address(0);
         uint256 payAmount = 1 ether;
         uint256 swapOut = 500e18; // project tokens received from swap
 
@@ -382,7 +346,7 @@ contract V4BuybackHookTest is Test {
     /// @dev Sets MockPoolManager to revert on unlock, then verifies afterPayRecordedWith does NOT
     ///      revert -- the try/catch in _swap catches the error and returns 0.
     function test_swapFallbackToMint() public {
-        bool projectTokenIs0 = address(projectToken) < address(mockWeth);
+        bool projectTokenIs0 = address(projectToken) < address(0);
         uint256 payAmount = 1 ether;
 
         // Force unlock to revert.
@@ -415,7 +379,7 @@ contract V4BuybackHookTest is Test {
         bytes memory fakeData = abi.encode(
             JBBuybackHook.SwapCallbackData({
                 key: poolKey,
-                projectTokenIs0: address(projectToken) < address(mockWeth),
+                projectTokenIs0: address(projectToken) < address(0),
                 amountIn: 1 ether,
                 minimumSwapAmountOut: 0,
                 terminalToken: JBConstants.NATIVE_TOKEN
@@ -434,7 +398,7 @@ contract V4BuybackHookTest is Test {
     ///      settles via settle{value:} rather than ERC-20 transfer, and take() delivers
     ///      project tokens to the hook.
     function test_nativeETHSwap() public {
-        bool projectTokenIs0 = address(projectToken) < address(mockWeth);
+        bool projectTokenIs0 = address(projectToken) < address(0);
         uint256 payAmount = 2 ether;
         uint256 swapOut = 1000e18;
 
@@ -494,10 +458,10 @@ contract V4BuybackHookTest is Test {
 
         // Call setPoolFor to set _poolIsSet = true.
         vm.prank(owner);
-        hook.setPoolFor(oracleProjectId, poolKey, twapWindow, address(mockWeth));
+        hook.setPoolFor(oracleProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
 
         // Verify pool was set by reading poolKeyOf.
-        PoolKey memory storedKey = hook.poolKeyOf(oracleProjectId, address(mockWeth));
+        PoolKey memory storedKey = hook.poolKeyOf(oracleProjectId, address(0));
         assertEq(Currency.unwrap(storedKey.currency0), Currency.unwrap(poolKey.currency0), "currency0 mismatch");
 
         // Now verify the oracle is actually used by checking that projectTokenOf is set.
@@ -527,7 +491,7 @@ contract V4BuybackHookTest is Test {
         mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
 
         vm.prank(owner);
-        hook.setPoolFor(noOracleProjectId, poolKey, twapWindow, address(mockWeth));
+        hook.setPoolFor(noOracleProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
 
         // Mock currentRulesetOf for this project.
         JBRulesetMetadata memory meta = JBRulesetMetadata({
@@ -575,7 +539,7 @@ contract V4BuybackHookTest is Test {
             terminal: address(terminal),
             payer: payer,
             amount: JBTokenAmount({
-                token: address(mockWeth),
+                token: JBConstants.NATIVE_TOKEN,
                 decimals: 18,
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                 value: 1 ether
@@ -742,17 +706,17 @@ contract V4BuybackHookTest is Test {
         mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
 
         vm.prank(owner);
-        hook.setPoolFor(newProjectId, poolKey, twapWindow, address(mockWeth));
+        hook.setPoolFor(newProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
 
         // Verify the pool key was stored.
-        PoolKey memory stored = hook.poolKeyOf(newProjectId, address(mockWeth));
+        PoolKey memory stored = hook.poolKeyOf(newProjectId, address(0));
         assertEq(stored.fee, poolKey.fee, "Pool fee should match");
         assertEq(stored.tickSpacing, poolKey.tickSpacing, "Tick spacing should match");
 
         // --- 2. Revert when pool already set ---
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector, poolId));
-        hook.setPoolFor(newProjectId, poolKey, twapWindow, address(mockWeth));
+        hook.setPoolFor(newProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
 
         // --- 3. Revert when pool not initialized (sqrtPrice == 0) ---
         uint256 uninitProjectId = 201;
@@ -776,7 +740,7 @@ contract V4BuybackHookTest is Test {
         // Don't set any slot0 data for this pool (sqrtPrice defaults to 0).
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolNotInitialized.selector, uninitPoolId));
-        hook.setPoolFor(uninitProjectId, uninitPoolKey, twapWindow, address(mockWeth));
+        hook.setPoolFor(uninitProjectId, uninitPoolKey, twapWindow, JBConstants.NATIVE_TOKEN);
 
         // --- 4. Revert with invalid TWAP window ---
         uint256 twapProjectId = 202;
@@ -797,7 +761,7 @@ contract V4BuybackHookTest is Test {
                 hook.MAX_TWAP_WINDOW()
             )
         );
-        hook.setPoolFor(twapProjectId, poolKey, 60, address(mockWeth));
+        hook.setPoolFor(twapProjectId, poolKey, 60, JBConstants.NATIVE_TOKEN);
 
         // Too large (more than MAX_TWAP_WINDOW = 2 days).
         vm.prank(owner);
@@ -809,7 +773,7 @@ contract V4BuybackHookTest is Test {
                 hook.MAX_TWAP_WINDOW()
             )
         );
-        hook.setPoolFor(twapProjectId, poolKey, 3 days, address(mockWeth));
+        hook.setPoolFor(twapProjectId, poolKey, 3 days, JBConstants.NATIVE_TOKEN);
     }
 
     //*********************************************************************//
@@ -869,7 +833,7 @@ contract V4BuybackHookTest is Test {
     /// @dev Configures MockPoolManager to return fewer tokens than the full swap would have.
     ///      The leftover input should be returned via addToBalanceOf + minted.
     function test_sqrtPriceLimitEnforced() public {
-        bool projectTokenIs0 = address(projectToken) < address(mockWeth);
+        bool projectTokenIs0 = address(projectToken) < address(0);
         uint256 payAmount = 10 ether;
         // Partial fill: only 3 ether consumed by the swap, returning 300 tokens.
         // The remaining 7 ether should trigger the leftover mint path.
@@ -923,7 +887,7 @@ contract V4BuybackHookTest is Test {
         mockPM.setLiquidity(poolId, 1_000_000 ether);
 
         vm.prank(owner);
-        hook.setPoolFor(cvProjectId, poolKey, twapWindow, address(mockWeth));
+        hook.setPoolFor(cvProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
 
         // Configure oracle: tick=0 means price=1, so 1 ETH -> ~1 token.
         // With slippage applied, the TWAP-based quote will be somewhat less than 1e18 but still substantial.
@@ -983,7 +947,7 @@ contract V4BuybackHookTest is Test {
             terminal: address(terminal),
             payer: payer,
             amount: JBTokenAmount({
-                token: address(mockWeth),
+                token: JBConstants.NATIVE_TOKEN,
                 decimals: 18,
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                 value: amountToSwapWith
@@ -1034,7 +998,7 @@ contract V4BuybackHookTest is Test {
                 hook.MAX_TWAP_WINDOW()
             )
         );
-        hook.setPoolFor(newProjectId, poolKey, 2 minutes, address(mockWeth));
+        hook.setPoolFor(newProjectId, poolKey, 2 minutes, JBConstants.NATIVE_TOKEN);
 
         // 4 minutes should also be rejected.
         vm.prank(owner);
@@ -1046,11 +1010,11 @@ contract V4BuybackHookTest is Test {
                 hook.MAX_TWAP_WINDOW()
             )
         );
-        hook.setPoolFor(newProjectId, poolKey, 4 minutes, address(mockWeth));
+        hook.setPoolFor(newProjectId, poolKey, 4 minutes, JBConstants.NATIVE_TOKEN);
 
         // 5 minutes should succeed.
         vm.prank(owner);
-        hook.setPoolFor(newProjectId, poolKey, 5 minutes, address(mockWeth));
+        hook.setPoolFor(newProjectId, poolKey, 5 minutes, JBConstants.NATIVE_TOKEN);
 
         assertEq(hook.twapWindowOf(newProjectId), 5 minutes, "TWAP window should be 5 minutes");
     }
@@ -1075,11 +1039,12 @@ contract V4BuybackHookTest is Test {
             fee: poolKey.fee,
             tickSpacing: poolKey.tickSpacing,
             twapWindow: twapWindow,
-            terminalToken: address(mockWeth)
+            terminalToken: JBConstants.NATIVE_TOKEN,
+            sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
         });
 
         // Verify the pool key was stored.
-        PoolKey memory storedKey = hook.poolKeyOf(newProjectId, address(mockWeth));
+        PoolKey memory storedKey = hook.poolKeyOf(newProjectId, address(0));
         assertEq(Currency.unwrap(storedKey.currency0), Currency.unwrap(poolKey.currency0), "currency0 mismatch");
         assertEq(Currency.unwrap(storedKey.currency1), Currency.unwrap(poolKey.currency1), "currency1 mismatch");
         assertEq(storedKey.fee, poolKey.fee, "fee mismatch");
@@ -1112,7 +1077,8 @@ contract V4BuybackHookTest is Test {
             fee: poolKey.fee,
             tickSpacing: poolKey.tickSpacing,
             twapWindow: twapWindow,
-            terminalToken: address(mockWeth)
+            terminalToken: JBConstants.NATIVE_TOKEN,
+            sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
         });
 
         // Verify configuration succeeded.
@@ -1136,22 +1102,15 @@ contract V4BuybackHookTest is Test {
             fee: poolKey.fee,
             tickSpacing: poolKey.tickSpacing,
             twapWindow: twapWindow,
-            terminalToken: address(mockWeth)
+            terminalToken: JBConstants.NATIVE_TOKEN,
+            sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
         });
 
         // Compute the actual poolId that initializePoolFor creates (hooks: address(0), not mockOracle).
-        address token0;
-        address token1;
-        if (address(mockWeth) < address(projectToken)) {
-            token0 = address(mockWeth);
-            token1 = address(projectToken);
-        } else {
-            token0 = address(projectToken);
-            token1 = address(mockWeth);
-        }
+        // Native ETH (address(0)) is always currency0 (smallest address).
         PoolKey memory expectedKey = PoolKey({
-            currency0: Currency.wrap(token0),
-            currency1: Currency.wrap(token1),
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(projectToken)),
             fee: poolKey.fee,
             tickSpacing: poolKey.tickSpacing,
             hooks: IHooks(address(0))
@@ -1166,7 +1125,8 @@ contract V4BuybackHookTest is Test {
             fee: poolKey.fee,
             tickSpacing: poolKey.tickSpacing,
             twapWindow: twapWindow,
-            terminalToken: address(mockWeth)
+            terminalToken: JBConstants.NATIVE_TOKEN,
+            sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
         });
     }
 

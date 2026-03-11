@@ -134,7 +134,7 @@ Route project payments through the better of two paths -- minting from the termi
 | `JBBuybackHook_TerminalTokenIsProjectToken(address, address)` | Terminal token same as project token |
 | `JBBuybackHook_Unauthorized(address caller)` | `afterPayRecordedWith` called by non-terminal |
 | `JBBuybackHook_ZeroProjectToken()` | Project has not issued an ERC-20 token |
-| `JBBuybackHook_ZeroTerminalToken()` | Terminal token resolves to address(0) |
+
 
 ### JBBuybackHookRegistry
 
@@ -152,7 +152,7 @@ Route project payments through the better of two paths -- minting from the termi
 - **Pool immutability**: `setPoolFor` can only be called once per project+terminalToken pair. After the pool key is stored, calling again reverts with `JBBuybackHook_PoolAlreadySet`. This is intentional to prevent swap routing manipulation.
 - **PoolKey validation**: `setPoolFor` validates that the PoolKey's `currency0`/`currency1` match the project token and normalized terminal token. It also checks that the pool is initialized (sqrtPriceX96 != 0).
 - **Burn-and-remint**: Tokens received from the swap are burned via `controller.burnTokensOf`, then re-minted (along with any leftover-mint count) via `controller.mintTokensOf` with `useReservedPercent: true`. This ensures the reserved rate applies uniformly regardless of the payment route.
-- **Swap failure fallback**: If the V4 `POOL_MANAGER.unlock()` call reverts (slippage, insufficient liquidity, etc.), `_swap` catches it with try-catch and returns `(0, true)`. The `swapFailed` flag bypasses the slippage check, allowing the payment to fall through to the mint path. Any WETH wrapped for the swap is unwrapped back to ETH so leftover accounting remains correct.
+- **Swap failure fallback**: If the V4 `POOL_MANAGER.unlock()` call reverts (slippage, insufficient liquidity, etc.), `_swap` catches it with try-catch and returns `(0, true)`. The `swapFailed` flag bypasses the slippage check, allowing the payment to fall through to the mint path.
 - **TWAP oracle fallback**: When the oracle hook is absent or `observe()` reverts, `JBSwapLib.getQuoteFromOracle` falls back to spot price from `poolManager.getSlot0()` and current liquidity from `poolManager.getLiquidity()`.
 - **Zero liquidity protection**: If the oracle/spot returns zero liquidity (`harmonicMeanLiquidity == 0`), `_getQuote` returns 0, which ensures the hook falls back to minting rather than attempting a swap in an empty pool.
 - **Sigmoid slippage ceiling**: If `getSlippageTolerance` returns `>= TWAP_SLIPPAGE_DENOMINATOR` (10,000 bps = 100%), `_getQuote` returns 0 to trigger mint fallback.
@@ -160,7 +160,7 @@ Route project payments through the better of two paths -- minting from the termi
 - **sqrtPriceLimitX96 protection**: The `unlockCallback` computes a `sqrtPriceLimitX96` from `amountIn` and `minimumSwapAmountOut`. The V4 swap stops early if the price moves beyond this limit, providing on-chain MEV protection.
 - **`beforePayRecordedWith` is a `view` function**: It cannot modify state. All swap execution happens in `afterPayRecordedWith`.
 - **Terminal validation**: `afterPayRecordedWith` validates that `msg.sender` is a registered terminal of the project via `DIRECTORY.isTerminalOf(projectId, IJBTerminal(msg.sender))`.
-- **Native token handling**: When the terminal token is `JBConstants.NATIVE_TOKEN`, the hook normalizes to WETH for storage and pool lookups. For V4 settlement, if the pool's input currency is `address(0)` (native ETH), it uses `settle{value:}`; otherwise it wraps to WETH first via `WETH.deposit{value:}`.
+- **Native token handling**: When the terminal token is `JBConstants.NATIVE_TOKEN`, the hook normalizes to `address(0)` for storage and pool lookups — matching Uniswap V4's native ETH representation. For V4 settlement, native ETH uses `POOL_MANAGER.settle{value:}()` directly; ERC-20 tokens use `sync()` + `safeTransfer()` + `settle()`. No WETH wrapping/unwrapping is involved.
 - **Metadata key**: `"quote"` encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)`. If `amountToSwapWith == 0`, the full payment amount is used. If not provided at all, same behavior.
 - **State variable names**: Public: `projectTokenOf[projectId]`, `twapWindowOf[projectId]`. Internal with public getter: `poolKeyOf(projectId, terminalToken)` (backed by `_poolKeyOf`). Internal only: `_poolIsSet[projectId][terminalToken]`.
 - **ERC-2771**: `_msgSender()` (ERC-2771) is used instead of `msg.sender` for meta-transaction compatibility in permissioned functions (`setPoolFor`, `setTwapWindowOf`).
@@ -175,7 +175,6 @@ Route project payments through the better of two paths -- minting from the termi
 ```solidity
 import {JBBuybackHook} from "@bananapus/buyback-hook-v6/src/JBBuybackHook.sol";
 import {JBBuybackHookRegistry} from "@bananapus/buyback-hook-v6/src/JBBuybackHookRegistry.sol";
-import {IWETH9} from "@bananapus/buyback-hook-v6/src/interfaces/external/IWETH9.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -197,7 +196,7 @@ JBBuybackHook hook = new JBBuybackHook(
     prices,
     projects,
     tokens,
-    IWETH9(weth),
+
     IPoolManager(poolManager),
     trustedForwarder
 );
@@ -212,14 +211,14 @@ address projectToken = address(tokens.tokenOf(1));
 hook.setPoolFor({
     projectId: 1,
     poolKey: PoolKey({
-        currency0: Currency.wrap(projectToken < weth ? projectToken : weth),
-        currency1: Currency.wrap(projectToken < weth ? weth : projectToken),
+        currency0: Currency.wrap(address(0)),      // native ETH (always currency0)
+        currency1: Currency.wrap(projectToken),
         fee: 3000,          // 0.3% in V4 fee units (hundredths of a bip)
         tickSpacing: 60,
         hooks: IHooks(address(0))  // or an oracle hook address
     }),
     twapWindow: 30 minutes,
-    terminalToken: JBConstants.NATIVE_TOKEN  // or address(weth)
+    terminalToken: JBConstants.NATIVE_TOKEN  // normalized to address(0) internally
 });
 
 // Set the registry as the project's data hook in the ruleset config:

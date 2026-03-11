@@ -41,7 +41,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 import {IJBBuybackHook} from "./interfaces/IJBBuybackHook.sol";
-import {IWETH9} from "./interfaces/external/IWETH9.sol";
 import {JBSwapLib} from "./libraries/JBSwapLib.sol";
 
 /// @custom:benediction DEVS BENEDICAT ET PROTEGAT CONTRACTVS MEAM
@@ -75,7 +74,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_TerminalTokenIsProjectToken(address terminalToken, address projectToken);
     error JBBuybackHook_Unauthorized(address caller);
     error JBBuybackHook_ZeroProjectToken();
-    error JBBuybackHook_ZeroTerminalToken();
 
     //*********************************************************************//
     // --------------------- public constant properties ------------------ //
@@ -109,16 +107,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice The Uniswap V4 PoolManager singleton.
     IPoolManager public immutable override POOL_MANAGER;
 
-    /// @notice The wrapped native token contract (e.g. WETH on Ethereum, WMATIC on Polygon).
-    IWETH9 public immutable override WRAPPED_NATIVE_TOKEN;
-
     //*********************************************************************//
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
     /// @notice The PoolKey for a given project's token and terminal token pair.
     /// @custom:param projectId The ID of the project whose token is traded in the pool.
-    /// @custom:param terminalToken The address of the terminal token (normalized to wrapped native token for native).
+    /// @custom:param terminalToken The address of the terminal token (normalized to address(0) for native).
     mapping(uint256 projectId => mapping(address terminalToken => PoolKey)) internal _poolKeyOf;
 
     /// @notice The address of each project's token.
@@ -158,7 +153,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param prices The contract that exposes price feeds.
     /// @param projects The project registry.
     /// @param tokens The token registry.
-    /// @param wrappedNativeToken The wrapped native token contract (e.g. WETH on Ethereum).
     /// @param poolManager The Uniswap V4 PoolManager singleton.
     /// @param trustedForwarder A trusted forwarder of transactions to this contract.
     constructor(
@@ -167,7 +161,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IWETH9 wrappedNativeToken,
         IPoolManager poolManager,
         address trustedForwarder
     )
@@ -179,7 +172,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         PROJECTS = projects;
         PRICES = prices;
         POOL_MANAGER = poolManager;
-        WRAPPED_NATIVE_TOKEN = wrappedNativeToken;
     }
 
     //*********************************************************************//
@@ -230,13 +222,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Skip this check when the swap failed (caught revert) — in that case, fall through to the mint path.
         if (!swapFailed && exactSwapAmountOut < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded(exactSwapAmountOut, minimumSwapAmountOut);
-        }
-
-        // If native tokens were wrapped for the swap, unwrap any leftover wrapped tokens
-        // back to native so the balance delta below correctly captures leftovers.
-        if (context.forwardedAmount.token == JBConstants.NATIVE_TOKEN) {
-            uint256 wrappedBalance = IERC20(address(WRAPPED_NATIVE_TOKEN)).balanceOf(address(this));
-            if (wrappedBalance != 0) WRAPPED_NATIVE_TOKEN.withdraw(wrappedBalance);
         }
 
         // Compute leftover terminal tokens as a delta (balanceAfter - balanceBefore).
@@ -324,9 +309,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });
 
-        // Normalize the terminal token — use wrapped native token for native.
+        // Normalize the terminal token — use address(0) for native.
         address normalizedTerminalToken =
-            terminalToken == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : terminalToken;
+            terminalToken == JBConstants.NATIVE_TOKEN ? address(0) : terminalToken;
 
         // Get the project's token.
         address projectToken = address(TOKENS.tokenOf(projectId));
@@ -357,9 +342,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });
 
-        // Normalize the terminal token — use wrapped native token for native.
+        // Normalize the terminal token — use address(0) for native.
         address normalizedTerminalToken =
-            terminalToken == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : terminalToken;
+            terminalToken == JBConstants.NATIVE_TOKEN ? address(0) : terminalToken;
 
         // Get the project's token.
         address projectToken = address(TOKENS.tokenOf(projectId));
@@ -378,27 +363,28 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     }
 
     /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
-    /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`. Uses
-    /// `TickMath.getSqrtPriceAtTick(0)` as the initial price (1:1 ratio, suitable for an empty pool).
+    /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`.
     /// @dev Does not check permissions — callers (e.g. the registry) are responsible for authorization.
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
     /// @param tickSpacing The Uniswap V4 pool tick spacing.
     /// @param twapWindow The period of time over which the TWAP is computed.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
+    /// @param sqrtPriceX96 The initial sqrtPriceX96 for the pool (if not already initialized).
     function initializePoolFor(
         uint256 projectId,
         uint24 fee,
         int24 tickSpacing,
         uint256 twapWindow,
-        address terminalToken
+        address terminalToken,
+        uint160 sqrtPriceX96
     )
         external
         override
     {
-        // Normalize the terminal token — use wrapped native token for native.
+        // Normalize the terminal token — use address(0) for native.
         address normalizedTerminalToken =
-            terminalToken == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : terminalToken;
+            terminalToken == JBConstants.NATIVE_TOKEN ? address(0) : terminalToken;
 
         // Get the project's token.
         address projectToken = address(TOKENS.tokenOf(projectId));
@@ -414,7 +400,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
 
         // Initialize pool in PoolManager if not already initialized.
-        try POOL_MANAGER.initialize(poolKey, TickMath.getSqrtPriceAtTick(0)) {} catch {}
+        try POOL_MANAGER.initialize(poolKey, sqrtPriceX96) {} catch {}
 
         // Now call _setPoolFor — pool is guaranteed to exist.
         _setPoolFor(projectId, poolKey, twapWindow, normalizedTerminalToken, projectToken);
@@ -597,9 +583,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Keep a reference to the project's token.
         address projectToken = projectTokenOf[context.projectId];
 
-        // Keep a reference to the token being used by the terminal. Default to wETH if the terminal uses native.
+        // Keep a reference to the token being used by the terminal. Use address(0) for native ETH.
         address terminalToken =
-            context.amount.token == JBConstants.NATIVE_TOKEN ? address(WRAPPED_NATIVE_TOKEN) : context.amount.token;
+            context.amount.token == JBConstants.NATIVE_TOKEN ? address(0) : context.amount.token;
 
         // Always compute the TWAP-based minimum.
         uint256 twapMinimum = _getQuote({
@@ -646,7 +632,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice Returns the PoolKey for a given project and terminal token pair.
     /// @param projectId The ID of the project.
-    /// @param terminalToken The terminal token address (normalized to wrapped native token for native).
+    /// @param terminalToken The terminal token address (normalized to address(0) for native).
     /// @return key The V4 PoolKey.
     function poolKeyOf(uint256 projectId, address terminalToken) public view override returns (PoolKey memory key) {
         return _poolKeyOf[projectId][terminalToken];
@@ -667,7 +653,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param projectId The ID of the project.
     /// @param poolKey The V4 PoolKey identifying the pool.
     /// @param twapWindow The period of time over which the TWAP is computed.
-    /// @param normalizedTerminalToken The terminal token address (already normalized: wrapped native token for native).
+    /// @param normalizedTerminalToken The terminal token address (already normalized: address(0) for native).
     /// @param projectToken The project's ERC-20 token address.
     function _setPoolFor(
         uint256 projectId,
@@ -687,9 +673,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (twapWindow < MIN_TWAP_WINDOW || twapWindow > MAX_TWAP_WINDOW) {
             revert JBBuybackHook_InvalidTwapWindow(twapWindow, MIN_TWAP_WINDOW, MAX_TWAP_WINDOW);
         }
-
-        // Make sure the terminal token is not zero.
-        if (normalizedTerminalToken == address(0)) revert JBBuybackHook_ZeroTerminalToken();
 
         // Make sure the project has issued a token.
         if (projectToken == address(0)) revert JBBuybackHook_ZeroProjectToken();
@@ -749,23 +732,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     {
         uint256 amountToSwapWith = context.forwardedAmount.value;
 
-        // Get the terminal token, normalized to the wrapped native token.
-        address terminalTokenWithWETH = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN
-            ? address(WRAPPED_NATIVE_TOKEN)
+        // Get the terminal token, normalized to address(0) for native ETH.
+        address normalizedTerminalToken = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN
+            ? address(0)
             : context.forwardedAmount.token;
 
         // Get the pool key for this project/token pair.
-        PoolKey memory key = _poolKeyOf[context.projectId][terminalTokenWithWETH];
-
-        // Wrap native tokens if needed (for ERC-20 settle path).
-        // For native ETH pools (currency0 or currency1 is address(0)), we use settle{value:} instead.
-        bool inputIsNative = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN;
-        Currency inputCurrency = projectTokenIs0 ? key.currency1 : key.currency0;
-
-        if (inputIsNative && !inputCurrency.isAddressZero()) {
-            // Pool uses the wrapped native token, but we received native — wrap it.
-            WRAPPED_NATIVE_TOKEN.deposit{value: amountToSwapWith}();
-        }
+        PoolKey memory key = _poolKeyOf[context.projectId][normalizedTerminalToken];
 
         // Encode the callback data.
         bytes memory callbackData = abi.encode(
@@ -815,7 +788,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param projectId The ID of the project.
     /// @param projectToken The project token being swapped for.
     /// @param amountIn The number of terminal tokens being used to swap.
-    /// @param terminalToken The terminal token being paid in (normalized to wrapped native token for native).
+    /// @param terminalToken The terminal token being paid in (normalized to address(0) for native).
     /// @return amountOut The minimum number of tokens to receive based on the TWAP and slippage.
     function _getQuote(
         uint256 projectId,

@@ -33,7 +33,6 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 
 // Test mocks
 import {MockPoolManager} from "../mock/MockPoolManager.sol";
@@ -57,25 +56,6 @@ contract BDL_MockTerminalToken is ERC20 {
     }
 }
 
-/// @notice Minimal mock WETH9 for testing.
-contract BDL_MockWETH9 is ERC20 {
-    constructor() ERC20("Wrapped Ether", "WETH") {}
-
-    function deposit() external payable {
-        _mint(msg.sender, msg.value);
-    }
-
-    function withdraw(uint256 amount) external {
-        _burn(msg.sender, amount);
-        (bool success,) = msg.sender.call{value: amount}("");
-        require(success, "MockWETH9: ETH transfer failed");
-    }
-
-    receive() external payable {
-        _mint(msg.sender, msg.value);
-    }
-}
-
 /// @notice Test harness exposing JBBuybackHook internals.
 contract BDL_ForTest_BuybackHook is JBBuybackHook {
     constructor(
@@ -84,12 +64,11 @@ contract BDL_ForTest_BuybackHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IWETH9 wrappedNativeToken,
         IPoolManager poolManager,
         address trustedForwarder
     )
         JBBuybackHook(
-            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
+            directory, permissions, prices, projects, tokens, poolManager, trustedForwarder
         )
     {}
 
@@ -119,7 +98,6 @@ contract BDL_BalanceDeltaLeftover is Test {
     MockPoolManager mockPM;
     MockOracleHook mockOracle;
     BDL_MockProjectToken projectToken;
-    BDL_MockWETH9 mockWeth;
     BDL_MockTerminalToken terminalToken;
 
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
@@ -142,7 +120,6 @@ contract BDL_BalanceDeltaLeftover is Test {
         mockPM = new MockPoolManager();
         mockOracle = new MockOracleHook();
         projectToken = new BDL_MockProjectToken();
-        mockWeth = new BDL_MockWETH9();
         terminalToken = new BDL_MockTerminalToken();
 
         vm.etch(address(directory), "0x01");
@@ -159,26 +136,15 @@ contract BDL_BalanceDeltaLeftover is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            wrappedNativeToken: IWETH9(address(mockWeth)),
             poolManager: IPoolManager(address(mockPM)),
             trustedForwarder: address(0)
         });
 
-        // Build native pool key (sorted: projectToken vs WETH).
+        // Build native pool key: native ETH (address(0)) is always currency0.
         {
-            address token0;
-            address token1;
-            if (address(projectToken) < address(mockWeth)) {
-                token0 = address(projectToken);
-                token1 = address(mockWeth);
-            } else {
-                token0 = address(mockWeth);
-                token1 = address(projectToken);
-            }
-
             nativePoolKey = PoolKey({
-                currency0: Currency.wrap(token0),
-                currency1: Currency.wrap(token1),
+                currency0: Currency.wrap(address(0)),
+                currency1: Currency.wrap(address(projectToken)),
                 fee: 3000,
                 tickSpacing: 60,
                 hooks: IHooks(address(mockOracle))
@@ -281,16 +247,17 @@ contract BDL_BalanceDeltaLeftover is Test {
         );
     }
 
-    /// @notice CORE REGRESSION (native ETH): A full swap through a WETH pool must not underflow
+    /// @notice CORE REGRESSION (native ETH): A full swap through a native ETH pool must not underflow
     ///         when computing the leftover balance delta. Before the fix, balanceBefore included
-    ///         msg.value, and the swap consumed it by wrapping to WETH, causing balanceAfter < balanceBefore.
+    ///         msg.value, causing balanceAfter < balanceBefore.
     function test_nativeETH_fullSwap_noUnderflow() public {
-        bool projectTokenIs0 = address(projectToken) < address(mockWeth);
+        // Native ETH (address(0)) < any deployed address, so projectTokenIs0 = false.
+        bool projectTokenIs0 = false;
         uint256 payAmount = 2 ether;
         uint256 swapOut = 1000e18;
 
         // Initialize pool in hook.
-        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(mockWeth));
+        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(0));
 
         // Configure mock deltas for full swap (no leftover).
         if (projectTokenIs0) {
@@ -408,13 +375,14 @@ contract BDL_BalanceDeltaLeftover is Test {
     ///         The delta approach should yield 0 leftover when the swap consumes everything,
     ///         regardless of pre-existing balance.
     function test_nativeETH_preExistingBalance_notInflated() public {
-        bool projectTokenIs0 = address(projectToken) < address(mockWeth);
+        // Native ETH (address(0)) < any deployed address, so projectTokenIs0 = false.
+        bool projectTokenIs0 = false;
         uint256 payAmount = 1 ether;
         uint256 swapOut = 500e18;
         uint256 preExisting = 10 ether;
 
         // Initialize pool in hook.
-        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(mockWeth));
+        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(0));
 
         // Configure mock deltas for full swap.
         if (projectTokenIs0) {
