@@ -72,6 +72,7 @@ contract OWE_OldWindowEvent is Test {
             projects: projects,
             tokens: tokens,
             poolManager: IPoolManager(address(mockPM)),
+            oracleHook: IHooks(address(0)),
             trustedForwarder: address(0)
         });
 

@@ -59,11 +59,10 @@ contract ForTest_V4BuybackHook is JBBuybackHook {
         IJBProjects projects,
         IJBTokens tokens,
         IPoolManager poolManager,
+        IHooks oracleHook,
         address trustedForwarder
     )
-        JBBuybackHook(
-            directory, permissions, prices, projects, tokens, poolManager, trustedForwarder
-        )
+        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
     {}
 
     /// @notice Directly initialize pool state for testing without going through setPoolFor permission checks.
@@ -154,6 +153,7 @@ contract V4BuybackHookTest is Test {
             projects: projects,
             tokens: tokens,
             poolManager: IPoolManager(address(mockPM)),
+            oracleHook: IHooks(address(mockOracle)),
             trustedForwarder: address(0)
         });
 

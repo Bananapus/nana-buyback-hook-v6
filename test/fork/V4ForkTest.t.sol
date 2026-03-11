@@ -150,9 +150,10 @@ contract ForTest_ForkBuybackHook is JBBuybackHook {
         IJBProjects projects,
         IJBTokens tokens,
         IPoolManager poolManager,
+        IHooks oracleHook,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, trustedForwarder)
+        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
     {}
 }
 
@@ -240,6 +241,7 @@ contract V4ForkTest is Test {
             projects: projects,
             tokens: tokens,
             poolManager: poolManager,
+            oracleHook: IHooks(address(0)),
             trustedForwarder: address(0)
         });
 

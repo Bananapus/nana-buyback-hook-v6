@@ -65,11 +65,10 @@ contract BDL_ForTest_BuybackHook is JBBuybackHook {
         IJBProjects projects,
         IJBTokens tokens,
         IPoolManager poolManager,
+        IHooks oracleHook,
         address trustedForwarder
     )
-        JBBuybackHook(
-            directory, permissions, prices, projects, tokens, poolManager, trustedForwarder
-        )
+        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
     {}
 
     function ForTest_initPool(
@@ -137,6 +136,7 @@ contract BDL_BalanceDeltaLeftover is Test {
             projects: projects,
             tokens: tokens,
             poolManager: IPoolManager(address(mockPM)),
+            oracleHook: IHooks(address(mockOracle)),
             trustedForwarder: address(0)
         });
 
