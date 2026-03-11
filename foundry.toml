@@ -4,9 +4,6 @@ evm_version = 'cancun'
 via_ir = true
 optimizer_runs = 200
 libs = ["node_modules", "lib"]
-remappings = [
-    "@sphinx-labs/contracts/=node_modules/@sphinx-labs/contracts/contracts/foundry/",
-]
 fs_permissions = [{ access = "read-write", path = "./"}]
 
 [rpc_endpoints]

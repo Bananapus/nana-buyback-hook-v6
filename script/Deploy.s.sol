@@ -5,7 +5,7 @@ import {CoreDeployment, CoreDeploymentLib} from "@bananapus/core-v6/script/helpe
 import {Univ4RouterDeployment, Univ4RouterDeploymentLib} from
     "@bananapus/univ4-router-v6/script/helpers/Univ4RouterDeploymentLib.sol";
 
-import {Sphinx} from "@sphinx-labs/contracts/SphinxPlugin.sol";
+import {Sphinx} from "@sphinx-labs/contracts/contracts/foundry/SphinxPlugin.sol";
 import {Script} from "forge-std/Script.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
