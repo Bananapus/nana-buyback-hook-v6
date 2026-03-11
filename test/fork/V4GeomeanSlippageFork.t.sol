@@ -570,12 +570,12 @@ contract V4GeomeanSlippageForkTest is Test {
         tickCumulatives[0] = 0;
         tickCumulatives[1] = 0; // tick=0 -> no delta
 
-        uint160[] memory secondsPerLiquidityCumulativeX128s = new uint160[](2);
+        uint136[] memory secondsPerLiquidityCumulativeX128s = new uint136[](2);
         secondsPerLiquidityCumulativeX128s[0] = 0;
         // delta = twapWindow * 2^128 / liquidity (so harmonicMeanLiquidity ~ actual liquidity)
         uint256 liq = uint256(liquidity > 0 ? liquidity : -liquidity);
         if (liq == 0) liq = 1;
-        secondsPerLiquidityCumulativeX128s[1] = uint160((uint256(300) << 128) / liq);
+        secondsPerLiquidityCumulativeX128s[1] = uint136((uint256(300) << 128) / liq);
 
         // Mock all calls to observe() on address(0).
         vm.mockCall(
@@ -600,10 +600,10 @@ contract V4GeomeanSlippageForkTest is Test {
         tickCumulatives[0] = 0;
         tickCumulatives[1] = tickDelta;
 
-        uint160[] memory secondsPerLiquidityCumulativeX128s = new uint160[](2);
+        uint136[] memory secondsPerLiquidityCumulativeX128s = new uint136[](2);
         secondsPerLiquidityCumulativeX128s[0] = 0;
         uint256 liq = liquidity > 0 ? liquidity : 1;
-        secondsPerLiquidityCumulativeX128s[1] = uint160((uint256(twapWindow) << 128) / liq);
+        secondsPerLiquidityCumulativeX128s[1] = uint136((uint256(twapWindow) << 128) / liq);
 
         vm.mockCall(
             address(0),

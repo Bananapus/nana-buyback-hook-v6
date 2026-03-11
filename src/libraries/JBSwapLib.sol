@@ -73,7 +73,7 @@ library JBSwapLib {
 
         // Try querying the oracle hook.
         try IGeomeanOracle(address(key.hooks)).observe(key, _makeSecondsAgos(twapWindow)) returns (
-            int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s
+            int56[] memory tickCumulatives, uint136[] memory secondsPerLiquidityCumulativeX128s
         ) {
             // Compute arithmetic mean tick from tick cumulatives.
             int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
@@ -91,7 +91,7 @@ library JBSwapLib {
             }
 
             // Compute harmonic mean liquidity from seconds-per-liquidity cumulatives.
-            uint160 secondsPerLiquidityDelta =
+            uint136 secondsPerLiquidityDelta =
                 secondsPerLiquidityCumulativeX128s[1] - secondsPerLiquidityCumulativeX128s[0];
 
             if (secondsPerLiquidityDelta > 0) {

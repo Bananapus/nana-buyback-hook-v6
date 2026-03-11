@@ -732,11 +732,11 @@ contract V4SandwichForkTest is Test {
         tickCumulatives[0] = 0;
         tickCumulatives[1] = 0;
 
-        uint160[] memory secondsPerLiquidityCumulativeX128s = new uint160[](2);
+        uint136[] memory secondsPerLiquidityCumulativeX128s = new uint136[](2);
         secondsPerLiquidityCumulativeX128s[0] = 0;
         uint256 liq = uint256(liquidity > 0 ? liquidity : -liquidity);
         if (liq == 0) liq = 1;
-        secondsPerLiquidityCumulativeX128s[1] = uint160((uint256(300) << 128) / liq);
+        secondsPerLiquidityCumulativeX128s[1] = uint136((uint256(300) << 128) / liq);
 
         vm.mockCall(
             address(0),

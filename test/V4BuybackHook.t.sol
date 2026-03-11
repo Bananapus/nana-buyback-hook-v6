@@ -436,7 +436,7 @@ contract V4BuybackHookTest is Test {
         //
         // For seconds-per-liquidity, set a non-zero delta to get a valid harmonicMeanLiquidity:
         // secPerLiq1 - secPerLiq0 = small value => high harmonic mean liquidity
-        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+        mockOracle.setObserveData(0, 0, 0, uint136(uint256(twapWindow) << 64));
 
         // Set up the pool via setPoolFor to make _poolIsSet = true.
         // First, clear the pool from ForTest_initPool.
@@ -891,7 +891,7 @@ contract V4BuybackHookTest is Test {
 
         // Configure oracle: tick=0 means price=1, so 1 ETH -> ~1 token.
         // With slippage applied, the TWAP-based quote will be somewhat less than 1e18 but still substantial.
-        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+        mockOracle.setObserveData(0, 0, 0, uint136(uint256(twapWindow) << 64));
 
         // Mock currentRulesetOf for this project.
         JBRulesetMetadata memory meta = JBRulesetMetadata({
@@ -1106,14 +1106,14 @@ contract V4BuybackHookTest is Test {
             sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
         });
 
-        // Compute the actual poolId that initializePoolFor creates (hooks: address(0), not mockOracle).
+        // Compute the actual poolId that initializePoolFor creates (hooks: ORACLE_HOOK = mockOracle).
         // Native ETH (address(0)) is always currency0 (smallest address).
         PoolKey memory expectedKey = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(address(projectToken)),
             fee: poolKey.fee,
             tickSpacing: poolKey.tickSpacing,
-            hooks: IHooks(address(0))
+            hooks: IHooks(address(mockOracle))
         });
         PoolId expectedPoolId = expectedKey.toId();
 
