@@ -398,9 +398,9 @@ contract V4GeomeanSlippageForkTest is Test {
             // Mock oracle with specific tick delta for this TWAP window.
             _mockOracleWithTickDelta(key, 10_000 ether / 2, twapWindows[i], tickDeltas[i]);
 
-            // Re-register the pool with the new TWAP window.
+            // Update the TWAP window (pool is already registered in _setupProjectWithPool).
             vm.prank(owner);
-            hook.setPoolFor(pid, key, twapWindows[i], JBConstants.NATIVE_TOKEN);
+            hook.setTwapWindowOf(pid, twapWindows[i]);
 
             // Query the oracle via JBSwapLib.
             (uint256 amountOut, int24 meanTick, uint128 meanLiquidity) = JBSwapLib.getQuoteFromOracle(

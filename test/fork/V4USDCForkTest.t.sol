@@ -554,7 +554,7 @@ contract V4USDCForkTest is Test {
         JBRulesetMetadata memory meta = JBRulesetMetadata({
             reservedPercent: 0,
             cashOutTaxRate: 0,
-            baseCurrency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+            baseCurrency: uint32(uint160(address(usdc))),
             pausePay: false,
             pauseCreditTransfers: false,
             allowOwnerMinting: true,
@@ -615,13 +615,13 @@ contract V4USDCForkTest is Test {
             amount: JBTokenAmount({
                 token: address(usdc),
                 decimals: 6,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                currency: uint32(uint160(address(usdc))),
                 value: orderSize
             }),
             forwardedAmount: JBTokenAmount({
                 token: address(usdc),
                 decimals: 6,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                currency: uint32(uint160(address(usdc))),
                 value: orderSize
             }),
             weight: 0.5e18,
@@ -681,7 +681,7 @@ contract V4USDCForkTest is Test {
                 amount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                    currency: uint32(uint160(address(usdc))),
                     value: orderSize
                 }),
                 projectId: projectId,
@@ -710,13 +710,13 @@ contract V4USDCForkTest is Test {
                 amount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                    currency: uint32(uint160(address(usdc))),
                     value: orderSize
                 }),
                 forwardedAmount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                    currency: uint32(uint160(address(usdc))),
                     value: specAmount
                 }),
                 weight: 0.5e18,
@@ -769,7 +769,7 @@ contract V4USDCForkTest is Test {
                 amount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                    currency: uint32(uint160(address(usdc))),
                     value: orderSize
                 }),
                 projectId: projectId,
@@ -797,13 +797,13 @@ contract V4USDCForkTest is Test {
                 amount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                    currency: uint32(uint160(address(usdc))),
                     value: orderSize
                 }),
                 forwardedAmount: JBTokenAmount({
                     token: address(usdc),
                     decimals: 6,
-                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                    currency: uint32(uint160(address(usdc))),
                     value: specAmount
                 }),
                 weight: 0.5e18,
@@ -836,13 +836,6 @@ contract V4USDCForkTest is Test {
     //*********************************************************************//
     // ----------------------------- Helpers ----------------------------- //
     //*********************************************************************//
-
-    function _formatUSDC(uint256 usdcAmount) internal pure returns (string memory) {
-        uint256 whole = usdcAmount / 1e6;
-        uint256 frac = (usdcAmount % 1e6) / 1e4;
-        if (frac < 10) return string(abi.encodePacked(_toString(whole), ".0", _toString(frac)));
-        return string(abi.encodePacked(_toString(whole), ".", _toString(frac)));
-    }
 
     function _formatEther(uint256 weiAmount) internal pure returns (string memory) {
         uint256 whole = weiAmount / 1e18;
