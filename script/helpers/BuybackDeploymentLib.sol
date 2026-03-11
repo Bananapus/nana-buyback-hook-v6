@@ -17,7 +17,7 @@ struct BuybackDeployment {
 library BuybackDeploymentLib {
     // Cheat code address, 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D.
     address internal constant VM_ADDRESS = address(uint160(uint256(keccak256("hevm cheat code"))));
-    Vm internal constant vm = Vm(VM_ADDRESS);
+    Vm internal constant VM = Vm(VM_ADDRESS);
 
     function getDeployment(string memory path) internal returns (BuybackDeployment memory deployment) {
         // get chainId for which we need to get the deployment.
@@ -39,17 +39,17 @@ library BuybackDeploymentLib {
 
     function getDeployment(
         string memory path,
-        string memory network_name
+        string memory networkName
     )
         internal
         view
         returns (BuybackDeployment memory deployment)
     {
         deployment.hook =
-            IJBBuybackHook(_getDeploymentAddress(path, "nana-buyback-hook-v6", network_name, "JBBuybackHook"));
+            IJBBuybackHook(_getDeploymentAddress(path, "nana-buyback-hook-v6", networkName, "JBBuybackHook"));
 
         deployment.registry = IJBBuybackHookRegistry(
-            _getDeploymentAddress(path, "nana-buyback-hook-v6", network_name, "JBBuybackHookRegistry")
+            _getDeploymentAddress(path, "nana-buyback-hook-v6", networkName, "JBBuybackHookRegistry")
         );
     }
 
@@ -60,8 +60,8 @@ library BuybackDeploymentLib {
     /// @return The address of the contract.
     function _getDeploymentAddress(
         string memory path,
-        string memory project_name,
-        string memory network_name,
+        string memory projectName,
+        string memory networkName,
         string memory contractName
     )
         internal
@@ -69,7 +69,8 @@ library BuybackDeploymentLib {
         returns (address)
     {
         string memory deploymentJson =
-            vm.readFile(string.concat(path, project_name, "/", network_name, "/", contractName, ".json"));
+            // forge-lint: disable-next-line(unsafe-cheatcode)
+            VM.readFile(string.concat(path, projectName, "/", networkName, "/", contractName, ".json"));
         return stdJson.readAddress(deploymentJson, ".address");
     }
 }

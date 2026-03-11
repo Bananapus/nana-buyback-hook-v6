@@ -8,7 +8,7 @@ DEX buyback hook for Juicebox V6. When a payment arrives, the hook compares the 
 
 ```
 src/
-├── JBBuybackHook.sol         — Data hook: TWAP comparison, swap execution, mint fallback
+├── JBBuybackHook.sol         — Data hook: TWAP comparison (via ORACLE_HOOK), swap execution, mint fallback
 ├── JBBuybackHookRegistry.sol — Registry mapping projects to their buyback hooks
 ├── interfaces/
 │   ├── IJBBuybackHook.sol
@@ -48,5 +48,6 @@ If swap selected:
 ## Dependencies
 - `@bananapus/core-v6` — Core protocol interfaces
 - `@bananapus/permission-ids-v6` — SET_BUYBACK_TWAP, SET_BUYBACK_POOL, SET_BUYBACK_HOOK
+- `@bananapus/univ4-router-v6` — Oracle hook deployment (TWAP via `observe()`)
 - `@openzeppelin/contracts` — SafeERC20
-- `@uniswap/v4-core` — Pool manager, TWAP oracle
+- `@uniswap/v4-core` — Pool manager, V4 swap execution

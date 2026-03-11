@@ -206,14 +206,15 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
 
         // Forward the call to the resolved hook.
-        IJBBuybackHook(address(hook)).initializePoolFor({
-            projectId: projectId,
-            fee: fee,
-            tickSpacing: tickSpacing,
-            twapWindow: twapWindow,
-            terminalToken: terminalToken,
-            sqrtPriceX96: sqrtPriceX96
-        });
+        IJBBuybackHook(address(hook))
+            .initializePoolFor({
+                projectId: projectId,
+                fee: fee,
+                tickSpacing: tickSpacing,
+                twapWindow: twapWindow,
+                terminalToken: terminalToken,
+                sqrtPriceX96: sqrtPriceX96
+            });
     }
 
     /// @notice Set the Uniswap V4 pool for a project by forwarding to the resolved buyback hook implementation.

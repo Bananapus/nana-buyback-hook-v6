@@ -8,7 +8,7 @@ _If you're having trouble understanding this contract, take a look at the [core 
 
 | Contract | Description |
 |----------|-------------|
-| `JBBuybackHook` | Core hook. Implements `IJBRulesetDataHook` (checked before recording payment), `IJBPayHook` (executed after), and `IUnlockCallback` (Uniswap V4 swap settlement). Compares the terminal's mint rate against a Uniswap V4 swap quote and takes the better route. Swapped tokens are burned, then re-minted through the controller to apply the reserved rate uniformly. |
+| `JBBuybackHook` | Core hook. Implements `IJBRulesetDataHook` (checked before recording payment), `IJBPayHook` (executed after), and `IUnlockCallback` (Uniswap V4 swap settlement). Compares the terminal's mint rate against a Uniswap V4 swap quote and takes the better route. Swapped tokens are burned, then re-minted through the controller to apply the reserved rate uniformly. Stores an immutable `ORACLE_HOOK` -- all pools created via `setPoolFor` or `initializePoolFor` use this oracle hook in their `PoolKey` for TWAP price protection. |
 | `JBBuybackHookRegistry` | A proxy data hook that delegates `beforePayRecordedWith` to a per-project or default `JBBuybackHook` instance. The registry owner manages an allowlist of hook implementations. Project owners choose (and can permanently lock) which buyback hook their project uses. |
 | `JBSwapLib` | Shared library for oracle queries, slippage tolerance, price impact estimation, and `sqrtPriceLimitX96` calculations. Uses a continuous sigmoid formula for smooth dynamic slippage across all swap sizes. |
 
@@ -65,6 +65,8 @@ forge install Bananapus/nana-buyback-hook-v6
 ```
 
 If you're using `forge`, add `@bananapus/buyback-hook-v6/=lib/nana-buyback-hook-v6/` to `remappings.txt`.
+
+This package depends on `@bananapus/univ4-router-v6` (for the oracle hook deployment used in the deployment script).
 
 ## Develop
 
@@ -132,10 +134,16 @@ nana-buyback-hook-v6/
 
 ### Setting The Pool
 
-Call `setPoolFor(projectId, poolKey, twapWindow, terminalToken)` to configure the Uniswap V4 pool for your project. This can only be called once per terminal token -- pool assignments are immutable once set to prevent swap routing manipulation.
+There are two ways to configure the pool:
 
-- `poolKey` is a Uniswap V4 `PoolKey` struct containing `currency0`, `currency1`, `fee`, `tickSpacing`, and `hooks`. The pool must already be initialized in the V4 PoolManager.
+1. **Simplified**: Call `setPoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken)`. The hook constructs the `PoolKey` automatically using the project token, terminal token, and its immutable `ORACLE_HOOK` as the pool's hooks address. The pool must already be initialized in the V4 PoolManager.
+2. **Explicit**: Call `setPoolFor(projectId, poolKey, twapWindow, terminalToken)` with a full `PoolKey` struct.
+3. **Atomic initialize + set**: Call `initializePoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96)` to initialize the pool in the PoolManager (if not already initialized) and configure it in one transaction. Uses `ORACLE_HOOK` in the constructed `PoolKey`.
+
+Pool assignments can only be set once per terminal token -- they are immutable once set to prevent swap routing manipulation.
+
 - The `PoolKey` currencies must match the project token and the terminal token (in either order). The hook validates this on-chain.
+- All pools created via the simplified or atomic overloads use the hook's immutable `ORACLE_HOOK` for TWAP price protection.
 - If using ETH, pass `JBConstants.NATIVE_TOKEN` (`0x000000000000000000000000000000000000EEEe`) as `terminalToken`. The hook normalizes this to `address(0)` internally, matching Uniswap V4's native ETH representation.
 - The project must have already issued an ERC-20 token (via `JBTokens`).
 - Permission: `SET_BUYBACK_POOL` (ID 26).
@@ -151,7 +159,7 @@ The TWAP window controls the time period over which the time-weighted average pr
 
 ### Oracle Behavior
 
-The hook queries the pool's oracle hook (if any) via the `IGeomeanOracle.observe` interface for TWAP data. If the oracle hook reverts or is not available, the hook falls back to the pool's current spot price and in-range liquidity from the PoolManager.
+The hook stores an immutable `ORACLE_HOOK` (an `IHooks` address set at construction). All pools created via the simplified `setPoolFor` or `initializePoolFor` overloads embed this oracle hook in their `PoolKey`. The hook queries the oracle via the `IGeomeanOracle.observe` interface for TWAP data. If the oracle hook reverts or is not available, the hook falls back to the pool's current spot price and in-range liquidity from the PoolManager.
 
 When the oracle returns zero liquidity, the hook returns 0 for the quote, which causes it to fall back to minting rather than swapping -- protecting against swaps in pools with no liquidity.
 
@@ -202,4 +210,5 @@ Sepolia testnets for all four chains are also supported.
 - If the TWAP window isn't set appropriately, payers may receive fewer tokens than expected.
 - Low liquidity pools are vulnerable to TWAP manipulation by attackers.
 - If the pool's oracle hook is absent or reverts, the hook falls back to spot price, which is more susceptible to manipulation.
+- The `ORACLE_HOOK` immutable is set at construction and cannot be changed. If the oracle hook implementation has a bug or is deprecated, a new `JBBuybackHook` deployment is required.
 - The registry's `lockHookFor` is irreversible. Once locked, the project cannot change its hook implementation even if a security issue is found in that implementation.

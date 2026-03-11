@@ -107,6 +107,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice The Uniswap V4 PoolManager singleton.
     IPoolManager public immutable override POOL_MANAGER;
 
+    /// @notice The oracle hook used for all JB V4 pools (provides TWAP via observe()).
+    IHooks public immutable ORACLE_HOOK;
+
     //*********************************************************************//
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
@@ -154,6 +157,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param projects The project registry.
     /// @param tokens The token registry.
     /// @param poolManager The Uniswap V4 PoolManager singleton.
+    /// @param oracleHook The oracle hook for all JB V4 pools (provides TWAP via observe()).
     /// @param trustedForwarder A trusted forwarder of transactions to this contract.
     constructor(
         IJBDirectory directory,
@@ -162,6 +166,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         IJBProjects projects,
         IJBTokens tokens,
         IPoolManager poolManager,
+        IHooks oracleHook,
         address trustedForwarder
     )
         JBPermissioned(permissions)
@@ -172,6 +177,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         PROJECTS = projects;
         PRICES = prices;
         POOL_MANAGER = poolManager;
+        ORACLE_HOOK = oracleHook;
     }
 
     //*********************************************************************//
@@ -440,14 +446,22 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // zeroForOne = false: swap currency1 (terminal) → currency0 (project)
             inputCurrency = params.key.currency1; // terminal token (we pay)
             outputCurrency = params.key.currency0; // project token (we receive)
+            // Safe: int128 delta values from V4 BalanceDelta fit in uint128 after negation; uint256 wraps without loss.
+            // forge-lint: disable-next-line(unsafe-typecast)
             inputAmount = uint256(uint128(-delta1)); // negative = we spent, negate to get positive
+            // Safe: int128 delta values from V4 BalanceDelta fit in uint128; uint256 wraps without loss.
+            // forge-lint: disable-next-line(unsafe-typecast)
             outputAmount = uint256(uint128(delta0)); // positive = we received
         } else {
             // project token is currency1, terminal token is currency0
             // zeroForOne = true: swap currency0 (terminal) → currency1 (project)
             inputCurrency = params.key.currency0;
             outputCurrency = params.key.currency1;
+            // Safe: int128 delta values from V4 BalanceDelta fit in uint128 after negation; uint256 wraps without loss.
+            // forge-lint: disable-next-line(unsafe-typecast)
             inputAmount = uint256(uint128(-delta0)); // negative = we spent, negate to get positive
+            // Safe: int128 delta values from V4 BalanceDelta fit in uint128; uint256 wraps without loss.
+            // forge-lint: disable-next-line(unsafe-typecast)
             outputAmount = uint256(uint128(delta1)); // positive = we received
         }
 
@@ -776,9 +790,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             ? (Currency.wrap(normalizedTerminalToken), Currency.wrap(projectToken))
             : (Currency.wrap(projectToken), Currency.wrap(normalizedTerminalToken));
 
-        // Construct the pool key with no hooks.
+        // Construct the pool key with the oracle hook.
         poolKey = PoolKey({
-            currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: IHooks(address(0))
+            currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: ORACLE_HOOK
         });
     }
 
@@ -818,7 +832,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         (amountOut, arithmeticMeanTick, meanLiquidity) = JBSwapLib.getQuoteFromOracle({
             poolManager: POOL_MANAGER,
             key: key,
+            // Safe: twapWindow is validated <= MAX_TWAP_WINDOW (2 days = 172800), fits in uint32.
+            // forge-lint: disable-next-line(unsafe-typecast)
             twapWindow: uint32(twapWindow),
+            // Safe: amountIn is a token payment amount, bounded by realistic token supplies well within uint128.
+            // forge-lint: disable-next-line(unsafe-typecast)
             amountIn: uint128(amountIn),
             baseToken: terminalToken,
             quoteToken: projectToken

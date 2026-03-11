@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
+import {CoreDeployment, CoreDeploymentLib} from "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
+import {Univ4RouterDeployment, Univ4RouterDeploymentLib} from
+    "@bananapus/univ4-router-v6/script/helpers/Univ4RouterDeploymentLib.sol";
 
 import {Sphinx} from "@sphinx-labs/contracts/SphinxPlugin.sol";
 import {Script} from "forge-std/Script.sol";
@@ -15,8 +17,11 @@ contract DeployScript is Script, Sphinx {
     /// @notice tracks the deployment of the core contracts for the chain we are deploying to.
     CoreDeployment core;
 
+    /// @notice tracks the deployment of the univ4-router contracts for the chain we are deploying to.
+    Univ4RouterDeployment router;
+
     /// @notice the salts that are used to deploy the contracts.
-    bytes32 BUYBACK_HOOK = "JBBuybackHookV6";
+    bytes32 buybackHook = "JBBuybackHookV6";
 
     /// @notice tracks the addresses that are required for the chain we are deploying to.
     address poolManager;
@@ -31,6 +36,11 @@ contract DeployScript is Script, Sphinx {
     function run() public {
         // Get the deployment addresses for the nana CORE for this chain.
         core = CoreDeploymentLib.getDeployment(
+            vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v6/deployments/"))
+        );
+
+        // Get the deployment addresses for the univ4-router for this chain.
+        router = Univ4RouterDeploymentLib.getDeployment(
             vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v6/deployments/"))
         );
 
@@ -63,18 +73,19 @@ contract DeployScript is Script, Sphinx {
 
     function deploy() public sphinx {
         // Deploy the registry.
-        JBBuybackHookRegistry registry = new JBBuybackHookRegistry{salt: BUYBACK_HOOK}(
+        JBBuybackHookRegistry registry = new JBBuybackHookRegistry{salt: buybackHook}(
             core.permissions, core.projects, safeAddress(), trustedForwarder
         );
 
         // Deploy the V4 buyback hook.
-        JBBuybackHook hook = new JBBuybackHook{salt: BUYBACK_HOOK}(
+        JBBuybackHook hook = new JBBuybackHook{salt: buybackHook}(
             core.directory,
             core.permissions,
             core.prices,
             core.projects,
             core.tokens,
             IPoolManager(poolManager),
+            router.hook,
             trustedForwarder
         );
 
