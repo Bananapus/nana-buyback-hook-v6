@@ -10,10 +10,10 @@ fs_permissions = [{ access = "read-write", path = "./"}]
 ethereum = "${RPC_ETHEREUM_MAINNET}"
 
 [fuzz]
-runs = 4096
+runs = 10240
 
 [invariant]
-runs = 1024
+runs = 10240
 depth = 100
 fail_on_revert = false
 
