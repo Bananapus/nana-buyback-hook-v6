@@ -377,6 +377,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             _buildPoolKey(projectId, fee, tickSpacing, terminalToken);
 
         // Initialize pool in PoolManager if not already initialized.
+        // slither-disable-next-line unused-return,reentrancy-no-eth,reentrancy-benign,reentrancy-events
         try POOL_MANAGER.initialize(poolKey, sqrtPriceX96) {} catch {}
 
         _setPoolFor(projectId, poolKey, twapWindow, normalizedTerminalToken, projectToken);

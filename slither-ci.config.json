@@ -1,7 +1,7 @@
 {
-  "detectors_to_exclude": "timestamp,uninitialized-local,naming-convention,solc-version,shadowing-local,unused-return,reentrancy-no-eth,reentrancy-events",
+  "detectors_to_exclude": "timestamp,uninitialized-local,naming-convention,solc-version,shadowing-local",
   "exclude_informational": true,
-  "exclude_low": true,
+  "exclude_low": false,
   "exclude_medium": false,
   "exclude_high": false,
   "disable_color": false,
