@@ -83,14 +83,7 @@ contract USDCLiquidityHelper is IUnlockCallback {
         poolManager = _poolManager;
     }
 
-    function addLiquidity(
-        PoolKey calldata key,
-        int24 tickLower,
-        int24 tickUpper,
-        int256 liquidityDelta
-    )
-        external
-    {
+    function addLiquidity(PoolKey calldata key, int24 tickLower, int24 tickUpper, int256 liquidityDelta) external {
         bytes memory data = abi.encode(AddLiqParams(key, tickLower, tickUpper, liquidityDelta));
         poolManager.unlock(data);
     }
@@ -270,22 +263,17 @@ contract V4USDCForkTest is Test {
         console.log("====== FORK TEST: USDC VARYING ORDER SIZES (100K USDC liq) ======");
         console.log("");
 
-        uint256[5] memory orderSizes = [uint256(10e6), 100e6, 1_000e6, 10_000e6, 100_000e6];
+        uint256[5] memory orderSizes = [uint256(10e6), 100e6, 1000e6, 10_000e6, 100_000e6];
         string[5] memory labels = ["10 USDC", "100 USDC", "1K USDC", "10K USDC", "100K USDC"];
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
-            (PoolKey memory key, USDCProjectToken projectToken) =
-                _setupProjectWithUSDCPool(pid, usdc, 100_000e6);
+            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, 100_000e6);
 
             uint256 received = _executeUSDCSwap(pid, key, projectToken, usdc, orderSizes[i]);
 
-            console.log(
-                "  Order: %s -> %s tokens received",
-                labels[i],
-                _formatEther(received)
-            );
+            console.log("  Order: %s -> %s tokens received", labels[i], _formatEther(received));
 
             assertGt(received, 0, "Should receive tokens from USDC swap");
         }
@@ -301,22 +289,17 @@ contract V4USDCForkTest is Test {
         console.log("====== FORK TEST: USDC VARYING LIQUIDITY (1K USDC order) ======");
         console.log("");
 
-        uint256[4] memory liquidities = [uint256(1_000e6), 10_000e6, 100_000e6, 1_000_000e6];
+        uint256[4] memory liquidities = [uint256(1000e6), 10_000e6, 100_000e6, 1_000_000e6];
         string[4] memory labels = ["1K", "10K", "100K", "1M"];
 
         for (uint256 i = 0; i < liquidities.length; i++) {
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
-            (PoolKey memory key, USDCProjectToken projectToken) =
-                _setupProjectWithUSDCPool(pid, usdc, liquidities[i]);
+            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, liquidities[i]);
 
-            uint256 received = _executeUSDCSwap(pid, key, projectToken, usdc, 1_000e6);
+            uint256 received = _executeUSDCSwap(pid, key, projectToken, usdc, 1000e6);
 
-            console.log(
-                "  Liquidity: %s USDC -> %s tokens for 1K USDC",
-                labels[i],
-                _formatEther(received)
-            );
+            console.log("  Liquidity: %s USDC -> %s tokens for 1K USDC", labels[i], _formatEther(received));
 
             assertGt(received, 0, "Should receive tokens from USDC swap");
         }
@@ -332,7 +315,7 @@ contract V4USDCForkTest is Test {
         console.log("====== FORK TEST: USDC ORDER SIZE x LIQUIDITY MATRIX ======");
         console.log("");
 
-        uint256[3] memory orders = [uint256(100e6), 1_000e6, 10_000e6];
+        uint256[3] memory orders = [uint256(100e6), 1000e6, 10_000e6];
         uint256[3] memory liqs = [uint256(10_000e6), 100_000e6, 1_000_000e6];
         string[3] memory orderLabels = ["100 USDC", "1K USDC", "10K USDC"];
         string[3] memory liqLabels = ["10K", "100K", "1M"];
@@ -343,8 +326,7 @@ contract V4USDCForkTest is Test {
             for (uint256 o = 0; o < orders.length; o++) {
                 uint256 pid = _nextProjectId();
                 MockUSDC usdc = new MockUSDC();
-                (PoolKey memory key, USDCProjectToken projectToken) =
-                    _setupProjectWithUSDCPool(pid, usdc, liqs[l]);
+                (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, liqs[l]);
 
                 uint256 received = _executeUSDCSwap(pid, key, projectToken, usdc, orders[o]);
 
@@ -374,22 +356,17 @@ contract V4USDCForkTest is Test {
         console.log("====== FORK E2E: USDC FULL FLOW (beforePay -> afterPay) ======");
         console.log("");
 
-        uint256[3] memory orderSizes = [uint256(100e6), 1_000e6, 10_000e6];
+        uint256[3] memory orderSizes = [uint256(100e6), 1000e6, 10_000e6];
         string[3] memory labels = ["100 USDC", "1K USDC", "10K USDC"];
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
-            (PoolKey memory key, USDCProjectToken projectToken) =
-                _setupProjectWithUSDCPool(pid, usdc, 100_000e6);
+            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, 100_000e6);
 
             uint256 received = _executeE2E_USDC(pid, key, projectToken, usdc, orderSizes[i]);
 
-            console.log(
-                "  E2E %s -> %s tokens received",
-                labels[i],
-                _formatEther(received)
-            );
+            console.log("  E2E %s -> %s tokens received", labels[i], _formatEther(received));
 
             assertGt(received, 0, "E2E USDC should complete swap");
         }
@@ -406,22 +383,17 @@ contract V4USDCForkTest is Test {
         console.log("====== FORK E2E: USDC NO PAYER QUOTE (programmatic caller) ======");
         console.log("");
 
-        uint256[3] memory orderSizes = [uint256(100e6), 1_000e6, 10_000e6];
+        uint256[3] memory orderSizes = [uint256(100e6), 1000e6, 10_000e6];
         string[3] memory labels = ["100 USDC", "1K USDC", "10K USDC"];
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
-            (PoolKey memory key, USDCProjectToken projectToken) =
-                _setupProjectWithUSDCPool(pid, usdc, 100_000e6);
+            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, 100_000e6);
 
             uint256 received = _executeE2E_noQuote_USDC(pid, key, projectToken, usdc, orderSizes[i]);
 
-            console.log(
-                "  No-quote %s -> %s tokens received",
-                labels[i],
-                _formatEther(received)
-            );
+            console.log("  No-quote %s -> %s tokens received", labels[i], _formatEther(received));
 
             assertGt(received, 0, "No-quote USDC E2E should still trigger buyback via spot fallback");
         }
@@ -615,16 +587,10 @@ contract V4USDCForkTest is Test {
             projectId: projectId,
             rulesetId: 1,
             amount: JBTokenAmount({
-                token: address(usdc),
-                decimals: 6,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                value: orderSize
+                token: address(usdc), decimals: 6, currency: uint32(uint160(JBConstants.NATIVE_TOKEN)), value: orderSize
             }),
             forwardedAmount: JBTokenAmount({
-                token: address(usdc),
-                decimals: 6,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                value: orderSize
+                token: address(usdc), decimals: 6, currency: uint32(uint160(JBConstants.NATIVE_TOKEN)), value: orderSize
             }),
             weight: 0.5e18,
             newlyIssuedTokenCount: 0,

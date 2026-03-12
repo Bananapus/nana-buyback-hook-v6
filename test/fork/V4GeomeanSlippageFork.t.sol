@@ -276,7 +276,9 @@ contract V4GeomeanSlippageForkTest is Test {
 
             (uint256 slippage, uint256 impact) = _getSlippageForSwap(key, orderSizes[i]);
 
-            console.log("  Order: %s ETH -> impact=%s, slippage=%s bps", labels[i], _toString(impact), _toString(slippage));
+            console.log(
+                "  Order: %s ETH -> impact=%s, slippage=%s bps", labels[i], _toString(impact), _toString(slippage)
+            );
 
             assertGe(slippage, prevSlippage, "Slippage must be monotonically increasing with order size");
             prevSlippage = slippage;
@@ -294,7 +296,7 @@ contract V4GeomeanSlippageForkTest is Test {
         console.log("====== SLIPPAGE MONOTONICITY: LIQUIDITY (1 ETH order) ======");
         console.log("");
 
-        uint256[5] memory liquidities = [uint256(100 ether), 1_000 ether, 10_000 ether, 100_000 ether, 1_000_000 ether];
+        uint256[5] memory liquidities = [uint256(100 ether), 1000 ether, 10_000 ether, 100_000 ether, 1_000_000 ether];
         string[5] memory labels = ["100", "1K", "10K", "100K", "1M"];
 
         uint256 prevSlippage = type(uint256).max;
@@ -305,7 +307,9 @@ contract V4GeomeanSlippageForkTest is Test {
 
             (uint256 slippage, uint256 impact) = _getSlippageForSwap(key, 1 ether);
 
-            console.log("  Liquidity: %s ETH -> impact=%s, slippage=%s bps", labels[i], _toString(impact), _toString(slippage));
+            console.log(
+                "  Liquidity: %s ETH -> impact=%s, slippage=%s bps", labels[i], _toString(impact), _toString(slippage)
+            );
 
             assertLe(slippage, prevSlippage, "Slippage must be monotonically decreasing with liquidity");
             prevSlippage = slippage;
@@ -324,7 +328,7 @@ contract V4GeomeanSlippageForkTest is Test {
         console.log("");
 
         uint256[5] memory orders = [uint256(0.01 ether), 0.1 ether, 1 ether, 10 ether, 100 ether];
-        uint256[4] memory liqs = [uint256(1_000 ether), 10_000 ether, 100_000 ether, 1_000_000 ether];
+        uint256[4] memory liqs = [uint256(1000 ether), 10_000 ether, 100_000 ether, 1_000_000 ether];
         string[5] memory orderLabels = ["0.01", "0.1", "1", "10", "100"];
         string[4] memory liqLabels = ["1K", "10K", "100K", "1M"];
 
@@ -352,11 +356,7 @@ contract V4GeomeanSlippageForkTest is Test {
                 );
 
                 // Row monotonicity: slippage increases with order size at fixed liquidity.
-                assertGe(
-                    slippage,
-                    prevSlippageInRow,
-                    "Slippage must increase with order size at fixed liquidity"
-                );
+                assertGe(slippage, prevSlippageInRow, "Slippage must increase with order size at fixed liquidity");
                 prevSlippageInRow = slippage;
             }
         }
@@ -412,7 +412,9 @@ contract V4GeomeanSlippageForkTest is Test {
                 address(projectToken) // project token (quote)
             );
 
-            console.log("  TWAP %s: amountOut=%s, meanTick=%s", labels[i], _formatEther(amountOut), _toStringSigned(meanTick));
+            console.log(
+                "  TWAP %s: amountOut=%s, meanTick=%s", labels[i], _formatEther(amountOut), _toStringSigned(meanTick)
+            );
             console.log("    meanLiquidity=%s", _toString(uint256(meanLiquidity)));
 
             // Verify valid quotes returned for all windows.
@@ -433,7 +435,7 @@ contract V4GeomeanSlippageForkTest is Test {
         console.log("");
 
         uint256[3] memory orders = [uint256(0.1 ether), 1 ether, 10 ether];
-        uint256[3] memory liqs = [uint256(1_000 ether), 10_000 ether, 100_000 ether];
+        uint256[3] memory liqs = [uint256(1000 ether), 10_000 ether, 100_000 ether];
         string[3] memory orderLabels = ["0.1", "1", "10"];
         string[3] memory liqLabels = ["1K", "10K", "100K"];
 
@@ -449,12 +451,7 @@ contract V4GeomeanSlippageForkTest is Test {
 
                 // Get the TWAP quote as the minimum baseline.
                 (uint256 twapMinimum,,) = JBSwapLib.getQuoteFromOracle(
-                    poolManager,
-                    key,
-                    5 minutes,
-                    uint128(orders[o]),
-                    address(0),
-                    address(projectToken)
+                    poolManager, key, 5 minutes, uint128(orders[o]), address(0), address(projectToken)
                 );
 
                 uint256 adjustedMinimum =
@@ -471,11 +468,7 @@ contract V4GeomeanSlippageForkTest is Test {
                 );
                 console.log("      slippage=%s bps", _toString(slippage));
 
-                assertGe(
-                    received,
-                    adjustedMinimum,
-                    "Swap output must meet or exceed slippage-adjusted minimum"
-                );
+                assertGe(received, adjustedMinimum, "Swap output must meet or exceed slippage-adjusted minimum");
             }
         }
     }
@@ -586,14 +579,7 @@ contract V4GeomeanSlippageForkTest is Test {
     }
 
     /// @notice Mock oracle with a specific tick delta to simulate price movement over a TWAP window.
-    function _mockOracleWithTickDelta(
-        PoolKey memory,
-        uint256 liquidity,
-        uint32 twapWindow,
-        int56 tickDelta
-    )
-        internal
-    {
+    function _mockOracleWithTickDelta(PoolKey memory, uint256 liquidity, uint32 twapWindow, int56 tickDelta) internal {
         vm.etch(address(0), hex"00");
 
         int56[] memory tickCumulatives = new int56[](2);

@@ -163,10 +163,7 @@ contract CrossCurrency_Unit is Test {
             terminal: address(terminal),
             payer: beneficiary,
             amount: JBTokenAmount({
-                token: JBConstants.NATIVE_TOKEN,
-                value: 1e18,
-                decimals: 18,
-                currency: nativeCurrency
+                token: JBConstants.NATIVE_TOKEN, value: 1e18, decimals: 18, currency: nativeCurrency
             }),
             projectId: projectId,
             rulesetId: uint48(block.timestamp),
@@ -196,10 +193,7 @@ contract CrossCurrency_Unit is Test {
             terminal: address(terminal),
             payer: beneficiary,
             amount: JBTokenAmount({
-                token: JBConstants.NATIVE_TOKEN,
-                value: 1e18,
-                decimals: 18,
-                currency: nativeCurrency
+                token: JBConstants.NATIVE_TOKEN, value: 1e18, decimals: 18, currency: nativeCurrency
             }),
             projectId: projectId,
             rulesetId: uint48(block.timestamp),
@@ -239,16 +233,15 @@ contract CrossCurrency_Unit is Test {
             hooks: IHooks(address(0))
         });
 
-        vm.mockCall(address(tokens), abi.encodeWithSelector(IJBTokens.tokenOf.selector, projectId), abi.encode(mockToken));
+        vm.mockCall(
+            address(tokens), abi.encodeWithSelector(IJBTokens.tokenOf.selector, projectId), abi.encode(mockToken)
+        );
 
         JBBeforePayRecordedContext memory context = JBBeforePayRecordedContext({
             terminal: address(terminal),
             payer: beneficiary,
             amount: JBTokenAmount({
-                token: JBConstants.NATIVE_TOKEN,
-                value: 1e18,
-                decimals: 18,
-                currency: nativeCurrency
+                token: JBConstants.NATIVE_TOKEN, value: 1e18, decimals: 18, currency: nativeCurrency
             }),
             projectId: projectId,
             rulesetId: uint48(block.timestamp),

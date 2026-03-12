@@ -69,8 +69,8 @@ library BuybackDeploymentLib {
         returns (address)
     {
         string memory deploymentJson =
-            // forge-lint: disable-next-line(unsafe-cheatcode)
-            VM.readFile(string.concat(path, projectName, "/", networkName, "/", contractName, ".json"));
+        // forge-lint: disable-next-line(unsafe-cheatcode)
+        VM.readFile(string.concat(path, projectName, "/", networkName, "/", contractName, ".json"));
         return stdJson.readAddress(deploymentJson, ".address");
     }
 }
