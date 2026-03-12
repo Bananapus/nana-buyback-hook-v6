@@ -18,5 +18,5 @@ interface IGeomeanOracle {
     )
         external
         view
-        returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s);
+        returns (int56[] memory tickCumulatives, uint136[] memory secondsPerLiquidityCumulativeX128s);
 }

@@ -16,33 +16,32 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {IJBBuybackHook} from "src/interfaces/IJBBuybackHook.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 
 // Test mocks
 import {MockPoolManager} from "../mock/MockPoolManager.sol";
 
 /// @notice Simple ERC20 for testing.
-contract L45_MockToken is ERC20 {
+contract OWE_MockToken is ERC20 {
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
 }
 
 /// @notice setPoolFor should emit TwapWindowChanged with the correct
 ///         oldWindow value. Before the fix, oldWindow was hardcoded to 0 even when a previous
 ///         TWAP window had been set via setTwapWindowOf for the same project.
-contract L45_OldWindowEvent is Test {
+contract OWE_OldWindowEvent is Test {
     using PoolIdLibrary for PoolKey;
 
     JBBuybackHook hook;
     MockPoolManager mockPM;
-    L45_MockToken projectToken;
-    L45_MockToken wethToken;
+    OWE_MockToken projectToken;
+    OWE_MockToken terminalToken;
 
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions permissions = IJBPermissions(makeAddr("permissions"));
@@ -57,8 +56,8 @@ contract L45_OldWindowEvent is Test {
 
     function setUp() public {
         mockPM = new MockPoolManager();
-        projectToken = new L45_MockToken("ProjectToken", "PT");
-        wethToken = new L45_MockToken("WETH", "WETH");
+        projectToken = new OWE_MockToken("ProjectToken", "PT");
+        terminalToken = new OWE_MockToken("TerminalToken", "TT");
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -72,8 +71,8 @@ contract L45_OldWindowEvent is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            wrappedNativeToken: IWETH9(address(wethToken)),
             poolManager: IPoolManager(address(mockPM)),
+            oracleHook: IHooks(address(0)),
             trustedForwarder: address(0)
         });
 
@@ -94,11 +93,11 @@ contract L45_OldWindowEvent is Test {
         // Build a valid pool key.
         address token0;
         address token1;
-        if (address(projectToken) < address(wethToken)) {
+        if (address(projectToken) < address(terminalToken)) {
             token0 = address(projectToken);
-            token1 = address(wethToken);
+            token1 = address(terminalToken);
         } else {
-            token0 = address(wethToken);
+            token0 = address(terminalToken);
             token1 = address(projectToken);
         }
 
@@ -121,7 +120,7 @@ contract L45_OldWindowEvent is Test {
         });
 
         vm.prank(owner);
-        hook.setPoolFor(projectId, key, firstWindow, address(wethToken));
+        hook.setPoolFor(projectId, key, firstWindow, address(terminalToken));
     }
 
     /// @notice When setTwapWindowOf was called before setPoolFor for a different terminal token,
@@ -130,11 +129,11 @@ contract L45_OldWindowEvent is Test {
         // First, set pool for one terminal token.
         address token0a;
         address token1a;
-        if (address(projectToken) < address(wethToken)) {
+        if (address(projectToken) < address(terminalToken)) {
             token0a = address(projectToken);
-            token1a = address(wethToken);
+            token1a = address(terminalToken);
         } else {
-            token0a = address(wethToken);
+            token0a = address(terminalToken);
             token1a = address(projectToken);
         }
 
@@ -151,7 +150,7 @@ contract L45_OldWindowEvent is Test {
 
         // Set pool — this sets twapWindowOf[projectId] = firstWindow.
         vm.prank(owner);
-        hook.setPoolFor(projectId, keyA, firstWindow, address(wethToken));
+        hook.setPoolFor(projectId, keyA, firstWindow, address(terminalToken));
 
         // Verify TWAP window was stored.
         assertEq(hook.twapWindowOf(projectId), firstWindow, "twapWindow should be set");
@@ -170,11 +169,11 @@ contract L45_OldWindowEvent is Test {
         // First set a pool to establish a TWAP window.
         address token0;
         address token1;
-        if (address(projectToken) < address(wethToken)) {
+        if (address(projectToken) < address(terminalToken)) {
             token0 = address(projectToken);
-            token1 = address(wethToken);
+            token1 = address(terminalToken);
         } else {
-            token0 = address(wethToken);
+            token0 = address(terminalToken);
             token1 = address(projectToken);
         }
 
@@ -190,7 +189,7 @@ contract L45_OldWindowEvent is Test {
         mockPM.setSlot0(key.toId(), sqrtPrice, 0, 3000);
 
         vm.prank(owner);
-        hook.setPoolFor(projectId, key, firstWindow, address(wethToken));
+        hook.setPoolFor(projectId, key, firstWindow, address(terminalToken));
 
         // Now change the TWAP window — oldWindow should be firstWindow, not 0.
         vm.expectEmit(true, false, false, true);

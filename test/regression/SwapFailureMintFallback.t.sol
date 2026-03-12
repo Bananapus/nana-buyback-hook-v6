@@ -20,7 +20,6 @@ import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterP
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Uniswap V4
@@ -33,15 +32,13 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
-import {IJBBuybackHook} from "src/interfaces/IJBBuybackHook.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 
 // Test mocks
 import {MockPoolManager} from "../mock/MockPoolManager.sol";
 import {MockOracleHook} from "../mock/MockOracleHook.sol";
 
 /// @notice Simple ERC20 token for testing.
-contract M34_MockProjectToken is ERC20 {
+contract SFMF_MockProjectToken is ERC20 {
     constructor() ERC20("ProjectToken", "PT") {}
 
     function mint(address to, uint256 amount) external {
@@ -49,40 +46,19 @@ contract M34_MockProjectToken is ERC20 {
     }
 }
 
-/// @notice Minimal mock WETH9 for testing.
-contract M34_MockWETH9 is ERC20 {
-    constructor() ERC20("Wrapped Ether", "WETH") {}
-
-    function deposit() external payable {
-        _mint(msg.sender, msg.value);
-    }
-
-    function withdraw(uint256 amount) external {
-        _burn(msg.sender, amount);
-        (bool success,) = msg.sender.call{value: amount}("");
-        require(success, "MockWETH9: ETH transfer failed");
-    }
-
-    receive() external payable {
-        _mint(msg.sender, msg.value);
-    }
-}
-
 /// @notice Test harness exposing JBBuybackHook internals.
-contract M34_ForTest_BuybackHook is JBBuybackHook {
+contract SFMF_ForTest_BuybackHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IWETH9 wrappedNativeToken,
         IPoolManager poolManager,
+        IHooks oracleHook,
         address trustedForwarder
     )
-        JBBuybackHook(
-            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
-        )
+        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
     {}
 
     function ForTest_initPool(
@@ -103,15 +79,14 @@ contract M34_ForTest_BuybackHook is JBBuybackHook {
 /// @notice When POOL_MANAGER.unlock() reverts, the hook should
 ///         fall through to the mint path even when minimumSwapAmountOut > 0.
 ///         Before the fix, `0 < minimumSwapAmountOut` would revert with SpecifiedSlippageExceeded.
-contract M34_SwapFailureMintFallback is Test {
+contract SFMF_SwapFailureMintFallback is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
-    M34_ForTest_BuybackHook hook;
+    SFMF_ForTest_BuybackHook hook;
     MockPoolManager mockPM;
     MockOracleHook mockOracle;
-    M34_MockProjectToken projectToken;
-    M34_MockWETH9 mockWeth;
+    SFMF_MockProjectToken projectToken;
 
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions permissions = IJBPermissions(makeAddr("permissions"));
@@ -132,8 +107,7 @@ contract M34_SwapFailureMintFallback is Test {
     function setUp() public {
         mockPM = new MockPoolManager();
         mockOracle = new MockOracleHook();
-        projectToken = new M34_MockProjectToken();
-        mockWeth = new M34_MockWETH9();
+        projectToken = new SFMF_MockProjectToken();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -143,31 +117,21 @@ contract M34_SwapFailureMintFallback is Test {
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
 
-        hook = new M34_ForTest_BuybackHook({
+        hook = new SFMF_ForTest_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
             projects: projects,
             tokens: tokens,
-            wrappedNativeToken: IWETH9(address(mockWeth)),
             poolManager: IPoolManager(address(mockPM)),
+            oracleHook: IHooks(address(mockOracle)),
             trustedForwarder: address(0)
         });
 
-        // Build pool key (sorted).
-        address token0;
-        address token1;
-        if (address(projectToken) < address(mockWeth)) {
-            token0 = address(projectToken);
-            token1 = address(mockWeth);
-        } else {
-            token0 = address(mockWeth);
-            token1 = address(projectToken);
-        }
-
+        // Build pool key: native ETH (address(0)) is always currency0.
         poolKey = PoolKey({
-            currency0: Currency.wrap(token0),
-            currency1: Currency.wrap(token1),
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(projectToken)),
             fee: 3000,
             tickSpacing: 60,
             hooks: IHooks(address(mockOracle))
@@ -208,7 +172,7 @@ contract M34_SwapFailureMintFallback is Test {
         mockPM.setLiquidity(poolId, 1_000_000 ether);
 
         // Initialize pool in hook (bypass permissions).
-        hook.ForTest_initPool(projectId, poolKey, twapWindow, address(projectToken), address(mockWeth));
+        hook.ForTest_initPool(projectId, poolKey, twapWindow, address(projectToken), address(0));
     }
 
     function _mockCurrentRuleset() internal {
@@ -255,7 +219,7 @@ contract M34_SwapFailureMintFallback is Test {
     ///         minimumSwapAmountOut > 0 (set by TWAP or payer quote), the payment should
     ///         succeed via the mint fallback path instead of reverting with SpecifiedSlippageExceeded.
     function test_swapFailureFallsBackToMint_nonZeroMinimum() public {
-        bool projectTokenIs0 = address(projectToken) < address(mockWeth);
+        bool projectTokenIs0 = address(projectToken) < address(0);
         uint256 payAmount = 1 ether;
         uint256 minimumSwapAmountOut = 500e18; // Non-zero — this would have caused revert before fix.
 

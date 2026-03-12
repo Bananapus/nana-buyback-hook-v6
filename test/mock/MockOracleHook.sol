@@ -8,8 +8,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 contract MockOracleHook {
     int56 public tickCumulative0;
     int56 public tickCumulative1;
-    uint160 public secPerLiq0;
-    uint160 public secPerLiq1;
+    uint136 public secPerLiq0;
+    uint136 public secPerLiq1;
     bool public shouldRevert;
 
     /// @notice Configure the observe return data.
@@ -20,8 +20,8 @@ contract MockOracleHook {
     function setObserveData(
         int56 _tickCumulative0,
         int56 _tickCumulative1,
-        uint160 _secPerLiq0,
-        uint160 _secPerLiq1
+        uint136 _secPerLiq0,
+        uint136 _secPerLiq1
     )
         external
     {
@@ -44,7 +44,7 @@ contract MockOracleHook {
     )
         external
         view
-        returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s)
+        returns (int56[] memory tickCumulatives, uint136[] memory secondsPerLiquidityCumulativeX128s)
     {
         if (shouldRevert) revert("MockOracle: unsupported");
 
@@ -52,7 +52,7 @@ contract MockOracleHook {
         tickCumulatives[0] = tickCumulative0;
         tickCumulatives[1] = tickCumulative1;
 
-        secondsPerLiquidityCumulativeX128s = new uint160[](2);
+        secondsPerLiquidityCumulativeX128s = new uint136[](2);
         secondsPerLiquidityCumulativeX128s[0] = secPerLiq0;
         secondsPerLiquidityCumulativeX128s[1] = secPerLiq1;
     }

@@ -73,22 +73,31 @@ library JBSwapLib {
 
         // Try querying the oracle hook.
         try IGeomeanOracle(address(key.hooks)).observe(key, _makeSecondsAgos(twapWindow)) returns (
-            int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s
+            int56[] memory tickCumulatives, uint136[] memory secondsPerLiquidityCumulativeX128s
         ) {
             // Compute arithmetic mean tick from tick cumulatives.
             int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
+            // Safe: twapWindow is a uint32 (max ~4.3B), fits in int32 (max ~2.1B) because realistic TWAP windows
+            // are bounded to MAX_TWAP_WINDOW (2 days = 172800). The division result fits in int24 because valid
+            // Uniswap tick values are bounded to [-887272, 887272].
+            // forge-lint: disable-next-line(unsafe-typecast)
             arithmeticMeanTick = int24(tickCumulativesDelta / int56(int32(twapWindow)));
 
             // Round towards negative infinity.
+            // Safe: same reasoning as above — twapWindow fits in int32 within realistic bounds.
+            // forge-lint: disable-next-line(unsafe-typecast)
             if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(twapWindow)) != 0)) {
                 arithmeticMeanTick--;
             }
 
             // Compute harmonic mean liquidity from seconds-per-liquidity cumulatives.
-            uint160 secondsPerLiquidityDelta =
+            uint136 secondsPerLiquidityDelta =
                 secondsPerLiquidityCumulativeX128s[1] - secondsPerLiquidityCumulativeX128s[0];
 
             if (secondsPerLiquidityDelta > 0) {
+                // Safe: the result of (twapWindow << 128) / secondsPerLiquidityDelta fits in uint128 because
+                // twapWindow is at most MAX_TWAP_WINDOW (172800) and secondsPerLiquidityDelta > 0 in this branch.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 harmonicMeanLiquidity = uint128((uint256(twapWindow) << 128) / uint256(secondsPerLiquidityDelta));
             }
 
@@ -288,6 +297,8 @@ library JBSwapLib {
             if (sqrtResult >= uint256(TickMath.MAX_SQRT_PRICE)) {
                 return TickMath.MAX_SQRT_PRICE - 1;
             }
+            // Safe: sqrtResult is clamped above to < MAX_SQRT_PRICE (a uint160), so it fits in uint160.
+            // forge-lint: disable-next-line(unsafe-typecast)
             return uint160(sqrtResult);
         } else {
             if (sqrtResult >= uint256(TickMath.MAX_SQRT_PRICE)) {
@@ -296,6 +307,8 @@ library JBSwapLib {
             if (sqrtResult <= uint256(TickMath.MIN_SQRT_PRICE)) {
                 return TickMath.MIN_SQRT_PRICE + 1;
             }
+            // Safe: sqrtResult is clamped above to < MAX_SQRT_PRICE (a uint160), so it fits in uint160.
+            // forge-lint: disable-next-line(unsafe-typecast)
             return uint160(sqrtResult);
         }
     }

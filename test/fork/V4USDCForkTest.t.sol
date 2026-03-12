@@ -46,26 +46,30 @@ import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
 // ----------------------------- Helpers ----------------------------- //
 //*********************************************************************//
 
-/// @notice Simple mintable ERC20 for test project tokens.
-contract ForkProjectToken is ERC20 {
-    constructor() ERC20("ForkProjectToken", "FPT") {}
+/// @notice Simple mintable ERC20 for USDC project tokens (always 18 decimals).
+contract USDCProjectToken is ERC20 {
+    constructor() ERC20("USDCProjectToken", "UPT") {}
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
     }
 }
 
-/// @notice Simple mintable ERC20 for ERC-20 terminal token tests.
-contract ForkTerminalToken is ERC20 {
-    constructor() ERC20("ForkTerminalToken", "FTT") {}
+/// @notice Mock USDC with 6 decimals.
+contract MockUSDC is ERC20 {
+    constructor() ERC20("Mock USDC", "USDC") {}
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
     }
 }
 
-/// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern.
-contract LiquidityHelper is IUnlockCallback {
+/// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern (ERC-20 only).
+contract USDCLiquidityHelper is IUnlockCallback {
     IPoolManager public immutable poolManager;
 
     struct AddLiqParams {
@@ -79,15 +83,7 @@ contract LiquidityHelper is IUnlockCallback {
         poolManager = _poolManager;
     }
 
-    function addLiquidity(
-        PoolKey calldata key,
-        int24 tickLower,
-        int24 tickUpper,
-        int256 liquidityDelta
-    )
-        external
-        payable
-    {
+    function addLiquidity(PoolKey calldata key, int24 tickLower, int24 tickUpper, int256 liquidityDelta) external {
         bytes memory data = abi.encode(AddLiqParams(key, tickLower, tickUpper, liquidityDelta));
         poolManager.unlock(data);
     }
@@ -123,13 +119,10 @@ contract LiquidityHelper is IUnlockCallback {
         if (delta >= 0) return;
         uint256 amount = uint256(uint128(-delta));
 
-        if (currency.isAddressZero()) {
-            poolManager.settle{value: amount}();
-        } else {
-            poolManager.sync(currency);
-            IERC20(Currency.unwrap(currency)).transfer(address(poolManager), amount);
-            poolManager.settle();
-        }
+        // Both tokens are ERC-20 (no native ETH in USDC pools).
+        poolManager.sync(currency);
+        IERC20(Currency.unwrap(currency)).transfer(address(poolManager), amount);
+        poolManager.settle();
     }
 
     function _takeIfPositive(Currency currency, int128 delta) internal {
@@ -137,12 +130,10 @@ contract LiquidityHelper is IUnlockCallback {
         uint256 amount = uint256(uint128(delta));
         poolManager.take(currency, address(this), amount);
     }
-
-    receive() external payable {}
 }
 
-/// @notice Test harness exposing internal state for fork tests.
-contract ForTest_ForkBuybackHook is JBBuybackHook {
+/// @notice Test harness exposing internal state for USDC fork tests.
+contract ForTest_USDCBuybackHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -161,14 +152,14 @@ contract ForTest_ForkBuybackHook is JBBuybackHook {
 // ----------------------------- Tests ------------------------------- //
 //*********************************************************************//
 
-/// @title V4ForkTest
-/// @notice Fork tests against the real Uniswap V4 PoolManager on Ethereum mainnet.
-///         Tests the full swap flow with varying order sizes, liquidity depths,
-///         and terminal token types (native ETH and ERC-20).
+/// @title V4USDCForkTest
+/// @notice Fork tests against the real Uniswap V4 PoolManager on Ethereum mainnet
+///         using a 6-decimal USDC-like ERC-20 as the terminal token.
+///         Mirrors V4ForkTest.t.sol but validates non-18-decimal terminal token handling.
 ///
-///         Run with: FOUNDRY_PROFILE=fork forge test --match-contract V4ForkTest -vvv --skip "script/*"
+///         Run with: FOUNDRY_PROFILE=fork forge test --match-contract V4USDCForkTest -vvv --skip "script/*"
 ///         Requires RPC_ETHEREUM_MAINNET in .env
-contract V4ForkTest is Test {
+contract V4USDCForkTest is Test {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
@@ -192,8 +183,8 @@ contract V4ForkTest is Test {
     //*********************************************************************//
 
     IPoolManager poolManager;
-    LiquidityHelper liqHelper;
-    ForTest_ForkBuybackHook hook;
+    USDCLiquidityHelper liqHelper;
+    ForTest_USDCBuybackHook hook;
 
     // Mock JB core (we're testing V4 integration, not JB core)
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
@@ -222,7 +213,7 @@ contract V4ForkTest is Test {
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
         poolManager = IPoolManager(POOL_MANAGER_ADDR);
-        liqHelper = new LiquidityHelper(poolManager);
+        liqHelper = new USDCLiquidityHelper(poolManager);
 
         // Etch code at mock addresses.
         vm.etch(address(directory), "0x01");
@@ -234,7 +225,7 @@ contract V4ForkTest is Test {
         vm.etch(address(terminal), "0x01");
 
         // Deploy the buyback hook with real PoolManager.
-        hook = new ForTest_ForkBuybackHook({
+        hook = new ForTest_USDCBuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
@@ -263,106 +254,85 @@ contract V4ForkTest is Test {
     }
 
     //*********************************************************************//
-    // ---------------------- Fork: Varying Order Sizes ------------------ //
+    // --------------- Fork: USDC Varying Order Sizes -------------------- //
     //*********************************************************************//
 
-    /// @notice Test swaps at 5 different order sizes against a medium-depth pool.
-    function test_fork_varyingOrderSizes() public onlyFork {
+    /// @notice Test swaps at 5 different USDC order sizes against a medium-depth pool.
+    function test_fork_usdc_varyingOrderSizes() public onlyFork {
         console.log("");
-        console.log("====== FORK TEST: VARYING ORDER SIZES (10K liq) ======");
+        console.log("====== FORK TEST: USDC VARYING ORDER SIZES (100K USDC liq) ======");
         console.log("");
 
-        uint256[5] memory orderSizes = [uint256(0.01 ether), 0.1 ether, 1 ether, 10 ether, 100 ether];
+        uint256[5] memory orderSizes = [uint256(10e6), 100e6, 1000e6, 10_000e6, 100_000e6];
+        string[5] memory labels = ["10 USDC", "100 USDC", "1K USDC", "10K USDC", "100K USDC"];
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 10_000 ether);
+            MockUSDC usdc = new MockUSDC();
+            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, 100_000e6);
 
-            uint256 received = _executeNativeSwap(pid, key, projectToken, orderSizes[i]);
+            uint256 received = _executeUSDCSwap(pid, key, projectToken, usdc, orderSizes[i]);
 
-            console.log("  Order: %s ETH -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
+            console.log("  Order: %s -> %s tokens received", labels[i], _formatEther(received));
 
-            assertGt(received, 0, "Should receive tokens from swap");
+            assertGt(received, 0, "Should receive tokens from USDC swap");
         }
     }
 
     //*********************************************************************//
-    // -------------------- Fork: Varying Liquidity ---------------------- //
+    // --------------- Fork: USDC Varying Liquidity ---------------------- //
     //*********************************************************************//
 
-    /// @notice Test the same order size across 4 different liquidity depths.
-    function test_fork_varyingLiquidity() public onlyFork {
+    /// @notice Test the same USDC order size across 4 different liquidity depths.
+    function test_fork_usdc_varyingLiquidity() public onlyFork {
         console.log("");
-        console.log("====== FORK TEST: VARYING LIQUIDITY (1 ETH order) ======");
+        console.log("====== FORK TEST: USDC VARYING LIQUIDITY (1K USDC order) ======");
         console.log("");
 
-        uint256[4] memory liquidities = [uint256(100 ether), 10_000 ether, 1_000_000 ether, 100_000_000 ether];
-        string[4] memory labels = ["100", "10K", "1M", "100M"];
+        uint256[4] memory liquidities = [uint256(1000e6), 10_000e6, 100_000e6, 1_000_000e6];
+        string[4] memory labels = ["1K", "10K", "100K", "1M"];
 
         for (uint256 i = 0; i < liquidities.length; i++) {
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, liquidities[i]);
+            MockUSDC usdc = new MockUSDC();
+            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, liquidities[i]);
 
-            uint256 received = _executeNativeSwap(pid, key, projectToken, 1 ether);
+            uint256 received = _executeUSDCSwap(pid, key, projectToken, usdc, 1000e6);
 
-            console.log("  Liquidity: %s -> %s tokens for 1 ETH", labels[i], _formatEther(received));
+            console.log("  Liquidity: %s USDC -> %s tokens for 1K USDC", labels[i], _formatEther(received));
 
-            assertGt(received, 0, "Should receive tokens from swap");
+            assertGt(received, 0, "Should receive tokens from USDC swap");
         }
     }
 
     //*********************************************************************//
-    // --------------------- Fork: ERC-20 Terminal ----------------------- //
+    // -------------- Fork: USDC Order Size x Liquidity Matrix ----------- //
     //*********************************************************************//
 
-    /// @notice Test swap with an ERC-20 terminal token (not native ETH).
-    function test_fork_erc20Terminal() public onlyFork {
+    /// @notice Cross-product: 3 USDC order sizes x 3 liquidity depths.
+    function test_fork_usdc_orderSizeByLiquidity() public onlyFork {
         console.log("");
-        console.log("====== FORK TEST: ERC-20 TERMINAL TOKEN ======");
-        console.log("");
-
-        uint256[3] memory orderSizes = [uint256(1 ether), 10 ether, 100 ether];
-
-        for (uint256 i = 0; i < orderSizes.length; i++) {
-            uint256 pid = _nextProjectId();
-            ForkTerminalToken terminalToken = new ForkTerminalToken();
-            (PoolKey memory key, ForkProjectToken projectToken) =
-                _setupProjectWithERC20Pool(pid, terminalToken, 10_000 ether);
-
-            uint256 received = _executeERC20Swap(pid, key, projectToken, terminalToken, orderSizes[i]);
-
-            console.log("  ERC-20 Order: %s -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
-
-            assertGt(received, 0, "Should receive tokens from ERC-20 swap");
-        }
-    }
-
-    //*********************************************************************//
-    // -------------------- Fork: Matrix (size x depth) ------------------ //
-    //*********************************************************************//
-
-    /// @notice Cross-product: 3 order sizes x 3 liquidity depths.
-    function test_fork_orderSizeByLiquidity() public onlyFork {
-        console.log("");
-        console.log("====== FORK TEST: ORDER SIZE x LIQUIDITY MATRIX ======");
+        console.log("====== FORK TEST: USDC ORDER SIZE x LIQUIDITY MATRIX ======");
         console.log("");
 
-        uint256[3] memory orders = [uint256(0.1 ether), 1 ether, 50 ether];
-        uint256[3] memory liqs = [uint256(1000 ether), 100_000 ether, 10_000_000 ether];
-        string[3] memory orderLabels = ["0.1 ETH", "1 ETH", "50 ETH"];
-        string[3] memory liqLabels = ["1K", "100K", "10M"];
+        uint256[3] memory orders = [uint256(100e6), 1000e6, 10_000e6];
+        uint256[3] memory liqs = [uint256(10_000e6), 100_000e6, 1_000_000e6];
+        string[3] memory orderLabels = ["100 USDC", "1K USDC", "10K USDC"];
+        string[3] memory liqLabels = ["10K", "100K", "1M"];
 
         for (uint256 l = 0; l < liqs.length; l++) {
-            console.log("  --- Liquidity: %s ---", liqLabels[l]);
+            console.log("  --- Liquidity: %s USDC ---", liqLabels[l]);
 
             for (uint256 o = 0; o < orders.length; o++) {
                 uint256 pid = _nextProjectId();
-                (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, liqs[l]);
+                MockUSDC usdc = new MockUSDC();
+                (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, liqs[l]);
 
-                uint256 received = _executeNativeSwap(pid, key, projectToken, orders[o]);
+                uint256 received = _executeUSDCSwap(pid, key, projectToken, usdc, orders[o]);
 
-                // Compute effective rate.
-                uint256 rateBps = received > 0 ? (received * 10_000) / orders[o] : 0;
+                // Compute effective rate (scale USDC to 18 decimals for comparison).
+                uint256 orderIn18 = orders[o] * 1e12;
+                uint256 rateBps = received > 0 ? (received * 10_000) / orderIn18 : 0;
 
                 console.log(
                     "    %s -> %s tokens (rate: %s bps of par)",
@@ -377,68 +347,55 @@ contract V4ForkTest is Test {
     }
 
     //*********************************************************************//
-    // -------------------- E2E: Full beforePay → afterPay --------------- //
+    // -------------- E2E: Full beforePay -> afterPay (USDC) ------------- //
     //*********************************************************************//
 
-    /// @notice End-to-end: beforePayRecordedWith → afterPayRecordedWith with real PoolManager.
-    function test_fork_e2e_fullFlow() public onlyFork {
+    /// @notice End-to-end: beforePayRecordedWith -> afterPayRecordedWith with USDC terminal token.
+    function test_fork_usdc_e2e_fullFlow() public onlyFork {
         console.log("");
-        console.log("====== FORK E2E: FULL FLOW (beforePay -> afterPay) ======");
+        console.log("====== FORK E2E: USDC FULL FLOW (beforePay -> afterPay) ======");
         console.log("");
 
-        uint256[3] memory orderSizes = [uint256(0.1 ether), 1 ether, 10 ether];
+        uint256[3] memory orderSizes = [uint256(100e6), 1000e6, 10_000e6];
+        string[3] memory labels = ["100 USDC", "1K USDC", "10K USDC"];
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 100_000 ether);
+            MockUSDC usdc = new MockUSDC();
+            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, 100_000e6);
 
-            uint256 received = _executeE2E(pid, key, projectToken, orderSizes[i]);
+            uint256 received = _executeE2E_USDC(pid, key, projectToken, usdc, orderSizes[i]);
 
-            console.log("  E2E %s ETH -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
+            console.log("  E2E %s -> %s tokens received", labels[i], _formatEther(received));
 
-            assertGt(received, 0, "E2E should complete swap");
+            assertGt(received, 0, "E2E USDC should complete swap");
         }
     }
 
-    /// @notice E2E with ERC-20 terminal token.
-    function test_fork_e2e_erc20() public onlyFork {
-        console.log("");
-        console.log("====== FORK E2E: ERC-20 TERMINAL ======");
-        console.log("");
-
-        uint256 pid = _nextProjectId();
-        ForkTerminalToken terminalToken = new ForkTerminalToken();
-        (PoolKey memory key, ForkProjectToken projectToken) =
-            _setupProjectWithERC20Pool(pid, terminalToken, 100_000 ether);
-
-        uint256 received = _executeE2E_ERC20(pid, key, projectToken, terminalToken, 1 ether);
-
-        console.log("  E2E ERC-20: 1 token -> %s project tokens", _formatEther(received));
-        assertGt(received, 0, "E2E ERC-20 should complete swap");
-    }
-
     //*********************************************************************//
-    // ------------ E2E: No Payer Quote (programmatic caller) ------------ //
+    // ------------ E2E: No Payer Quote (USDC terminal) ------------------ //
     //*********************************************************************//
 
-    /// @notice Verify buybacks work for callers that provide NO quote metadata.
+    /// @notice Verify buybacks work for callers that provide NO quote metadata with USDC terminal.
     /// @dev Without the spot-price fallback, this would always mint (twapMinimum = 0).
-    function test_fork_e2e_noPayerQuote() public onlyFork {
+    function test_fork_usdc_e2e_noPayerQuote() public onlyFork {
         console.log("");
-        console.log("====== FORK E2E: NO PAYER QUOTE (programmatic caller) ======");
+        console.log("====== FORK E2E: USDC NO PAYER QUOTE (programmatic caller) ======");
         console.log("");
 
-        uint256[3] memory orderSizes = [uint256(0.1 ether), 1 ether, 10 ether];
+        uint256[3] memory orderSizes = [uint256(100e6), 1000e6, 10_000e6];
+        string[3] memory labels = ["100 USDC", "1K USDC", "10K USDC"];
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 100_000 ether);
+            MockUSDC usdc = new MockUSDC();
+            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUSDCPool(pid, usdc, 100_000e6);
 
-            uint256 received = _executeE2E_noQuote(pid, key, projectToken, orderSizes[i]);
+            uint256 received = _executeE2E_noQuote_USDC(pid, key, projectToken, usdc, orderSizes[i]);
 
-            console.log("  No-quote %s ETH -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
+            console.log("  No-quote %s -> %s tokens received", labels[i], _formatEther(received));
 
-            assertGt(received, 0, "No-quote E2E should still trigger buyback via spot fallback");
+            assertGt(received, 0, "No-quote USDC E2E should still trigger buyback via spot fallback");
         }
     }
 
@@ -450,72 +407,25 @@ contract V4ForkTest is Test {
         return nextProjectId++;
     }
 
-    /// @notice Deploy a project token, initialize a native ETH V4 pool, add liquidity, register in hook.
-    function _setupProjectWithPool(
+    /// @notice Deploy a project token, initialize a USDC V4 pool, add liquidity, register in hook.
+    function _setupProjectWithUSDCPool(
         uint256 projectId,
-        uint256 liquidityTokenAmount
+        MockUSDC usdc,
+        uint256 liquidityUSDCAmount
     )
         internal
-        returns (PoolKey memory key, ForkProjectToken projectToken)
+        returns (PoolKey memory key, USDCProjectToken projectToken)
     {
-        projectToken = new ForkProjectToken();
+        projectToken = new USDCProjectToken();
 
-        // Native ETH (address(0)) is always currency0 since it's the smallest address.
-        key = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(address(projectToken)),
-            fee: POOL_FEE,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0))
-        });
-
-        // Initialize pool at price = 1.0 (tick 0).
-        uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        poolManager.initialize(key, sqrtPrice);
-
-        // Fund LiquidityHelper with project tokens and native ETH.
-        projectToken.mint(address(liqHelper), liquidityTokenAmount);
-        vm.deal(address(liqHelper), liquidityTokenAmount);
-
-        // Approve PoolManager to spend project tokens from LiquidityHelper.
-        vm.prank(address(liqHelper));
-        IERC20(address(projectToken)).approve(address(poolManager), type(uint256).max);
-
-        // Add full-range liquidity.
-        int256 liquidityDelta = int256(liquidityTokenAmount / 2);
-        vm.prank(address(liqHelper));
-        liqHelper.addLiquidity{value: liquidityTokenAmount}(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
-
-        // Mock JB core for this project.
-        _mockJBCore(projectId, projectToken);
-
-        // Mock the oracle at address(0) for hookless pools.
-        _mockOracle(key, liquidityDelta);
-
-        // Register pool in hook via setPoolFor (sets _poolIsSet = true).
-        vm.prank(owner);
-        hook.setPoolFor(projectId, key, 5 minutes, JBConstants.NATIVE_TOKEN);
-    }
-
-    /// @notice Deploy a project token + ERC-20 terminal token, initialize pool, add liquidity.
-    function _setupProjectWithERC20Pool(
-        uint256 projectId,
-        ForkTerminalToken terminalToken,
-        uint256 liquidityTokenAmount
-    )
-        internal
-        returns (PoolKey memory key, ForkProjectToken projectToken)
-    {
-        projectToken = new ForkProjectToken();
-
-        // Build sorted pool key (projectToken vs terminalToken).
+        // Build sorted pool key (both tokens are ERC-20).
         address token0;
         address token1;
-        if (address(projectToken) < address(terminalToken)) {
+        if (address(projectToken) < address(usdc)) {
             token0 = address(projectToken);
-            token1 = address(terminalToken);
+            token1 = address(usdc);
         } else {
-            token0 = address(terminalToken);
+            token0 = address(usdc);
             token1 = address(projectToken);
         }
 
@@ -527,38 +437,40 @@ contract V4ForkTest is Test {
             hooks: IHooks(address(0))
         });
 
-        // Initialize pool at price = 1.0 (tick 0).
+        // Initialize pool at price = 1.0 (tick 0) in raw token terms.
+        // For a 6-decimal/18-decimal pair, tick 0 means 1 raw USDC = 1 raw projectToken.
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
         poolManager.initialize(key, sqrtPrice);
 
-        // Fund LiquidityHelper.
-        projectToken.mint(address(liqHelper), liquidityTokenAmount);
-        terminalToken.mint(address(liqHelper), liquidityTokenAmount);
+        // Fund LiquidityHelper with both tokens.
+        // At tick 0 (1:1 price ratio in raw terms), we need matching raw amounts.
+        usdc.mint(address(liqHelper), liquidityUSDCAmount);
+        projectToken.mint(address(liqHelper), liquidityUSDCAmount);
 
-        // Approve PoolManager.
+        // Approve PoolManager to spend both tokens from LiquidityHelper.
         vm.startPrank(address(liqHelper));
         IERC20(address(projectToken)).approve(address(poolManager), type(uint256).max);
-        IERC20(address(terminalToken)).approve(address(poolManager), type(uint256).max);
+        IERC20(address(usdc)).approve(address(poolManager), type(uint256).max);
         vm.stopPrank();
 
-        // Add liquidity.
-        int256 liquidityDelta = int256(liquidityTokenAmount / 2);
+        // Add full-range liquidity.
+        int256 liquidityDelta = int256(liquidityUSDCAmount / 2);
         vm.prank(address(liqHelper));
         liqHelper.addLiquidity(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
 
-        // Mock JB core.
+        // Mock JB core for this project.
         _mockJBCore(projectId, projectToken);
 
         // Mock the oracle at address(0) for hookless pools.
         _mockOracle(key, liquidityDelta);
 
-        // Register pool in hook.
+        // Register pool in hook via setPoolFor.
         vm.prank(owner);
-        hook.setPoolFor(projectId, key, 5 minutes, address(terminalToken));
+        hook.setPoolFor(projectId, key, 5 minutes, address(usdc));
     }
 
     /// @notice Mock the IGeomeanOracle at address(0) for hookless pools.
-    /// @dev Returns tick cumulatives for tick=0 (1:1 price) and liquidity-based secondsPerLiquidity.
+    /// @dev Returns tick cumulatives for tick=0 (1:1 raw price) and liquidity-based secondsPerLiquidity.
     function _mockOracle(PoolKey memory, int256 liquidity) internal {
         // Etch minimal bytecode at address(0) so it's treated as a contract.
         vm.etch(address(0), hex"00");
@@ -570,7 +482,7 @@ contract V4ForkTest is Test {
 
         uint136[] memory secondsPerLiquidityCumulativeX128s = new uint136[](2);
         secondsPerLiquidityCumulativeX128s[0] = 0;
-        // delta = twapWindow * 2^128 / liquidity (so harmonicMeanLiquidity ≈ actual liquidity)
+        // delta = twapWindow * 2^128 / liquidity (so harmonicMeanLiquidity ≈ actual liquidity).
         uint256 liq = uint256(liquidity > 0 ? liquidity : -liquidity);
         if (liq == 0) liq = 1;
         secondsPerLiquidityCumulativeX128s[1] = uint136((uint256(300) << 128) / liq);
@@ -583,7 +495,7 @@ contract V4ForkTest is Test {
         );
     }
 
-    function _mockJBCore(uint256 projectId, ForkProjectToken projectToken) internal {
+    function _mockJBCore(uint256 projectId, USDCProjectToken projectToken) internal {
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
@@ -605,8 +517,11 @@ contract V4ForkTest is Test {
             address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );
 
-        // Mock currentRulesetOf with weight = 0.5e18 (so swap path wins over mint at 1:1 pool).
-        _mockRuleset(projectId, 0.5e18);
+        // Mock currentRulesetOf with very low weight so swap path wins over mint.
+        // For USDC (6 decimals), weightRatio = 1e6, so mint gives: orderSize * weight / 1e6.
+        // With weight = 1e6 (0.000000000001e18), mint gives ~orderSize raw tokens (negligible).
+        // The pool at tick-0 will always give more, so the hook should choose swap.
+        _mockRuleset(projectId, 1e6);
     }
 
     function _mockRuleset(uint256 projectId, uint256 weight) internal {
@@ -653,35 +568,29 @@ contract V4ForkTest is Test {
     // -------------------- Internal: Swap Execution --------------------- //
     //*********************************************************************//
 
-    /// @notice Execute a swap via afterPayRecordedWith with native ETH.
+    /// @notice Execute a swap via afterPayRecordedWith with USDC (ERC-20, 6 decimals).
     /// @return received The amount of project tokens received.
-    function _executeNativeSwap(
+    function _executeUSDCSwap(
         uint256 projectId,
         PoolKey memory,
-        ForkProjectToken projectToken,
+        USDCProjectToken projectToken,
+        MockUSDC usdc,
         uint256 orderSize
     )
         internal
         returns (uint256 received)
     {
-        // With native ETH pools, address(0) is always currency0, so projectToken is never token0.
-        bool projectTokenIs0 = false;
+        bool projectTokenIs0 = address(projectToken) < address(usdc);
 
         JBAfterPayRecordedContext memory ctx = JBAfterPayRecordedContext({
             payer: payer,
             projectId: projectId,
             rulesetId: 1,
             amount: JBTokenAmount({
-                token: JBConstants.NATIVE_TOKEN,
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                value: orderSize
+                token: address(usdc), decimals: 6, currency: uint32(uint160(JBConstants.NATIVE_TOKEN)), value: orderSize
             }),
             forwardedAmount: JBTokenAmount({
-                token: JBConstants.NATIVE_TOKEN,
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                value: orderSize
+                token: address(usdc), decimals: 6, currency: uint32(uint160(JBConstants.NATIVE_TOKEN)), value: orderSize
             }),
             weight: 0.5e18,
             newlyIssuedTokenCount: 0,
@@ -697,65 +606,10 @@ contract V4ForkTest is Test {
             abi.encode()
         );
 
-        uint256 balBefore = projectToken.balanceOf(address(hook));
-
-        vm.deal(address(terminal), orderSize);
+        // Fund the terminal with USDC, approve the hook.
+        usdc.mint(address(terminal), orderSize);
         vm.prank(address(terminal));
-        hook.afterPayRecordedWith{value: orderSize}(ctx);
-
-        // Hook burns tokens via controller mock, so check the controller was called.
-        // The received amount is what was decoded from the unlock return value.
-        // Since controller.burnTokensOf is mocked (no-op), tokens stay on the hook.
-        received = projectToken.balanceOf(address(hook)) - balBefore;
-    }
-
-    /// @notice Execute a swap via afterPayRecordedWith with an ERC-20 terminal token.
-    function _executeERC20Swap(
-        uint256 projectId,
-        PoolKey memory,
-        ForkProjectToken projectToken,
-        ForkTerminalToken terminalToken,
-        uint256 orderSize
-    )
-        internal
-        returns (uint256 received)
-    {
-        bool projectTokenIs0 = address(projectToken) < address(terminalToken);
-
-        JBAfterPayRecordedContext memory ctx = JBAfterPayRecordedContext({
-            payer: payer,
-            projectId: projectId,
-            rulesetId: 1,
-            amount: JBTokenAmount({
-                token: address(terminalToken),
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                value: orderSize
-            }),
-            forwardedAmount: JBTokenAmount({
-                token: address(terminalToken),
-                decimals: 18,
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                value: orderSize
-            }),
-            weight: 0.5e18,
-            newlyIssuedTokenCount: 0,
-            beneficiary: beneficiary,
-            hookMetadata: abi.encode(projectTokenIs0, uint256(0), uint256(0), controller),
-            payerMetadata: ""
-        });
-
-        // Mock addToBalanceOf for any leftover.
-        vm.mockCall(
-            address(terminal),
-            abi.encodeWithSignature("addToBalanceOf(uint256,address,uint256,bool,string,bytes)"),
-            abi.encode()
-        );
-
-        // Fund the terminal with the terminal token, approve the hook.
-        terminalToken.mint(address(terminal), orderSize);
-        vm.prank(address(terminal));
-        IERC20(address(terminalToken)).approve(address(hook), orderSize);
+        IERC20(address(usdc)).approve(address(hook), orderSize);
 
         uint256 balBefore = projectToken.balanceOf(address(hook));
 
@@ -765,11 +619,12 @@ contract V4ForkTest is Test {
         received = projectToken.balanceOf(address(hook)) - balBefore;
     }
 
-    /// @notice Full E2E: beforePayRecordedWith → afterPayRecordedWith with native ETH.
-    function _executeE2E(
+    /// @notice Full E2E: beforePayRecordedWith -> afterPayRecordedWith with USDC terminal.
+    function _executeE2E_USDC(
         uint256 projectId,
         PoolKey memory,
-        ForkProjectToken projectToken,
+        USDCProjectToken projectToken,
+        MockUSDC usdc,
         uint256 orderSize
     )
         internal
@@ -784,145 +639,58 @@ contract V4ForkTest is Test {
             fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
         }
 
-        // Step 1: beforePayRecordedWith — scoped to free beforeCtx.
+        // Step 1: beforePayRecordedWith -- scoped to free beforeCtx.
         uint256 specAmount;
         bytes memory specMetadata;
         {
+            // Weight is set to 1 (near-zero) so the TWAP swap quote at tick 0
+            // (~orderSize raw tokens after slippage) easily beats the mint amount
+            // (orderSize * 1 / 1e6 ≈ 0), forcing the hook to choose the swap path.
             JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
                 terminal: address(terminal),
                 payer: payer,
                 amount: JBTokenAmount({
-                    token: JBConstants.NATIVE_TOKEN,
-                    decimals: 18,
+                    token: address(usdc),
+                    decimals: 6,
                     currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: orderSize
                 }),
                 projectId: projectId,
                 rulesetId: 1,
                 beneficiary: beneficiary,
-                weight: 0.5e18,
+                weight: 1,
                 reservedPercent: 0,
                 metadata: fullMetadata
             });
 
             (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
-            assertEq(weight, 0, "E2E: weight should be 0 (swap path)");
-            assertEq(specs.length, 1, "E2E: should have 1 hook specification");
-            assertGt(specs[0].amount, 0, "E2E: swap amount should be > 0");
+            assertEq(weight, 0, "E2E USDC: weight should be 0 (swap path)");
+            assertEq(specs.length, 1, "E2E USDC: should have 1 hook specification");
+            assertGt(specs[0].amount, 0, "E2E USDC: swap amount should be > 0");
             specAmount = specs[0].amount;
             specMetadata = specs[0].metadata;
         }
 
-        // Step 2: afterPayRecordedWith — scoped to free afterCtx.
+        // Step 2: afterPayRecordedWith -- scoped to free afterCtx.
         {
             JBAfterPayRecordedContext memory afterCtx = JBAfterPayRecordedContext({
                 payer: payer,
                 projectId: projectId,
                 rulesetId: 1,
                 amount: JBTokenAmount({
-                    token: JBConstants.NATIVE_TOKEN,
-                    decimals: 18,
+                    token: address(usdc),
+                    decimals: 6,
                     currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: orderSize
                 }),
                 forwardedAmount: JBTokenAmount({
-                    token: JBConstants.NATIVE_TOKEN,
-                    decimals: 18,
+                    token: address(usdc),
+                    decimals: 6,
                     currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: specAmount
                 }),
-                weight: 0.5e18,
-                newlyIssuedTokenCount: 0,
-                beneficiary: beneficiary,
-                hookMetadata: specMetadata,
-                payerMetadata: fullMetadata
-            });
-
-            vm.mockCall(
-                address(terminal),
-                abi.encodeWithSignature("addToBalanceOf(uint256,address,uint256,bool,string,bytes)"),
-                abi.encode()
-            );
-
-            uint256 balBefore = projectToken.balanceOf(address(hook));
-
-            vm.deal(address(terminal), specAmount);
-            vm.prank(address(terminal));
-            hook.afterPayRecordedWith{value: specAmount}(afterCtx);
-
-            received = projectToken.balanceOf(address(hook)) - balBefore;
-        }
-    }
-
-    /// @notice Full E2E with ERC-20 terminal token.
-    function _executeE2E_ERC20(
-        uint256 projectId,
-        PoolKey memory,
-        ForkProjectToken projectToken,
-        ForkTerminalToken terminalToken,
-        uint256 orderSize
-    )
-        internal
-        returns (uint256 received)
-    {
-        // Build metadata in a scoped block to free stack slots.
-        bytes memory fullMetadata;
-        {
-            uint256 payerMinOut = (orderSize * 9) / 10;
-            bytes memory quoteMetadata = abi.encode(orderSize, payerMinOut);
-            bytes4 metadataId = JBMetadataResolver.getId("quote");
-            fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
-        }
-
-        // Step 1: beforePayRecordedWith — scoped to free beforeCtx.
-        uint256 specAmount;
-        bytes memory specMetadata;
-        {
-            JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
-                terminal: address(terminal),
-                payer: payer,
-                amount: JBTokenAmount({
-                    token: address(terminalToken),
-                    decimals: 18,
-                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                    value: orderSize
-                }),
-                projectId: projectId,
-                rulesetId: 1,
-                beneficiary: beneficiary,
-                weight: 0.5e18,
-                reservedPercent: 0,
-                metadata: fullMetadata
-            });
-
-            (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
-
-            assertEq(weight, 0, "E2E ERC-20: weight should be 0 (swap path)");
-            assertEq(specs.length, 1, "E2E ERC-20: should have 1 hook specification");
-            specAmount = specs[0].amount;
-            specMetadata = specs[0].metadata;
-        }
-
-        // Step 2: afterPayRecordedWith — scoped to free afterCtx.
-        {
-            JBAfterPayRecordedContext memory afterCtx = JBAfterPayRecordedContext({
-                payer: payer,
-                projectId: projectId,
-                rulesetId: 1,
-                amount: JBTokenAmount({
-                    token: address(terminalToken),
-                    decimals: 18,
-                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                    value: orderSize
-                }),
-                forwardedAmount: JBTokenAmount({
-                    token: address(terminalToken),
-                    decimals: 18,
-                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-                    value: specAmount
-                }),
-                weight: 0.5e18,
+                weight: 1,
                 newlyIssuedTokenCount: 0,
                 beneficiary: beneficiary,
                 hookMetadata: specMetadata,
@@ -936,10 +704,10 @@ contract V4ForkTest is Test {
                 abi.encode()
             );
 
-            // Fund the terminal with the terminal token.
-            terminalToken.mint(address(terminal), specAmount);
+            // Fund the terminal with USDC.
+            usdc.mint(address(terminal), specAmount);
             vm.prank(address(terminal));
-            IERC20(address(terminalToken)).approve(address(hook), specAmount);
+            IERC20(address(usdc)).approve(address(hook), specAmount);
 
             uint256 balBefore = projectToken.balanceOf(address(hook));
 
@@ -950,12 +718,13 @@ contract V4ForkTest is Test {
         }
     }
 
-    /// @notice Full E2E with NO payer quote — simulates a programmatic caller.
+    /// @notice Full E2E with NO payer quote -- simulates a programmatic caller with USDC terminal.
     /// @dev The hook must use the spot-price fallback to decide swap-vs-mint.
-    function _executeE2E_noQuote(
+    function _executeE2E_noQuote_USDC(
         uint256 projectId,
         PoolKey memory,
-        ForkProjectToken projectToken,
+        USDCProjectToken projectToken,
+        MockUSDC usdc,
         uint256 orderSize
     )
         internal
@@ -965,50 +734,51 @@ contract V4ForkTest is Test {
         uint256 specAmount;
         bytes memory specMetadata;
         {
+            // Weight is set to 1 (near-zero) so the TWAP swap quote beats mint.
             JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
                 terminal: address(terminal),
                 payer: payer,
                 amount: JBTokenAmount({
-                    token: JBConstants.NATIVE_TOKEN,
-                    decimals: 18,
+                    token: address(usdc),
+                    decimals: 6,
                     currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: orderSize
                 }),
                 projectId: projectId,
                 rulesetId: 1,
                 beneficiary: beneficiary,
-                weight: 0.5e18,
+                weight: 1,
                 reservedPercent: 0,
-                metadata: "" // No quote metadata — this is the point of the test.
+                metadata: "" // No quote metadata -- this is the point of the test.
             });
 
             (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
-            assertEq(weight, 0, "No-quote: weight should be 0 (swap path chosen via spot fallback)");
-            assertEq(specs.length, 1, "No-quote: should have 1 hook specification");
+            assertEq(weight, 0, "No-quote USDC: weight should be 0 (swap path chosen via spot fallback)");
+            assertEq(specs.length, 1, "No-quote USDC: should have 1 hook specification");
             specAmount = specs[0].amount;
             specMetadata = specs[0].metadata;
         }
 
-        // Step 2: afterPayRecordedWith — execute the swap.
+        // Step 2: afterPayRecordedWith -- execute the swap.
         {
             JBAfterPayRecordedContext memory afterCtx = JBAfterPayRecordedContext({
                 payer: payer,
                 projectId: projectId,
                 rulesetId: 1,
                 amount: JBTokenAmount({
-                    token: JBConstants.NATIVE_TOKEN,
-                    decimals: 18,
+                    token: address(usdc),
+                    decimals: 6,
                     currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: orderSize
                 }),
                 forwardedAmount: JBTokenAmount({
-                    token: JBConstants.NATIVE_TOKEN,
-                    decimals: 18,
+                    token: address(usdc),
+                    decimals: 6,
                     currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                     value: specAmount
                 }),
-                weight: 0.5e18,
+                weight: 1,
                 newlyIssuedTokenCount: 0,
                 beneficiary: beneficiary,
                 hookMetadata: specMetadata,
@@ -1021,11 +791,15 @@ contract V4ForkTest is Test {
                 abi.encode()
             );
 
+            // Fund the terminal with USDC.
+            usdc.mint(address(terminal), specAmount);
+            vm.prank(address(terminal));
+            IERC20(address(usdc)).approve(address(hook), specAmount);
+
             uint256 balBefore = projectToken.balanceOf(address(hook));
 
-            vm.deal(address(terminal), specAmount);
             vm.prank(address(terminal));
-            hook.afterPayRecordedWith{value: specAmount}(afterCtx);
+            hook.afterPayRecordedWith(afterCtx);
 
             received = projectToken.balanceOf(address(hook)) - balBefore;
         }

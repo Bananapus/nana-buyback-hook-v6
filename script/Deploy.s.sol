@@ -1,26 +1,31 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
+import {CoreDeployment, CoreDeploymentLib} from "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
+import {
+    Univ4RouterDeployment,
+    Univ4RouterDeploymentLib
+} from "@bananapus/univ4-router-v6/script/helpers/Univ4RouterDeploymentLib.sol";
 
-import {Sphinx} from "@sphinx-labs/contracts/SphinxPlugin.sol";
+import {Sphinx} from "@sphinx-labs/contracts/contracts/foundry/SphinxPlugin.sol";
 import {Script} from "forge-std/Script.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 
 contract DeployScript is Script, Sphinx {
     /// @notice tracks the deployment of the core contracts for the chain we are deploying to.
     CoreDeployment core;
 
+    /// @notice tracks the deployment of the univ4-router contracts for the chain we are deploying to.
+    Univ4RouterDeployment router;
+
     /// @notice the salts that are used to deploy the contracts.
-    bytes32 BUYBACK_HOOK = "JBBuybackHookV6";
+    bytes32 buybackHook = "JBBuybackHookV6";
 
     /// @notice tracks the addresses that are required for the chain we are deploying to.
-    address weth;
     address poolManager;
     address trustedForwarder;
 
@@ -36,41 +41,30 @@ contract DeployScript is Script, Sphinx {
             vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v6/deployments/"))
         );
 
+        // Get the deployment addresses for the univ4-router for this chain.
+        router = Univ4RouterDeploymentLib.getDeployment(
+            vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v6/deployments/"))
+        );
+
         trustedForwarder = core.permissions.trustedForwarder();
 
         // Uniswap V4 PoolManager addresses per chain.
-        // Ethereum Mainnet
         if (block.chainid == 1) {
-            weth = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-            // Ethereum Sepolia
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Ethereum Mainnet
         } else if (block.chainid == 11_155_111) {
-            weth = 0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9;
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-            // Optimism Mainnet
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Ethereum Sepolia
         } else if (block.chainid == 10) {
-            weth = 0x4200000000000000000000000000000000000006;
-            poolManager = 0x9a13F98Cb987694C9F086b1F5eB990EeA8264Ec3;
-            // Base Mainnet
+            poolManager = 0x9a13F98Cb987694C9F086b1F5eB990EeA8264Ec3; // Optimism Mainnet
         } else if (block.chainid == 8453) {
-            weth = 0x4200000000000000000000000000000000000006;
-            poolManager = 0x498581fF718922c3f8e6A244956aF099B2652b2b;
-            // Optimism Sepolia
+            poolManager = 0x498581fF718922c3f8e6A244956aF099B2652b2b; // Base Mainnet
         } else if (block.chainid == 11_155_420) {
-            weth = 0x4200000000000000000000000000000000000006;
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-            // BASE Sepolia
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Optimism Sepolia
         } else if (block.chainid == 84_532) {
-            weth = 0x4200000000000000000000000000000000000006;
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-            // Arbitrum Mainnet
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Base Sepolia
         } else if (block.chainid == 42_161) {
-            weth = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
-            poolManager = 0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32;
-            // Arbitrum Sepolia
+            poolManager = 0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32; // Arbitrum Mainnet
         } else if (block.chainid == 421_614) {
-            weth = 0x980B62Da83eFf3D4576C647993b0c1D7faf17c73;
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Arbitrum Sepolia
         } else {
             revert("Invalid RPC / no juice contracts deployed on this network");
         }
@@ -81,19 +75,19 @@ contract DeployScript is Script, Sphinx {
 
     function deploy() public sphinx {
         // Deploy the registry.
-        JBBuybackHookRegistry registry = new JBBuybackHookRegistry{salt: BUYBACK_HOOK}(
+        JBBuybackHookRegistry registry = new JBBuybackHookRegistry{salt: buybackHook}(
             core.permissions, core.projects, safeAddress(), trustedForwarder
         );
 
         // Deploy the V4 buyback hook.
-        JBBuybackHook hook = new JBBuybackHook{salt: BUYBACK_HOOK}(
+        JBBuybackHook hook = new JBBuybackHook{salt: buybackHook}(
             core.directory,
             core.permissions,
             core.prices,
             core.projects,
             core.tokens,
-            IWETH9(weth),
             IPoolManager(poolManager),
+            router.hook,
             trustedForwarder
         );
 

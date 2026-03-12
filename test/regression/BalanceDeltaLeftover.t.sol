@@ -27,21 +27,19 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
-import {IJBBuybackHook} from "src/interfaces/IJBBuybackHook.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
 
 // Test mocks
 import {MockPoolManager} from "../mock/MockPoolManager.sol";
 import {MockOracleHook} from "../mock/MockOracleHook.sol";
 
 /// @notice Simple ERC20 token for testing.
-contract L44_MockProjectToken is ERC20 {
+contract BDL_MockProjectToken is ERC20 {
     constructor() ERC20("ProjectToken", "PT") {}
 
     function mint(address to, uint256 amount) external {
@@ -50,7 +48,7 @@ contract L44_MockProjectToken is ERC20 {
 }
 
 /// @notice Simple ERC20 terminal token for testing.
-contract L44_MockTerminalToken is ERC20 {
+contract BDL_MockTerminalToken is ERC20 {
     constructor() ERC20("TerminalToken", "TT") {}
 
     function mint(address to, uint256 amount) external {
@@ -58,40 +56,19 @@ contract L44_MockTerminalToken is ERC20 {
     }
 }
 
-/// @notice Minimal mock WETH9 for testing.
-contract L44_MockWETH9 is ERC20 {
-    constructor() ERC20("Wrapped Ether", "WETH") {}
-
-    function deposit() external payable {
-        _mint(msg.sender, msg.value);
-    }
-
-    function withdraw(uint256 amount) external {
-        _burn(msg.sender, amount);
-        (bool success,) = msg.sender.call{value: amount}("");
-        require(success, "MockWETH9: ETH transfer failed");
-    }
-
-    receive() external payable {
-        _mint(msg.sender, msg.value);
-    }
-}
-
 /// @notice Test harness exposing JBBuybackHook internals.
-contract L44_ForTest_BuybackHook is JBBuybackHook {
+contract BDL_ForTest_BuybackHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IWETH9 wrappedNativeToken,
         IPoolManager poolManager,
+        IHooks oracleHook,
         address trustedForwarder
     )
-        JBBuybackHook(
-            directory, permissions, prices, projects, tokens, wrappedNativeToken, poolManager, trustedForwarder
-        )
+        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
     {}
 
     function ForTest_initPool(
@@ -112,16 +89,15 @@ contract L44_ForTest_BuybackHook is JBBuybackHook {
 /// @notice Leftover accounting should use balance deltas
 ///         instead of absolute balanceOf, preventing pre-existing balances from inflating
 ///         the leftover amount. Verifies both native ETH and ERC-20 paths do not underflow.
-contract L44_BalanceDeltaLeftover is Test {
+contract BDL_BalanceDeltaLeftover is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
-    L44_ForTest_BuybackHook hook;
+    BDL_ForTest_BuybackHook hook;
     MockPoolManager mockPM;
     MockOracleHook mockOracle;
-    L44_MockProjectToken projectToken;
-    L44_MockWETH9 mockWeth;
-    L44_MockTerminalToken terminalToken;
+    BDL_MockProjectToken projectToken;
+    BDL_MockTerminalToken terminalToken;
 
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions permissions = IJBPermissions(makeAddr("permissions"));
@@ -142,9 +118,8 @@ contract L44_BalanceDeltaLeftover is Test {
     function setUp() public {
         mockPM = new MockPoolManager();
         mockOracle = new MockOracleHook();
-        projectToken = new L44_MockProjectToken();
-        mockWeth = new L44_MockWETH9();
-        terminalToken = new L44_MockTerminalToken();
+        projectToken = new BDL_MockProjectToken();
+        terminalToken = new BDL_MockTerminalToken();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -154,32 +129,22 @@ contract L44_BalanceDeltaLeftover is Test {
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
 
-        hook = new L44_ForTest_BuybackHook({
+        hook = new BDL_ForTest_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
             projects: projects,
             tokens: tokens,
-            wrappedNativeToken: IWETH9(address(mockWeth)),
             poolManager: IPoolManager(address(mockPM)),
+            oracleHook: IHooks(address(mockOracle)),
             trustedForwarder: address(0)
         });
 
-        // Build native pool key (sorted: projectToken vs WETH).
+        // Build native pool key: native ETH (address(0)) is always currency0.
         {
-            address token0;
-            address token1;
-            if (address(projectToken) < address(mockWeth)) {
-                token0 = address(projectToken);
-                token1 = address(mockWeth);
-            } else {
-                token0 = address(mockWeth);
-                token1 = address(projectToken);
-            }
-
             nativePoolKey = PoolKey({
-                currency0: Currency.wrap(token0),
-                currency1: Currency.wrap(token1),
+                currency0: Currency.wrap(address(0)),
+                currency1: Currency.wrap(address(projectToken)),
                 fee: 3000,
                 tickSpacing: 60,
                 hooks: IHooks(address(mockOracle))
@@ -282,16 +247,17 @@ contract L44_BalanceDeltaLeftover is Test {
         );
     }
 
-    /// @notice CORE REGRESSION (native ETH): A full swap through a WETH pool must not underflow
+    /// @notice CORE REGRESSION (native ETH): A full swap through a native ETH pool must not underflow
     ///         when computing the leftover balance delta. Before the fix, balanceBefore included
-    ///         msg.value, and the swap consumed it by wrapping to WETH, causing balanceAfter < balanceBefore.
+    ///         msg.value, causing balanceAfter < balanceBefore.
     function test_nativeETH_fullSwap_noUnderflow() public {
-        bool projectTokenIs0 = address(projectToken) < address(mockWeth);
+        // Native ETH (address(0)) < any deployed address, so projectTokenIs0 = false.
+        bool projectTokenIs0 = false;
         uint256 payAmount = 2 ether;
         uint256 swapOut = 1000e18;
 
         // Initialize pool in hook.
-        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(mockWeth));
+        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(0));
 
         // Configure mock deltas for full swap (no leftover).
         if (projectTokenIs0) {
@@ -409,13 +375,14 @@ contract L44_BalanceDeltaLeftover is Test {
     ///         The delta approach should yield 0 leftover when the swap consumes everything,
     ///         regardless of pre-existing balance.
     function test_nativeETH_preExistingBalance_notInflated() public {
-        bool projectTokenIs0 = address(projectToken) < address(mockWeth);
+        // Native ETH (address(0)) < any deployed address, so projectTokenIs0 = false.
+        bool projectTokenIs0 = false;
         uint256 payAmount = 1 ether;
         uint256 swapOut = 500e18;
         uint256 preExisting = 10 ether;
 
         // Initialize pool in hook.
-        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(mockWeth));
+        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(0));
 
         // Configure mock deltas for full swap.
         if (projectTokenIs0) {

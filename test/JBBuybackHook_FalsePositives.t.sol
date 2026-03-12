@@ -5,7 +5,6 @@ import "forge-std/Test.sol";
 
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
 import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
-import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {JBTokens} from "@bananapus/core-v6/src/JBTokens.sol";
 import {JBERC20} from "@bananapus/core-v6/src/JBERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
