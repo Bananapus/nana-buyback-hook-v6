@@ -175,7 +175,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Set the hook.
         _hookOf[projectId] = hook;
 
-        emit JBBuybackHookRegistry_SetHook(projectId, hook);
+        emit JBBuybackHookRegistry_SetHook({projectId: projectId, hook: hook});
     }
 
     /// @notice Initialize a Uniswap V4 pool and configure it as the buyback pool for a project, forwarding to the

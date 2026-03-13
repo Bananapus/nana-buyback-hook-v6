@@ -30,6 +30,7 @@ contract MockExternalToken is IJBToken {
     function burn(address, uint256) external override {}
     function initialize(string memory, string memory, address) external override {}
     function mint(address, uint256) external override {}
+    function setMetadata(string memory, string memory) external override {}
 }
 
 /// @notice JBTokens prevents token migration, so the projectTokenOf cache can never become stale.

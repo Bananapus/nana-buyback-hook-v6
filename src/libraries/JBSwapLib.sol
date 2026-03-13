@@ -67,12 +67,14 @@ library JBSwapLib {
             if (sqrtPriceX96 == 0) return (0, 0, 0);
             arithmeticMeanTick = tick;
             harmonicMeanLiquidity = poolManager.getLiquidity(poolId);
-            amountOut = getQuoteAtTick(arithmeticMeanTick, amountIn, baseToken, quoteToken);
+            amountOut = getQuoteAtTick({
+                tick: arithmeticMeanTick, baseAmount: amountIn, baseToken: baseToken, quoteToken: quoteToken
+            });
             return (amountOut, arithmeticMeanTick, harmonicMeanLiquidity);
         }
 
         // Try querying the oracle hook.
-        try IGeomeanOracle(address(key.hooks)).observe(key, _makeSecondsAgos(twapWindow)) returns (
+        try IGeomeanOracle(address(key.hooks)).observe({key: key, secondsAgos: _makeSecondsAgos(twapWindow)}) returns (
             int56[] memory tickCumulatives, uint136[] memory secondsPerLiquidityCumulativeX128s
         ) {
             // Compute arithmetic mean tick from tick cumulatives.
@@ -102,7 +104,9 @@ library JBSwapLib {
             }
 
             // Get the quote at the mean tick.
-            amountOut = getQuoteAtTick(arithmeticMeanTick, amountIn, baseToken, quoteToken);
+            amountOut = getQuoteAtTick({
+                tick: arithmeticMeanTick, baseAmount: amountIn, baseToken: baseToken, quoteToken: quoteToken
+            });
         } catch {
             // Oracle hook not available — fall back to spot price from the PoolManager.
             // This ensures buybacks still work for callers that don't provide their own quote.
@@ -112,7 +116,9 @@ library JBSwapLib {
             if (sqrtPriceX96 == 0) return (0, 0, 0);
             arithmeticMeanTick = tick;
             harmonicMeanLiquidity = poolManager.getLiquidity(poolId);
-            amountOut = getQuoteAtTick(arithmeticMeanTick, amountIn, baseToken, quoteToken);
+            amountOut = getQuoteAtTick({
+                tick: arithmeticMeanTick, baseAmount: amountIn, baseToken: baseToken, quoteToken: quoteToken
+            });
         }
     }
 
@@ -144,7 +150,7 @@ library JBSwapLib {
 
         // Sigmoid: minSlippage + (maxSlippage - minSlippage) * impact / (impact + K)
         uint256 range = MAX_SLIPPAGE - minSlippage;
-        uint256 tolerance = minSlippage + FullMath.mulDiv(range, impact, impact + SIGMOID_K);
+        uint256 tolerance = minSlippage + FullMath.mulDiv({a: range, b: impact, denominator: impact + SIGMOID_K});
 
         return tolerance;
     }
@@ -176,12 +182,12 @@ library JBSwapLib {
         // Base ratio: amountIn * IMPACT_PRECISION / liquidity
         // IMPACT_PRECISION (1e18) gives 13 more orders of magnitude than the old 1e5 amplifier,
         // so a 1 ETH swap in a 1M ETH pool returns 1e12 instead of rounding to 0.
-        uint256 base = FullMath.mulDiv(amountIn, IMPACT_PRECISION, uint256(liquidity));
+        uint256 base = FullMath.mulDiv({a: amountIn, b: IMPACT_PRECISION, denominator: uint256(liquidity)});
 
         // Normalize by sqrtP for direction.
         impact = zeroForOne
-            ? FullMath.mulDiv(base, uint256(sqrtP), uint256(1) << 96)
-            : FullMath.mulDiv(base, uint256(1) << 96, uint256(sqrtP));
+            ? FullMath.mulDiv({a: base, b: uint256(sqrtP), denominator: uint256(1) << 96})
+            : FullMath.mulDiv({a: base, b: uint256(1) << 96, denominator: uint256(sqrtP)});
     }
 
     //*********************************************************************//
@@ -211,13 +217,13 @@ library JBSwapLib {
         if (sqrtRatioX96 <= type(uint128).max) {
             uint256 ratioX192 = uint256(sqrtRatioX96) * sqrtRatioX96;
             quoteAmount = baseToken < quoteToken
-                ? FullMath.mulDiv(ratioX192, baseAmount, 1 << 192)
-                : FullMath.mulDiv(1 << 192, baseAmount, ratioX192);
+                ? FullMath.mulDiv({a: ratioX192, b: baseAmount, denominator: 1 << 192})
+                : FullMath.mulDiv({a: 1 << 192, b: baseAmount, denominator: ratioX192});
         } else {
-            uint256 ratioX128 = FullMath.mulDiv(sqrtRatioX96, sqrtRatioX96, 1 << 64);
+            uint256 ratioX128 = FullMath.mulDiv({a: sqrtRatioX96, b: sqrtRatioX96, denominator: 1 << 64});
             quoteAmount = baseToken < quoteToken
-                ? FullMath.mulDiv(ratioX128, baseAmount, 1 << 128)
-                : FullMath.mulDiv(1 << 128, baseAmount, ratioX128);
+                ? FullMath.mulDiv({a: ratioX128, b: baseAmount, denominator: 1 << 128})
+                : FullMath.mulDiv({a: 1 << 128, b: baseAmount, denominator: ratioX128});
         }
     }
 
@@ -281,11 +287,11 @@ library JBSwapLib {
             return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
         } else if (num / den >= (uint256(1) << 64)) {
             // Extended range: use ratioX128 to avoid mulDiv overflow, then shift.
-            uint256 ratioX128 = FullMath.mulDiv(num, uint256(1) << 128, den);
+            uint256 ratioX128 = FullMath.mulDiv({a: num, b: uint256(1) << 128, denominator: den});
             sqrtResult = Math.sqrt(ratioX128) * (uint256(1) << 32);
         } else {
             // Normal range: full precision via ratioX192.
-            uint256 ratioX192 = FullMath.mulDiv(num, uint256(1) << 192, den);
+            uint256 ratioX192 = FullMath.mulDiv({a: num, b: uint256(1) << 192, denominator: den});
             sqrtResult = Math.sqrt(ratioX192);
         }
 

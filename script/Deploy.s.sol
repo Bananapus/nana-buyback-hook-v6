@@ -75,21 +75,24 @@ contract DeployScript is Script, Sphinx {
 
     function deploy() public sphinx {
         // Deploy the registry.
-        JBBuybackHookRegistry registry = new JBBuybackHookRegistry{salt: buybackHook}(
-            core.permissions, core.projects, safeAddress(), trustedForwarder
-        );
+        JBBuybackHookRegistry registry = new JBBuybackHookRegistry{salt: buybackHook}({
+            permissions: core.permissions,
+            projects: core.projects,
+            owner: safeAddress(),
+            trustedForwarder: trustedForwarder
+        });
 
         // Deploy the V4 buyback hook.
-        JBBuybackHook hook = new JBBuybackHook{salt: buybackHook}(
-            core.directory,
-            core.permissions,
-            core.prices,
-            core.projects,
-            core.tokens,
-            IPoolManager(poolManager),
-            router.hook,
-            trustedForwarder
-        );
+        JBBuybackHook hook = new JBBuybackHook{salt: buybackHook}({
+            directory: core.directory,
+            permissions: core.permissions,
+            prices: core.prices,
+            projects: core.projects,
+            tokens: core.tokens,
+            poolManager: IPoolManager(poolManager),
+            oracleHook: router.hook,
+            trustedForwarder: trustedForwarder
+        });
 
         // Configure the hook to be the default.
         registry.setDefaultHook(hook);
