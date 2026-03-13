@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
@@ -15,11 +15,8 @@ import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
-import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
-import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
-import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
@@ -58,7 +55,7 @@ contract SlippageProjectToken is ERC20 {
 
 /// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern.
 contract SlippageLiquidityHelper is IUnlockCallback {
-    IPoolManager public immutable poolManager;
+    IPoolManager public immutable POOL_MANAGER;
 
     struct AddLiqParams {
         PoolKey key;
@@ -68,7 +65,7 @@ contract SlippageLiquidityHelper is IUnlockCallback {
     }
 
     constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
+        POOL_MANAGER = _poolManager;
     }
 
     function addLiquidity(
@@ -80,16 +77,18 @@ contract SlippageLiquidityHelper is IUnlockCallback {
         external
         payable
     {
-        bytes memory data = abi.encode(AddLiqParams(key, tickLower, tickUpper, liquidityDelta));
-        poolManager.unlock(data);
+        bytes memory data = abi.encode(
+            AddLiqParams({key: key, tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta})
+        );
+        POOL_MANAGER.unlock(data);
     }
 
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        require(msg.sender == address(poolManager), "only PM");
+        require(msg.sender == address(POOL_MANAGER), "only PM");
 
         AddLiqParams memory params = abi.decode(data, (AddLiqParams));
 
-        (BalanceDelta callerDelta,) = poolManager.modifyLiquidity(
+        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
             params.key,
             ModifyLiquidityParams({
                 tickLower: params.tickLower,
@@ -113,21 +112,24 @@ contract SlippageLiquidityHelper is IUnlockCallback {
 
     function _settleIfNegative(Currency currency, int128 delta) internal {
         if (delta >= 0) return;
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount = uint256(uint128(-delta));
 
         if (currency.isAddressZero()) {
-            poolManager.settle{value: amount}();
+            POOL_MANAGER.settle{value: amount}();
         } else {
-            poolManager.sync(currency);
-            IERC20(Currency.unwrap(currency)).transfer(address(poolManager), amount);
-            poolManager.settle();
+            POOL_MANAGER.sync(currency);
+            // forge-lint: disable-next-line(erc20-unchecked-transfer)
+            IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), amount);
+            POOL_MANAGER.settle();
         }
     }
 
     function _takeIfPositive(Currency currency, int128 delta) internal {
         if (delta <= 0) return;
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount = uint256(uint128(delta));
-        poolManager.take(currency, address(this), amount);
+        POOL_MANAGER.take(currency, address(this), amount);
     }
 
     receive() external payable {}
@@ -537,12 +539,13 @@ contract V4GeomeanSlippageForkTest is Test {
         IERC20(address(projectToken)).approve(address(poolManager), type(uint256).max);
 
         // Add full-range liquidity.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 liquidityDelta = int256(liquidityTokenAmount / 2);
         vm.prank(address(liqHelper));
         liqHelper.addLiquidity{value: liquidityTokenAmount}(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
 
         // Mock JB core for this project.
-        _mockJBCore(projectId, projectToken);
+        _mockJbCore(projectId, projectToken);
 
         // Mock the oracle at address(0) for hookless pools.
         _mockOracle(key, liquidityDelta);
@@ -568,6 +571,7 @@ contract V4GeomeanSlippageForkTest is Test {
         // delta = twapWindow * 2^128 / liquidity (so harmonicMeanLiquidity ~ actual liquidity)
         uint256 liq = uint256(liquidity > 0 ? liquidity : -liquidity);
         if (liq == 0) liq = 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
         secondsPerLiquidityCumulativeX128s[1] = uint136((uint256(300) << 128) / liq);
 
         // Mock all calls to observe() on address(0).
@@ -589,6 +593,7 @@ contract V4GeomeanSlippageForkTest is Test {
         uint136[] memory secondsPerLiquidityCumulativeX128s = new uint136[](2);
         secondsPerLiquidityCumulativeX128s[0] = 0;
         uint256 liq = liquidity > 0 ? liquidity : 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
         secondsPerLiquidityCumulativeX128s[1] = uint136((uint256(twapWindow) << 128) / liq);
 
         vm.mockCall(
@@ -598,7 +603,7 @@ contract V4GeomeanSlippageForkTest is Test {
         );
     }
 
-    function _mockJBCore(uint256 projectId, SlippageProjectToken projectToken) internal {
+    function _mockJbCore(uint256 projectId, SlippageProjectToken projectToken) internal {
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
@@ -653,6 +658,7 @@ contract V4GeomeanSlippageForkTest is Test {
             basedOnId: 0,
             start: uint48(block.timestamp),
             duration: 30 days,
+            // forge-lint: disable-next-line(unsafe-typecast)
             weight: uint112(weight),
             weightCutPercent: 0,
             approvalHook: IJBRulesetApprovalHook(address(0)),
@@ -774,6 +780,7 @@ contract V4GeomeanSlippageForkTest is Test {
         bytes memory buffer = new bytes(digits);
         while (value != 0) {
             digits--;
+            // forge-lint: disable-next-line(unsafe-typecast)
             buffer[digits] = bytes1(uint8(48 + value % 10));
             value /= 10;
         }
@@ -781,7 +788,9 @@ contract V4GeomeanSlippageForkTest is Test {
     }
 
     function _toStringSigned(int24 value) internal pure returns (string memory) {
+        // forge-lint: disable-next-line(unsafe-typecast)
         if (value >= 0) return _toString(uint256(int256(value)));
+        // forge-lint: disable-next-line(unsafe-typecast)
         return string(abi.encodePacked("-", _toString(uint256(int256(-value)))));
     }
 }

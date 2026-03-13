@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
@@ -66,7 +66,7 @@ contract ForTest_V4BuybackHook is JBBuybackHook {
     {}
 
     /// @notice Directly initialize pool state for testing without going through setPoolFor permission checks.
-    function ForTest_initPool(
+    function forTestInitPool(
         uint256 projectId,
         PoolKey calldata key,
         uint256 twapWindow,
@@ -97,7 +97,7 @@ contract V4BuybackHookTest is Test {
     //*********************************************************************//
 
     ForTest_V4BuybackHook hook;
-    MockPoolManager mockPM;
+    MockPoolManager mockPm;
     MockOracleHook mockOracle;
     MockProjectToken projectToken;
 
@@ -127,7 +127,7 @@ contract V4BuybackHookTest is Test {
 
     function setUp() public {
         // Deploy real contracts
-        mockPM = new MockPoolManager();
+        mockPm = new MockPoolManager();
         mockOracle = new MockOracleHook();
         projectToken = new MockProjectToken();
 
@@ -141,7 +141,7 @@ contract V4BuybackHookTest is Test {
         vm.etch(address(terminal), "0x01");
 
         // Labels
-        vm.label(address(mockPM), "MockPoolManager");
+        vm.label(address(mockPm), "MockPoolManager");
         vm.label(address(mockOracle), "MockOracleHook");
         vm.label(address(projectToken), "ProjectToken");
 
@@ -152,7 +152,7 @@ contract V4BuybackHookTest is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            poolManager: IPoolManager(address(mockPM)),
+            poolManager: IPoolManager(address(mockPm)),
             oracleHook: IHooks(address(mockOracle)),
             trustedForwarder: address(0)
         });
@@ -198,11 +198,11 @@ contract V4BuybackHookTest is Test {
 
         // Configure the pool in the MockPoolManager (non-zero sqrtPrice means initialized)
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0); // price = 1.0
-        mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
-        mockPM.setLiquidity(poolId, 1_000_000 ether);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setLiquidity(poolId, 1_000_000 ether);
 
         // Initialize the pool in the hook (bypass permissions)
-        hook.ForTest_initPool(projectId, poolKey, twapWindow, address(projectToken), address(0));
+        hook.forTestInitPool(projectId, poolKey, twapWindow, address(projectToken), address(0));
     }
 
     //*********************************************************************//
@@ -314,13 +314,15 @@ contract V4BuybackHookTest is Test {
         // If projectTokenIs0: zeroForOne=false, delta0=+swapOut (received), delta1=-payAmount (spent)
         // If !projectTokenIs0: zeroForOne=true, delta0=-payAmount (spent), delta1=+swapOut (received)
         if (projectTokenIs0) {
-            mockPM.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
         } else {
-            mockPM.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
         }
 
         // Pre-fund the MockPoolManager with project tokens so take() can transfer them.
-        projectToken.mint(address(mockPM), swapOut);
+        projectToken.mint(address(mockPm), swapOut);
 
         // Build the afterPay context (native ETH payment).
         JBAfterPayRecordedContext memory ctx =
@@ -339,7 +341,7 @@ contract V4BuybackHookTest is Test {
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
         // Verify the swap was executed.
-        assertTrue(mockPM.swapCalled(), "swap() should have been called on PoolManager");
+        assertTrue(mockPm.swapCalled(), "swap() should have been called on PoolManager");
     }
 
     /// @notice Test that when POOL_MANAGER.unlock() reverts, the hook gracefully falls back to minting.
@@ -350,7 +352,7 @@ contract V4BuybackHookTest is Test {
         uint256 payAmount = 1 ether;
 
         // Force unlock to revert.
-        mockPM.setShouldRevertOnUnlock(true);
+        mockPm.setShouldRevertOnUnlock(true);
 
         // Build context with minimumSwapAmountOut = 0 so slippage check passes (0 >= 0).
         JBAfterPayRecordedContext memory ctx =
@@ -369,7 +371,7 @@ contract V4BuybackHookTest is Test {
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
         // swap() should NOT have been called (unlock reverted before reaching swap).
-        assertFalse(mockPM.swapCalled(), "swap() should NOT have been called when unlock reverts");
+        assertFalse(mockPm.swapCalled(), "swap() should NOT have been called when unlock reverts");
     }
 
     /// @notice Test that only the PoolManager can call unlockCallback.
@@ -404,13 +406,15 @@ contract V4BuybackHookTest is Test {
 
         // Configure deltas for the swap (V4 convention: negative=spent, positive=received).
         if (projectTokenIs0) {
-            mockPM.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
         } else {
-            mockPM.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
         }
 
         // Pre-fund MockPoolManager with project tokens.
-        projectToken.mint(address(mockPM), swapOut);
+        projectToken.mint(address(mockPm), swapOut);
 
         JBAfterPayRecordedContext memory ctx =
             _makeAfterPayContext(JBConstants.NATIVE_TOKEN, payAmount, projectTokenIs0, 0, 0);
@@ -421,7 +425,7 @@ contract V4BuybackHookTest is Test {
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
         // Verify swap executed.
-        assertTrue(mockPM.swapCalled(), "swap() should have been called for native ETH payment");
+        assertTrue(mockPm.swapCalled(), "swap() should have been called for native ETH payment");
     }
 
     /// @notice Test TWAP oracle hook query returns a valid quote with slippage.
@@ -439,10 +443,10 @@ contract V4BuybackHookTest is Test {
         mockOracle.setObserveData(0, 0, 0, uint136(uint256(twapWindow) << 64));
 
         // Set up the pool via setPoolFor to make _poolIsSet = true.
-        // First, clear the pool from ForTest_initPool.
+        // First, clear the pool from forTestInitPool.
         // We need to use setPoolFor which requires permissions and a valid pool.
         // Since we already have permissions mocked, let's do it properly.
-        // But ForTest_initPool doesn't set _poolIsSet. We need a second project.
+        // But forTestInitPool doesn't set _poolIsSet. We need a second project.
 
         uint256 oracleProjectId = 99;
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (oracleProjectId)), abi.encode(owner));
@@ -454,7 +458,7 @@ contract V4BuybackHookTest is Test {
 
         // Set valid sqrtPrice in MockPoolManager for the pool.
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
 
         // Call setPoolFor to set _poolIsSet = true.
         vm.prank(owner);
@@ -488,7 +492,7 @@ contract V4BuybackHookTest is Test {
         );
 
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
 
         vm.prank(owner);
         hook.setPoolFor(noOracleProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
@@ -703,7 +707,7 @@ contract V4BuybackHookTest is Test {
 
         // --- 1. Successful set ---
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
 
         vm.prank(owner);
         hook.setPoolFor(newProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
@@ -842,13 +846,15 @@ contract V4BuybackHookTest is Test {
 
         // Configure deltas for a partial fill (V4 convention: negative=spent, positive=received).
         if (projectTokenIs0) {
-            mockPM.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(swapConsumed)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(swapConsumed)));
         } else {
-            mockPM.setMockDeltas(-int128(uint128(swapConsumed)), int128(uint128(swapOut)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(-int128(uint128(swapConsumed)), int128(uint128(swapOut)));
         }
 
         // Pre-fund MockPoolManager with project tokens.
-        projectToken.mint(address(mockPM), swapOut);
+        projectToken.mint(address(mockPm), swapOut);
 
         // Build context with minimumSwapAmountOut = 100e18 (below swapOut, so slippage passes).
         JBAfterPayRecordedContext memory ctx =
@@ -867,7 +873,7 @@ contract V4BuybackHookTest is Test {
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
         // Verify the swap executed (partial).
-        assertTrue(mockPM.swapCalled(), "swap() should have been called for partial fill");
+        assertTrue(mockPm.swapCalled(), "swap() should have been called for partial fill");
     }
 
     /// @notice Test that a payer's bad quote is overridden by a higher TWAP minimum.
@@ -883,8 +889,8 @@ contract V4BuybackHookTest is Test {
         vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (cvProjectId)), abi.encode(controller));
 
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
-        mockPM.setLiquidity(poolId, 1_000_000 ether);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setLiquidity(poolId, 1_000_000 ether);
 
         vm.prank(owner);
         hook.setPoolFor(cvProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
@@ -986,7 +992,7 @@ contract V4BuybackHookTest is Test {
         );
 
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
 
         // 2 minutes should now be rejected (was valid before, now too small).
         vm.prank(owner);
@@ -1068,7 +1074,7 @@ contract V4BuybackHookTest is Test {
 
         // Pre-initialize the pool manually.
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(poolId, sqrtPrice, 0, poolKey.fee);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, poolKey.fee);
 
         // Call initializePoolFor — pool already exists, should still configure without reverting.
         vm.prank(owner);

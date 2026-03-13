@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
-import "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
-import "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
-import "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
+import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
+import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
+import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 
-import "src/JBBuybackHookRegistry.sol";
+import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
 
 /// @notice Regression test for lock-race: lockHookFor now requires an `expectedHook` parameter
 ///         to prevent race conditions where the hook changes between transaction submission and

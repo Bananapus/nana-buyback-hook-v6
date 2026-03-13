@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
@@ -57,7 +57,7 @@ contract SandwichProjectToken is ERC20 {
 
 /// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern.
 contract SandwichLiquidityHelper is IUnlockCallback {
-    IPoolManager public immutable poolManager;
+    IPoolManager public immutable POOL_MANAGER;
 
     struct AddLiqParams {
         PoolKey key;
@@ -67,7 +67,7 @@ contract SandwichLiquidityHelper is IUnlockCallback {
     }
 
     constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
+        POOL_MANAGER = _poolManager;
     }
 
     function addLiquidity(
@@ -79,16 +79,18 @@ contract SandwichLiquidityHelper is IUnlockCallback {
         external
         payable
     {
-        bytes memory data = abi.encode(AddLiqParams(key, tickLower, tickUpper, liquidityDelta));
-        poolManager.unlock(data);
+        bytes memory data = abi.encode(
+            AddLiqParams({key: key, tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta})
+        );
+        POOL_MANAGER.unlock(data);
     }
 
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        require(msg.sender == address(poolManager), "only PM");
+        require(msg.sender == address(POOL_MANAGER), "only PM");
 
         AddLiqParams memory params = abi.decode(data, (AddLiqParams));
 
-        (BalanceDelta callerDelta,) = poolManager.modifyLiquidity(
+        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
             params.key,
             ModifyLiquidityParams({
                 tickLower: params.tickLower,
@@ -109,21 +111,23 @@ contract SandwichLiquidityHelper is IUnlockCallback {
 
     function _settleIfNegative(Currency currency, int128 delta) internal {
         if (delta >= 0) return;
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount = uint256(uint128(-delta));
 
         if (currency.isAddressZero()) {
-            poolManager.settle{value: amount}();
+            POOL_MANAGER.settle{value: amount}();
         } else {
-            poolManager.sync(currency);
-            IERC20(Currency.unwrap(currency)).transfer(address(poolManager), amount);
-            poolManager.settle();
+            POOL_MANAGER.sync(currency);
+            require(IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), amount));
+            POOL_MANAGER.settle();
         }
     }
 
     function _takeIfPositive(Currency currency, int128 delta) internal {
         if (delta <= 0) return;
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount = uint256(uint128(delta));
-        poolManager.take(currency, address(this), amount);
+        POOL_MANAGER.take(currency, address(this), amount);
     }
 
     receive() external payable {}
@@ -131,7 +135,7 @@ contract SandwichLiquidityHelper is IUnlockCallback {
 
 /// @notice V4 swap executor that simulates an attacker swapping directly through the PoolManager.
 contract SwapHelper is IUnlockCallback {
-    IPoolManager public immutable poolManager;
+    IPoolManager public immutable POOL_MANAGER;
 
     struct SwapParams {
         PoolKey key;
@@ -141,7 +145,7 @@ contract SwapHelper is IUnlockCallback {
     }
 
     constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
+        POOL_MANAGER = _poolManager;
     }
 
     /// @notice Execute a swap on a V4 pool.
@@ -156,7 +160,7 @@ contract SwapHelper is IUnlockCallback {
         payable
         returns (BalanceDelta delta)
     {
-        bytes memory result = poolManager.unlock(
+        bytes memory result = POOL_MANAGER.unlock(
             abi.encode(
                 SwapParams({
                     key: key,
@@ -170,11 +174,11 @@ contract SwapHelper is IUnlockCallback {
     }
 
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        require(msg.sender == address(poolManager), "only PM");
+        require(msg.sender == address(POOL_MANAGER), "only PM");
 
         SwapParams memory params = abi.decode(data, (SwapParams));
 
-        BalanceDelta delta = poolManager.swap(
+        BalanceDelta delta = POOL_MANAGER.swap(
             params.key,
             V4SwapParams({
                 zeroForOne: params.zeroForOne,
@@ -197,21 +201,23 @@ contract SwapHelper is IUnlockCallback {
 
     function _settleIfNegative(Currency currency, int128 delta) internal {
         if (delta >= 0) return;
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount = uint256(uint128(-delta));
 
         if (currency.isAddressZero()) {
-            poolManager.settle{value: amount}();
+            POOL_MANAGER.settle{value: amount}();
         } else {
-            poolManager.sync(currency);
-            IERC20(Currency.unwrap(currency)).transfer(address(poolManager), amount);
-            poolManager.settle();
+            POOL_MANAGER.sync(currency);
+            require(IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), amount));
+            POOL_MANAGER.settle();
         }
     }
 
     function _takeIfPositive(Currency currency, int128 delta) internal {
         if (delta <= 0) return;
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount = uint256(uint128(delta));
-        poolManager.take(currency, address(this), amount);
+        POOL_MANAGER.take(currency, address(this), amount);
     }
 
     receive() external payable {}
@@ -378,6 +384,7 @@ contract V4SandwichForkTest is Test {
             BalanceDelta frontrunDelta = swapHelper.swap(
                 key,
                 attackZeroForOne,
+                // forge-lint: disable-next-line(unsafe-typecast)
                 -int256(attackSize), // exact input
                 attackZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             );
@@ -390,6 +397,7 @@ contract V4SandwichForkTest is Test {
             {
                 // Calculate tokens the attacker received from frontrun.
                 int128 tokenDelta = projectTokenIs0 ? frontrunDelta.amount0() : frontrunDelta.amount1();
+                // forge-lint: disable-next-line(unsafe-typecast)
                 attackerTokenBalance = tokenDelta > 0 ? uint256(uint128(tokenDelta)) : 0;
             }
 
@@ -404,6 +412,7 @@ contract V4SandwichForkTest is Test {
                 BalanceDelta backrunDelta = swapHelper.swap(
                     key,
                     backrunZeroForOne,
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     -int256(attackerTokenBalance), // exact input
                     backrunZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
                 );
@@ -411,6 +420,7 @@ contract V4SandwichForkTest is Test {
                 // Attacker profit = ETH received from backrun - ETH spent on frontrun.
                 int128 ethReceived = projectTokenIs0 ? backrunDelta.amount1() : backrunDelta.amount0();
                 attackerProfit =
+                // forge-lint: disable-next-line(unsafe-typecast)
                     int256(uint256(uint128(ethReceived > 0 ? ethReceived : int128(0)))) - int256(attackSize);
             }
 
@@ -430,8 +440,10 @@ contract V4SandwichForkTest is Test {
                 );
             }
             if (attackerProfit >= 0) {
+                // forge-lint: disable-next-line(unsafe-typecast)
                 console.log("    Attacker profit: +%s ETH", _formatEther(uint256(attackerProfit)));
             } else {
+                // forge-lint: disable-next-line(unsafe-typecast)
                 console.log("    Attacker profit: -%s ETH (LOSS)", _formatEther(uint256(-attackerProfit)));
             }
 
@@ -486,6 +498,7 @@ contract V4SandwichForkTest is Test {
                 swapHelper.swap(
                     key,
                     attackZeroForOne,
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     -int256(attackSize),
                     attackZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
                 );
@@ -539,6 +552,7 @@ contract V4SandwichForkTest is Test {
         BalanceDelta frontrunDelta = swapHelper.swap(
             key,
             attackZeroForOne,
+            // forge-lint: disable-next-line(unsafe-typecast)
             -int256(attackSize),
             attackZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
         );
@@ -561,6 +575,7 @@ contract V4SandwichForkTest is Test {
         uint256 attackerTokenBalance;
         {
             int128 tokenDelta = projectTokenIs0 ? frontrunDelta.amount0() : frontrunDelta.amount1();
+            // forge-lint: disable-next-line(unsafe-typecast)
             attackerTokenBalance = tokenDelta > 0 ? uint256(uint128(tokenDelta)) : 0;
         }
 
@@ -574,17 +589,21 @@ contract V4SandwichForkTest is Test {
             BalanceDelta backrunDelta = swapHelper.swap(
                 key,
                 backrunZeroForOne,
+                // forge-lint: disable-next-line(unsafe-typecast)
                 -int256(attackerTokenBalance),
                 backrunZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             );
 
             int128 ethReceived = projectTokenIs0 ? backrunDelta.amount1() : backrunDelta.amount0();
             int256 attackerProfit =
+            // forge-lint: disable-next-line(unsafe-typecast)
                 int256(uint256(uint128(ethReceived > 0 ? ethReceived : int128(0)))) - int256(attackSize);
 
             if (attackerProfit < 0) {
+                // forge-lint: disable-next-line(unsafe-typecast)
                 console.log("  Attacker LOST: %s ETH (paid 2x pool fees)", _formatEther(uint256(-attackerProfit)));
             } else {
+                // forge-lint: disable-next-line(unsafe-typecast)
                 console.log("  Attacker profit: %s ETH", _formatEther(uint256(attackerProfit)));
             }
 
@@ -634,6 +653,7 @@ contract V4SandwichForkTest is Test {
         swapHelper.swap(
             key,
             attackZeroForOne,
+            // forge-lint: disable-next-line(unsafe-typecast)
             -int256(attackSize),
             attackZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
         );
@@ -649,7 +669,7 @@ contract V4SandwichForkTest is Test {
         }
 
         // Run the full E2E flow with the payer quote.
-        uint256 victimReceived = _executeE2EWithMetadata(pid, key, projectToken, victimAmount, fullMetadata);
+        uint256 victimReceived = _executeE2eWithMetadata(pid, key, projectToken, victimAmount, fullMetadata);
 
         console.log("  Baseline (no attack): %s tokens", _formatEther(baselineReceived));
         console.log("  Payer min out (1%% slippage): %s tokens", _formatEther(payerMinOut));
@@ -705,6 +725,7 @@ contract V4SandwichForkTest is Test {
         vm.prank(address(liqHelper));
         IERC20(address(projectToken)).approve(address(poolManager), type(uint256).max);
 
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 liquidityDelta = int256(liquidityTokenAmount / 2);
         vm.prank(address(liqHelper));
         liqHelper.addLiquidity{value: liquidityTokenAmount}(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
@@ -713,7 +734,7 @@ contract V4SandwichForkTest is Test {
         vm.prank(address(swapHelper));
         IERC20(address(projectToken)).approve(address(poolManager), type(uint256).max);
 
-        _mockJBCore(projectId, projectToken);
+        _mockJbCore(projectId, projectToken);
         _mockOracle(key, liquidityDelta);
 
         vm.prank(owner);
@@ -736,6 +757,7 @@ contract V4SandwichForkTest is Test {
         secondsPerLiquidityCumulativeX128s[0] = 0;
         uint256 liq = uint256(liquidity > 0 ? liquidity : -liquidity);
         if (liq == 0) liq = 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
         secondsPerLiquidityCumulativeX128s[1] = uint136((uint256(300) << 128) / liq);
 
         vm.mockCall(
@@ -745,7 +767,7 @@ contract V4SandwichForkTest is Test {
         );
     }
 
-    function _mockJBCore(uint256 projectId, SandwichProjectToken projectToken) internal {
+    function _mockJbCore(uint256 projectId, SandwichProjectToken projectToken) internal {
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
@@ -795,8 +817,10 @@ contract V4SandwichForkTest is Test {
             cycleNumber: 1,
             id: 1,
             basedOnId: 0,
+            // forge-lint: disable-next-line(unsafe-typecast)
             start: uint48(block.timestamp),
             duration: 30 days,
+            // forge-lint: disable-next-line(unsafe-typecast)
             weight: uint112(weight),
             weightCutPercent: 0,
             approvalHook: IJBRulesetApprovalHook(address(0)),
@@ -861,7 +885,7 @@ contract V4SandwichForkTest is Test {
         received = projectToken.balanceOf(address(hook)) - balBefore;
     }
 
-    function _executeE2EWithMetadata(
+    function _executeE2eWithMetadata(
         uint256 projectId,
         PoolKey memory,
         SandwichProjectToken projectToken,
@@ -965,6 +989,7 @@ contract V4SandwichForkTest is Test {
         bytes memory buffer = new bytes(digits);
         while (value != 0) {
             digits--;
+            // forge-lint: disable-next-line(unsafe-typecast)
             buffer[digits] = bytes1(uint8(48 + value % 10));
             value /= 10;
         }

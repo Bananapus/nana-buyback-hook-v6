@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
@@ -50,6 +50,7 @@ contract MEVScenarios is Test {
             uint256 amountIn = 100 ether;
             bool zeroForOne = true;
 
+            // forge-lint: disable-next-line(unsafe-typecast)
             oracleQuote = JBSwapLib.getQuoteAtTick(fairTick, uint128(amountIn), address(0x01), address(0x02));
             uint160 sqrtP = TickMath.getSqrtPriceAtTick(fairTick);
             uint256 impact = JBSwapLib.calculateImpact(amountIn, liquidity, sqrtP, zeroForOne);
@@ -76,6 +77,7 @@ contract MEVScenarios is Test {
         console.log("");
         console.log(
             "KEY INSIGHT: attacks > %s ticks trigger full mint fallback (0 MEV).",
+            // forge-lint: disable-next-line(unsafe-typecast)
             _toString(uint256(uint24(-limitTick)))
         );
         console.log("The sqrtPriceLimit acts as a circuit breaker.");
@@ -84,17 +86,18 @@ contract MEVScenarios is Test {
     /// @notice Log one row of the sandwich attack comparison table.
     function _logAttackRow(uint256 atk, uint256 slippageBps, int24 limitTick) internal pure {
         // OLD: attacker extracts `atk` bps (up to slippageBps before post-swap check reverts).
-        uint256 oldMEV = atk <= slippageBps ? atk : 0;
+        uint256 oldMev = atk <= slippageBps ? atk : 0;
 
         // NEW: if attack pushes price past our limit tick, swap returns 0 → all minted → 0 MEV.
         // At tick 0, 1 bps ~ 1 tick. limitTick is negative (below 0).
+        // forge-lint: disable-next-line(unsafe-typecast)
         int24 attackedTick = -int24(int256(atk));
-        uint256 newMEV = attackedTick < limitTick ? 0 : atk;
+        uint256 newMev = attackedTick < limitTick ? 0 : atk;
         string memory note = attackedTick < limitTick ? "BLOCKED (mint)" : "swaps (within lim)";
 
-        uint256 saved = oldMEV > newMEV ? oldMEV - newMEV : 0;
+        uint256 saved = oldMev > newMev ? oldMev - newMev : 0;
 
-        console.log("  Attack %s bps: Old=%s New=%s", _padLeft(atk, 3), _padLeft(oldMEV, 3), _padLeft(newMEV, 3));
+        console.log("  Attack %s bps: Old=%s New=%s", _padLeft(atk, 3), _padLeft(oldMev, 3), _padLeft(newMev, 3));
         console.log("    Saved: %s bps | %s", _padLeft(saved, 3), note);
     }
 
@@ -126,6 +129,7 @@ contract MEVScenarios is Test {
                 uint160 sqrtP = TickMath.getSqrtPriceAtTick(ticks[s]);
                 uint256 impact = JBSwapLib.calculateImpact(amountIn, liqs[s], sqrtP, true);
                 uint256 slippage = JBSwapLib.getSlippageTolerance(impact, fees[s]);
+                // forge-lint: disable-next-line(unsafe-typecast)
                 uint256 quote = JBSwapLib.getQuoteAtTick(ticks[s], uint128(amountIn), address(0x01), address(0x02));
                 uint256 minOut = quote - (quote * slippage) / BPS;
                 uint256 lostTokens = quote - minOut;
@@ -208,6 +212,7 @@ contract MEVScenarios is Test {
             int24 tick = ticks[i];
             uint256 amountIn = 10 ether;
 
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint256 oracleQuote = JBSwapLib.getQuoteAtTick(tick, uint128(amountIn), address(0x01), address(0x02));
             uint256 minOut = (oracleQuote * 9700) / BPS; // 3% slippage
             if (minOut == 0) continue;
@@ -389,6 +394,7 @@ contract MEVScenarios is Test {
         bytes memory buffer = new bytes(digits);
         while (value != 0) {
             digits--;
+            // forge-lint: disable-next-line(unsafe-typecast)
             buffer[digits] = bytes1(uint8(48 + value % 10));
             value /= 10;
         }
@@ -396,7 +402,9 @@ contract MEVScenarios is Test {
     }
 
     function _tickStr(int24 tick) internal pure returns (string memory) {
+        // forge-lint: disable-next-line(unsafe-typecast)
         if (tick >= 0) return _toString(uint256(uint24(tick)));
+        // forge-lint: disable-next-line(unsafe-typecast)
         return string(abi.encodePacked("-", _toString(uint256(uint24(-tick)))));
     }
 

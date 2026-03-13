@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
@@ -66,7 +66,7 @@ contract ForkTerminalToken is ERC20 {
 
 /// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern.
 contract LiquidityHelper is IUnlockCallback {
-    IPoolManager public immutable poolManager;
+    IPoolManager public immutable POOL_MANAGER;
 
     struct AddLiqParams {
         PoolKey key;
@@ -76,7 +76,7 @@ contract LiquidityHelper is IUnlockCallback {
     }
 
     constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
+        POOL_MANAGER = _poolManager;
     }
 
     function addLiquidity(
@@ -88,16 +88,18 @@ contract LiquidityHelper is IUnlockCallback {
         external
         payable
     {
-        bytes memory data = abi.encode(AddLiqParams(key, tickLower, tickUpper, liquidityDelta));
-        poolManager.unlock(data);
+        bytes memory data = abi.encode(
+            AddLiqParams({key: key, tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta})
+        );
+        POOL_MANAGER.unlock(data);
     }
 
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        require(msg.sender == address(poolManager), "only PM");
+        require(msg.sender == address(POOL_MANAGER), "only PM");
 
         AddLiqParams memory params = abi.decode(data, (AddLiqParams));
 
-        (BalanceDelta callerDelta,) = poolManager.modifyLiquidity(
+        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
             params.key,
             ModifyLiquidityParams({
                 tickLower: params.tickLower,
@@ -121,21 +123,24 @@ contract LiquidityHelper is IUnlockCallback {
 
     function _settleIfNegative(Currency currency, int128 delta) internal {
         if (delta >= 0) return;
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount = uint256(uint128(-delta));
 
         if (currency.isAddressZero()) {
-            poolManager.settle{value: amount}();
+            POOL_MANAGER.settle{value: amount}();
         } else {
-            poolManager.sync(currency);
-            IERC20(Currency.unwrap(currency)).transfer(address(poolManager), amount);
-            poolManager.settle();
+            POOL_MANAGER.sync(currency);
+            // forge-lint: disable-next-line(erc20-unchecked-transfer)
+            IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), amount);
+            POOL_MANAGER.settle();
         }
     }
 
     function _takeIfPositive(Currency currency, int128 delta) internal {
         if (delta <= 0) return;
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount = uint256(uint128(delta));
-        poolManager.take(currency, address(this), amount);
+        POOL_MANAGER.take(currency, address(this), amount);
     }
 
     receive() external payable {}
@@ -327,9 +332,9 @@ contract V4ForkTest is Test {
             uint256 pid = _nextProjectId();
             ForkTerminalToken terminalToken = new ForkTerminalToken();
             (PoolKey memory key, ForkProjectToken projectToken) =
-                _setupProjectWithERC20Pool(pid, terminalToken, 10_000 ether);
+                _setupProjectWithErc20Pool(pid, terminalToken, 10_000 ether);
 
-            uint256 received = _executeERC20Swap(pid, key, projectToken, terminalToken, orderSizes[i]);
+            uint256 received = _executeErc20Swap(pid, key, projectToken, terminalToken, orderSizes[i]);
 
             console.log("  ERC-20 Order: %s -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
 
@@ -392,7 +397,7 @@ contract V4ForkTest is Test {
             uint256 pid = _nextProjectId();
             (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 100_000 ether);
 
-            uint256 received = _executeE2E(pid, key, projectToken, orderSizes[i]);
+            uint256 received = _executeE2e(pid, key, projectToken, orderSizes[i]);
 
             console.log("  E2E %s ETH -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
 
@@ -409,9 +414,9 @@ contract V4ForkTest is Test {
         uint256 pid = _nextProjectId();
         ForkTerminalToken terminalToken = new ForkTerminalToken();
         (PoolKey memory key, ForkProjectToken projectToken) =
-            _setupProjectWithERC20Pool(pid, terminalToken, 100_000 ether);
+            _setupProjectWithErc20Pool(pid, terminalToken, 100_000 ether);
 
-        uint256 received = _executeE2E_ERC20(pid, key, projectToken, terminalToken, 1 ether);
+        uint256 received = _executeE2eErc20(pid, key, projectToken, terminalToken, 1 ether);
 
         console.log("  E2E ERC-20: 1 token -> %s project tokens", _formatEther(received));
         assertGt(received, 0, "E2E ERC-20 should complete swap");
@@ -434,7 +439,7 @@ contract V4ForkTest is Test {
             uint256 pid = _nextProjectId();
             (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 100_000 ether);
 
-            uint256 received = _executeE2E_noQuote(pid, key, projectToken, orderSizes[i]);
+            uint256 received = _executeE2eNoQuote(pid, key, projectToken, orderSizes[i]);
 
             console.log("  No-quote %s ETH -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
 
@@ -482,12 +487,13 @@ contract V4ForkTest is Test {
         IERC20(address(projectToken)).approve(address(poolManager), type(uint256).max);
 
         // Add full-range liquidity.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 liquidityDelta = int256(liquidityTokenAmount / 2);
         vm.prank(address(liqHelper));
         liqHelper.addLiquidity{value: liquidityTokenAmount}(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
 
         // Mock JB core for this project.
-        _mockJBCore(projectId, projectToken);
+        _mockJbCore(projectId, projectToken);
 
         // Mock the oracle at address(0) for hookless pools.
         _mockOracle(key, liquidityDelta);
@@ -498,7 +504,7 @@ contract V4ForkTest is Test {
     }
 
     /// @notice Deploy a project token + ERC-20 terminal token, initialize pool, add liquidity.
-    function _setupProjectWithERC20Pool(
+    function _setupProjectWithErc20Pool(
         uint256 projectId,
         ForkTerminalToken terminalToken,
         uint256 liquidityTokenAmount
@@ -542,12 +548,13 @@ contract V4ForkTest is Test {
         vm.stopPrank();
 
         // Add liquidity.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 liquidityDelta = int256(liquidityTokenAmount / 2);
         vm.prank(address(liqHelper));
         liqHelper.addLiquidity(key, TICK_LOWER, TICK_UPPER, liquidityDelta);
 
         // Mock JB core.
-        _mockJBCore(projectId, projectToken);
+        _mockJbCore(projectId, projectToken);
 
         // Mock the oracle at address(0) for hookless pools.
         _mockOracle(key, liquidityDelta);
@@ -573,6 +580,7 @@ contract V4ForkTest is Test {
         // delta = twapWindow * 2^128 / liquidity (so harmonicMeanLiquidity ≈ actual liquidity)
         uint256 liq = uint256(liquidity > 0 ? liquidity : -liquidity);
         if (liq == 0) liq = 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
         secondsPerLiquidityCumulativeX128s[1] = uint136((uint256(300) << 128) / liq);
 
         // Mock all calls to observe() on address(0).
@@ -583,7 +591,7 @@ contract V4ForkTest is Test {
         );
     }
 
-    function _mockJBCore(uint256 projectId, ForkProjectToken projectToken) internal {
+    function _mockJbCore(uint256 projectId, ForkProjectToken projectToken) internal {
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
@@ -638,6 +646,7 @@ contract V4ForkTest is Test {
             basedOnId: 0,
             start: uint48(block.timestamp),
             duration: 30 days,
+            // forge-lint: disable-next-line(unsafe-typecast)
             weight: uint112(weight),
             weightCutPercent: 0,
             approvalHook: IJBRulesetApprovalHook(address(0)),
@@ -710,7 +719,7 @@ contract V4ForkTest is Test {
     }
 
     /// @notice Execute a swap via afterPayRecordedWith with an ERC-20 terminal token.
-    function _executeERC20Swap(
+    function _executeErc20Swap(
         uint256 projectId,
         PoolKey memory,
         ForkProjectToken projectToken,
@@ -766,7 +775,7 @@ contract V4ForkTest is Test {
     }
 
     /// @notice Full E2E: beforePayRecordedWith → afterPayRecordedWith with native ETH.
-    function _executeE2E(
+    function _executeE2e(
         uint256 projectId,
         PoolKey memory,
         ForkProjectToken projectToken,
@@ -856,7 +865,7 @@ contract V4ForkTest is Test {
     }
 
     /// @notice Full E2E with ERC-20 terminal token.
-    function _executeE2E_ERC20(
+    function _executeE2eErc20(
         uint256 projectId,
         PoolKey memory,
         ForkProjectToken projectToken,
@@ -952,7 +961,7 @@ contract V4ForkTest is Test {
 
     /// @notice Full E2E with NO payer quote — simulates a programmatic caller.
     /// @dev The hook must use the spot-price fallback to decide swap-vs-mint.
-    function _executeE2E_noQuote(
+    function _executeE2eNoQuote(
         uint256 projectId,
         PoolKey memory,
         ForkProjectToken projectToken,
@@ -1053,6 +1062,7 @@ contract V4ForkTest is Test {
         bytes memory buffer = new bytes(digits);
         while (value != 0) {
             digits--;
+            // forge-lint: disable-next-line(unsafe-typecast)
             buffer[digits] = bytes1(uint8(48 + value % 10));
             value /= 10;
         }

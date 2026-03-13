@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
@@ -61,7 +61,7 @@ contract SFMF_ForTest_BuybackHook is JBBuybackHook {
         JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
     {}
 
-    function ForTest_initPool(
+    function forTestInitPool(
         uint256 projectId,
         PoolKey calldata key,
         uint256 twapWindow,
@@ -84,7 +84,7 @@ contract SFMF_SwapFailureMintFallback is Test {
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
     SFMF_ForTest_BuybackHook hook;
-    MockPoolManager mockPM;
+    MockPoolManager mockPm;
     MockOracleHook mockOracle;
     SFMF_MockProjectToken projectToken;
 
@@ -105,7 +105,7 @@ contract SFMF_SwapFailureMintFallback is Test {
     PoolId poolId;
 
     function setUp() public {
-        mockPM = new MockPoolManager();
+        mockPm = new MockPoolManager();
         mockOracle = new MockOracleHook();
         projectToken = new SFMF_MockProjectToken();
 
@@ -123,7 +123,7 @@ contract SFMF_SwapFailureMintFallback is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            poolManager: IPoolManager(address(mockPM)),
+            poolManager: IPoolManager(address(mockPm)),
             oracleHook: IHooks(address(mockOracle)),
             trustedForwarder: address(0)
         });
@@ -168,11 +168,11 @@ contract SFMF_SwapFailureMintFallback is Test {
 
         // Configure pool in MockPoolManager.
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(poolId, sqrtPrice, 0, 3000);
-        mockPM.setLiquidity(poolId, 1_000_000 ether);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setLiquidity(poolId, 1_000_000 ether);
 
         // Initialize pool in hook (bypass permissions).
-        hook.ForTest_initPool(projectId, poolKey, twapWindow, address(projectToken), address(0));
+        hook.forTestInitPool(projectId, poolKey, twapWindow, address(projectToken), address(0));
     }
 
     function _mockCurrentRuleset() internal {
@@ -224,7 +224,7 @@ contract SFMF_SwapFailureMintFallback is Test {
         uint256 minimumSwapAmountOut = 500e18; // Non-zero — this would have caused revert before fix.
 
         // Force unlock to revert (simulating pool unavailability).
-        mockPM.setShouldRevertOnUnlock(true);
+        mockPm.setShouldRevertOnUnlock(true);
 
         // Build context with non-zero minimumSwapAmountOut.
         JBAfterPayRecordedContext memory ctx = JBAfterPayRecordedContext({
@@ -264,6 +264,6 @@ contract SFMF_SwapFailureMintFallback is Test {
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
         // swap() should NOT have been called (unlock reverted before reaching swap).
-        assertFalse(mockPM.swapCalled(), "swap() should NOT have been called when unlock reverts");
+        assertFalse(mockPm.swapCalled(), "swap() should NOT have been called when unlock reverts");
     }
 }
