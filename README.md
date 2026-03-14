@@ -99,7 +99,7 @@ Key `foundry.toml` settings:
 
 - `solc = '0.8.26'`
 - `evm_version = 'cancun'` (required for Uniswap V4's transient storage `TSTORE`/`TLOAD`)
-- `optimizer_runs = 100000000`
+- `optimizer_runs = 200`
 - `fuzz.runs = 4096`
 
 ## Repository Layout
