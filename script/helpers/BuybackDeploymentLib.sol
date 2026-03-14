@@ -30,7 +30,7 @@ library BuybackDeploymentLib {
 
         for (uint256 _i; _i < networks.length; _i++) {
             if (networks[_i].chainId == chainId) {
-                return getDeployment(path, networks[_i].name);
+                return getDeployment({path: path, networkName: networks[_i].name});
             }
         }
 
@@ -45,11 +45,19 @@ library BuybackDeploymentLib {
         view
         returns (BuybackDeployment memory deployment)
     {
-        deployment.hook =
-            IJBBuybackHook(_getDeploymentAddress(path, "nana-buyback-hook-v6", networkName, "JBBuybackHook"));
+        deployment.hook = IJBBuybackHook(
+            _getDeploymentAddress({
+                path: path, projectName: "nana-buyback-hook-v6", networkName: networkName, contractName: "JBBuybackHook"
+            })
+        );
 
         deployment.registry = IJBBuybackHookRegistry(
-            _getDeploymentAddress(path, "nana-buyback-hook-v6", networkName, "JBBuybackHookRegistry")
+            _getDeploymentAddress({
+                path: path,
+                projectName: "nana-buyback-hook-v6",
+                networkName: networkName,
+                contractName: "JBBuybackHookRegistry"
+            })
         );
     }
 
@@ -71,6 +79,6 @@ library BuybackDeploymentLib {
         string memory deploymentJson =
         // forge-lint: disable-next-line(unsafe-cheatcode)
         VM.readFile(string.concat(path, projectName, "/", networkName, "/", contractName, ".json"));
-        return stdJson.readAddress(deploymentJson, ".address");
+        return stdJson.readAddress({json: deploymentJson, key: ".address"});
     }
 }

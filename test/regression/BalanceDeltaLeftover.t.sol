@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
@@ -71,7 +71,7 @@ contract BDL_ForTest_BuybackHook is JBBuybackHook {
         JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
     {}
 
-    function ForTest_initPool(
+    function forTestInitPool(
         uint256 projectId,
         PoolKey calldata key,
         uint256 twapWindow,
@@ -94,7 +94,7 @@ contract BDL_BalanceDeltaLeftover is Test {
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
     BDL_ForTest_BuybackHook hook;
-    MockPoolManager mockPM;
+    MockPoolManager mockPm;
     MockOracleHook mockOracle;
     BDL_MockProjectToken projectToken;
     BDL_MockTerminalToken terminalToken;
@@ -116,7 +116,7 @@ contract BDL_BalanceDeltaLeftover is Test {
     PoolKey erc20PoolKey;
 
     function setUp() public {
-        mockPM = new MockPoolManager();
+        mockPm = new MockPoolManager();
         mockOracle = new MockOracleHook();
         projectToken = new BDL_MockProjectToken();
         terminalToken = new BDL_MockTerminalToken();
@@ -135,7 +135,7 @@ contract BDL_BalanceDeltaLeftover is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            poolManager: IPoolManager(address(mockPM)),
+            poolManager: IPoolManager(address(mockPm)),
             oracleHook: IHooks(address(mockOracle)),
             trustedForwarder: address(0)
         });
@@ -201,10 +201,10 @@ contract BDL_BalanceDeltaLeftover is Test {
 
         // Configure pools in MockPoolManager.
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(nativePoolKey.toId(), sqrtPrice, 0, 3000);
-        mockPM.setLiquidity(nativePoolKey.toId(), 1_000_000 ether);
-        mockPM.setSlot0(erc20PoolKey.toId(), sqrtPrice, 0, 3000);
-        mockPM.setLiquidity(erc20PoolKey.toId(), 1_000_000 ether);
+        mockPm.setSlot0(nativePoolKey.toId(), sqrtPrice, 0, 3000);
+        mockPm.setLiquidity(nativePoolKey.toId(), 1_000_000 ether);
+        mockPm.setSlot0(erc20PoolKey.toId(), sqrtPrice, 0, 3000);
+        mockPm.setLiquidity(erc20PoolKey.toId(), 1_000_000 ether);
     }
 
     function _mockCurrentRuleset() internal {
@@ -257,17 +257,19 @@ contract BDL_BalanceDeltaLeftover is Test {
         uint256 swapOut = 1000e18;
 
         // Initialize pool in hook.
-        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(0));
+        hook.forTestInitPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(0));
 
         // Configure mock deltas for full swap (no leftover).
         if (projectTokenIs0) {
-            mockPM.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
         } else {
-            mockPM.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
         }
 
         // Pre-fund pool manager with project tokens.
-        projectToken.mint(address(mockPM), swapOut);
+        projectToken.mint(address(mockPm), swapOut);
 
         // Mock addToBalanceOf.
         vm.mockCall(
@@ -304,7 +306,7 @@ contract BDL_BalanceDeltaLeftover is Test {
         vm.prank(address(terminal));
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
-        assertTrue(mockPM.swapCalled(), "swap should have been called");
+        assertTrue(mockPm.swapCalled(), "swap should have been called");
     }
 
     /// @notice CORE REGRESSION (ERC-20): A full ERC-20 swap must not underflow when computing
@@ -317,17 +319,19 @@ contract BDL_BalanceDeltaLeftover is Test {
         uint256 swapOut = 500e18;
 
         // Initialize ERC-20 pool in hook.
-        hook.ForTest_initPool(projectId, erc20PoolKey, twapWindow, address(projectToken), address(terminalToken));
+        hook.forTestInitPool(projectId, erc20PoolKey, twapWindow, address(projectToken), address(terminalToken));
 
         // Configure mock deltas for full swap (no leftover).
         if (projectTokenIs0) {
-            mockPM.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
         } else {
-            mockPM.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
         }
 
         // Pre-fund pool manager with project tokens.
-        projectToken.mint(address(mockPM), swapOut);
+        projectToken.mint(address(mockPm), swapOut);
 
         // Fund terminal with terminal tokens and approve the hook.
         terminalToken.mint(address(terminal), payAmount);
@@ -368,7 +372,7 @@ contract BDL_BalanceDeltaLeftover is Test {
         vm.prank(address(terminal));
         hook.afterPayRecordedWith(ctx);
 
-        assertTrue(mockPM.swapCalled(), "swap should have been called");
+        assertTrue(mockPm.swapCalled(), "swap should have been called");
     }
 
     /// @notice Verify that pre-existing ETH balance does NOT inflate leftovers.
@@ -382,17 +386,19 @@ contract BDL_BalanceDeltaLeftover is Test {
         uint256 preExisting = 10 ether;
 
         // Initialize pool in hook.
-        hook.ForTest_initPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(0));
+        hook.forTestInitPool(projectId, nativePoolKey, twapWindow, address(projectToken), address(0));
 
         // Configure mock deltas for full swap.
         if (projectTokenIs0) {
-            mockPM.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
         } else {
-            mockPM.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
         }
 
         // Pre-fund pool manager with project tokens.
-        projectToken.mint(address(mockPM), swapOut);
+        projectToken.mint(address(mockPm), swapOut);
 
         // Send pre-existing ETH to the hook (should NOT be counted as leftover).
         vm.deal(address(hook), preExisting);
@@ -432,7 +438,7 @@ contract BDL_BalanceDeltaLeftover is Test {
         vm.prank(address(terminal));
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
-        assertTrue(mockPM.swapCalled(), "swap should have been called");
+        assertTrue(mockPm.swapCalled(), "swap should have been called");
         // The pre-existing 10 ETH should still be in the hook, not sent to terminal.
         assertGe(address(hook).balance, preExisting, "pre-existing ETH should remain in hook");
     }

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-import "@bananapus/core-v6/src/structs/JBSplitHookContext.sol";
-import "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
-import "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
-import "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
+import {JBSplitHookContext} from "@bananapus/core-v6/src/structs/JBSplitHookContext.sol";
+import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
+import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
+import {IJBSplitHook} from "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
 
-import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 contract MockSplitHook is ERC165, IJBSplitHook {
     IJBPayHook public immutable PAY_HOOK;
@@ -16,18 +18,18 @@ contract MockSplitHook is ERC165, IJBSplitHook {
     }
 
     function processSplitWith(JBSplitHookContext calldata) external payable override {
-        JBAfterPayRecordedContext memory context = JBAfterPayRecordedContext(
-            address(this),
-            1,
-            2,
-            JBTokenAmount({token: address(this), value: 1 ether, decimals: 18, currency: 0}),
-            JBTokenAmount({token: address(this), value: 1 ether, decimals: 18, currency: 0}),
-            1,
-            1,
-            address(this),
-            "",
-            new bytes(0)
-        );
+        JBAfterPayRecordedContext memory context = JBAfterPayRecordedContext({
+            payer: address(this),
+            projectId: 1,
+            rulesetId: 2,
+            amount: JBTokenAmount({token: address(this), value: 1 ether, decimals: 18, currency: 0}),
+            forwardedAmount: JBTokenAmount({token: address(this), value: 1 ether, decimals: 18, currency: 0}),
+            weight: 1,
+            newlyIssuedTokenCount: 1,
+            beneficiary: address(this),
+            hookMetadata: "",
+            payerMetadata: new bytes(0)
+        });
 
         // Make a malicious delegate call to the buyback hook.
         (bool success,) = address(PAY_HOOK)

@@ -191,7 +191,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param context The pay context passed in by the terminal.
     function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable override {
         // Make sure only the project's payment terminals can access this function.
-        if (!DIRECTORY.isTerminalOf(context.projectId, IJBTerminal(msg.sender))) {
+        if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
             revert JBBuybackHook_Unauthorized(msg.sender);
         }
 
@@ -211,7 +211,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // If the token paid in isn't the native token, pull the amount to swap from the terminal.
         if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
             IERC20(context.forwardedAmount.token)
-                .safeTransferFrom(msg.sender, address(this), context.forwardedAmount.value);
+                .safeTransferFrom({from: msg.sender, to: address(this), value: context.forwardedAmount.value});
         }
 
         // Get a reference to the number of project tokens that was swapped for.
@@ -250,12 +250,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Mint a corresponding number of project tokens using any terminal tokens left over.
         uint256 partialMintTokenCount;
         if (leftoverAmountInThisContract != 0) {
-            partialMintTokenCount = mulDiv(leftoverAmountInThisContract, context.weight, weightRatio);
+            partialMintTokenCount =
+                mulDiv({x: leftoverAmountInThisContract, y: context.weight, denominator: weightRatio});
 
             // If the token paid in wasn't the native token, grant the terminal permission to pull them back.
             if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
                 // slither-disable-next-line unused-return
-                IERC20(context.forwardedAmount.token).forceApprove(msg.sender, leftoverAmountInThisContract);
+                IERC20(context.forwardedAmount.token)
+                    .forceApprove({spender: msg.sender, value: leftoverAmountInThisContract});
             }
 
             uint256 payValue =
@@ -281,7 +283,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // Add the amount to mint to the leftover mint amount.
-        partialMintTokenCount += mulDiv(amountToMintWith, context.weight, weightRatio);
+        partialMintTokenCount += mulDiv({x: amountToMintWith, y: context.weight, denominator: weightRatio});
 
         // Mint the calculated amount of tokens for the beneficiary, including any leftover amount.
         // slither-disable-next-line unused-return
@@ -321,7 +323,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Get the project's token.
         address projectToken = address(TOKENS.tokenOf(projectId));
 
-        _setPoolFor(projectId, poolKey, twapWindow, normalizedTerminalToken, projectToken);
+        _setPoolFor({
+            projectId: projectId,
+            poolKey: poolKey,
+            twapWindow: twapWindow,
+            normalizedTerminalToken: normalizedTerminalToken,
+            projectToken: projectToken
+        });
     }
 
     /// @notice Set the V4 pool to use for a given project and terminal token pair, constructing the PoolKey internally.
@@ -348,9 +356,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
 
         (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
-            _buildPoolKey(projectId, fee, tickSpacing, terminalToken);
+            _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
 
-        _setPoolFor(projectId, poolKey, twapWindow, normalizedTerminalToken, projectToken);
+        _setPoolFor({
+            projectId: projectId,
+            poolKey: poolKey,
+            twapWindow: twapWindow,
+            normalizedTerminalToken: normalizedTerminalToken,
+            projectToken: projectToken
+        });
     }
 
     /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
@@ -374,13 +388,19 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         override
     {
         (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
-            _buildPoolKey(projectId, fee, tickSpacing, terminalToken);
+            _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
 
         // Initialize pool in PoolManager if not already initialized.
         // slither-disable-next-line unused-return,reentrancy-no-eth,reentrancy-benign,reentrancy-events
-        try POOL_MANAGER.initialize(poolKey, sqrtPriceX96) {} catch {}
+        try POOL_MANAGER.initialize({key: poolKey, sqrtPriceX96: sqrtPriceX96}) {} catch {}
 
-        _setPoolFor(projectId, poolKey, twapWindow, normalizedTerminalToken, projectToken);
+        _setPoolFor({
+            projectId: projectId,
+            poolKey: poolKey,
+            twapWindow: twapWindow,
+            normalizedTerminalToken: normalizedTerminalToken,
+            projectToken: projectToken
+        });
     }
 
     /// @notice Change the TWAP window for a project.
@@ -474,13 +494,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         } else {
             // ERC-20: sync → transfer → settle.
             POOL_MANAGER.sync(inputCurrency);
-            IERC20(Currency.unwrap(inputCurrency)).safeTransfer(address(POOL_MANAGER), inputAmount);
+            IERC20(Currency.unwrap(inputCurrency)).safeTransfer({to: address(POOL_MANAGER), value: inputAmount});
             // slither-disable-next-line unused-return
             POOL_MANAGER.settle();
         }
 
         // Take the output (PoolManager owes us).
-        POOL_MANAGER.take(outputCurrency, address(this), outputAmount);
+        POOL_MANAGER.take({currency: outputCurrency, to: address(this), amount: outputAmount});
 
         return abi.encode(outputAmount);
     }
@@ -535,7 +555,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         {
             // Unpack the quote specified by the payer/client (typically from the pool).
             bytes4 metadataId = JBMetadataResolver.getId("quote");
-            (bool quoteExists, bytes memory metadata) = JBMetadataResolver.getDataFor(metadataId, context.metadata);
+            (bool quoteExists, bytes memory metadata) =
+                JBMetadataResolver.getDataFor({id: metadataId, metadata: context.metadata});
             if (quoteExists) (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
         }
 
@@ -563,7 +584,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
 
         // Calculate how many tokens would be minted by a direct payment to the project.
-        uint256 tokenCountWithoutHook = mulDiv(amountToSwapWith, weight, weightRatio);
+        uint256 tokenCountWithoutHook = mulDiv({x: amountToSwapWith, y: weight, denominator: weightRatio});
 
         // Keep a reference to the project's token.
         address projectToken = projectTokenOf[context.projectId];
@@ -852,13 +873,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Calculate price impact.
         bool zeroForOne = terminalToken < projectToken;
         uint160 sqrtP = TickMath.getSqrtPriceAtTick(arithmeticMeanTick);
-        uint256 impact = JBSwapLib.calculateImpact(amountIn, meanLiquidity, sqrtP, zeroForOne);
+        uint256 impact = JBSwapLib.calculateImpact({
+            amountIn: amountIn, liquidity: meanLiquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
+        });
 
         // Get the pool fee in bps (V4 fees are in hundredths of a bip, so divide by 100).
         uint256 poolFeeBps = uint256(key.fee) / 100;
 
         // Calculate continuous sigmoid slippage tolerance.
-        uint256 slippageTolerance = JBSwapLib.getSlippageTolerance(impact, poolFeeBps);
+        uint256 slippageTolerance = JBSwapLib.getSlippageTolerance({impact: impact, poolFeeBps: poolFeeBps});
 
         // If the slippage tolerance is the maximum, return 0 to trigger mint.
         if (slippageTolerance >= TWAP_SLIPPAGE_DENOMINATOR) return 0;

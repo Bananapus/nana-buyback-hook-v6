@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 // JB core imports
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
@@ -39,7 +39,7 @@ contract OWE_OldWindowEvent is Test {
     using PoolIdLibrary for PoolKey;
 
     JBBuybackHook hook;
-    MockPoolManager mockPM;
+    MockPoolManager mockPm;
     OWE_MockToken projectToken;
     OWE_MockToken terminalToken;
 
@@ -55,7 +55,7 @@ contract OWE_OldWindowEvent is Test {
     uint256 secondWindow = 30 minutes;
 
     function setUp() public {
-        mockPM = new MockPoolManager();
+        mockPm = new MockPoolManager();
         projectToken = new OWE_MockToken("ProjectToken", "PT");
         terminalToken = new OWE_MockToken("TerminalToken", "TT");
 
@@ -71,7 +71,7 @@ contract OWE_OldWindowEvent is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            poolManager: IPoolManager(address(mockPM)),
+            poolManager: IPoolManager(address(mockPm)),
             oracleHook: IHooks(address(0)),
             trustedForwarder: address(0)
         });
@@ -111,7 +111,7 @@ contract OWE_OldWindowEvent is Test {
 
         // Set pool as initialized in mock.
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(key.toId(), sqrtPrice, 0, 3000);
+        mockPm.setSlot0(key.toId(), sqrtPrice, 0, 3000);
 
         // Expect TwapWindowChanged with oldWindow = 0.
         vm.expectEmit(true, false, false, true);
@@ -146,7 +146,7 @@ contract OWE_OldWindowEvent is Test {
         });
 
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(keyA.toId(), sqrtPrice, 0, 3000);
+        mockPm.setSlot0(keyA.toId(), sqrtPrice, 0, 3000);
 
         // Set pool — this sets twapWindowOf[projectId] = firstWindow.
         vm.prank(owner);
@@ -186,7 +186,7 @@ contract OWE_OldWindowEvent is Test {
         });
 
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
-        mockPM.setSlot0(key.toId(), sqrtPrice, 0, 3000);
+        mockPm.setSlot0(key.toId(), sqrtPrice, 0, 3000);
 
         vm.prank(owner);
         hook.setPoolFor(projectId, key, firstWindow, address(terminalToken));
