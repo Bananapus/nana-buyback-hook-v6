@@ -76,7 +76,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_ZeroProjectToken();
 
     //*********************************************************************//
-    // --------------------- public constant properties ------------------ //
+    // ------------------------- public constants ------------------------- //
     //*********************************************************************//
 
     /// @notice Projects cannot specify a TWAP window longer than this constant.
@@ -89,7 +89,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     uint256 public constant override TWAP_SLIPPAGE_DENOMINATOR = 10_000;
 
     //*********************************************************************//
-    // -------------------- public immutable properties ------------------ //
+    // ----------------- public immutable stored properties --------------- //
     //*********************************************************************//
 
     /// @notice The directory of terminals and controllers.
