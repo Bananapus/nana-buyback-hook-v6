@@ -81,7 +81,7 @@ contract BDL_ForTest_BuybackHook is JBBuybackHook {
         external
     {
         _poolKeyOf[projectId][terminalToken] = key;
-        twapWindowOf[projectId] = twapWindow;
+        twapWindowOf[projectId][terminalToken] = twapWindow;
         projectTokenOf[projectId] = projectToken;
     }
 }

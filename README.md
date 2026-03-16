@@ -152,10 +152,10 @@ Pool assignments can only be set once per terminal token -- they are immutable o
 
 The TWAP window controls the time period over which the time-weighted average price is computed. A shorter window gives more accurate data but is easier to manipulate; a longer window is more stable but can lag during high volatility.
 
-- Call `setTwapWindowOf(projectId, newWindow)` to change the TWAP window (min: 5 minutes, max: 2 days).
+- Call `setTwapWindowOf(projectId, terminalToken, newWindow)` to change the TWAP window for a specific terminal token (min: 5 minutes, max: 2 days).
 - A 30-minute window is a good starting point for high-activity pairs.
 - Permission: `SET_BUYBACK_TWAP` (ID 25).
-- The TWAP window is shared across all pools for the same project.
+- Each terminal token has its own TWAP window, allowing different parameters for e.g. ETH vs USDC pools.
 
 ### Oracle Behavior
 

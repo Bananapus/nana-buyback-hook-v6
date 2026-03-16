@@ -402,7 +402,7 @@ contract V4GeomeanSlippageForkTest is Test {
 
             // Update the TWAP window (pool is already registered in _setupProjectWithPool).
             vm.prank(owner);
-            hook.setTwapWindowOf(pid, twapWindows[i]);
+            hook.setTwapWindowOf(pid, address(0), twapWindows[i]);
 
             // Query the oracle via JBSwapLib.
             (uint256 amountOut, int24 meanTick, uint128 meanLiquidity) = JBSwapLib.getQuoteFromOracle(

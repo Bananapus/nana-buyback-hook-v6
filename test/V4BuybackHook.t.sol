@@ -76,7 +76,7 @@ contract ForTest_V4BuybackHook is JBBuybackHook {
         external
     {
         _poolKeyOf[projectId][terminalToken] = key;
-        twapWindowOf[projectId] = twapWindow;
+        twapWindowOf[projectId][terminalToken] = twapWindow;
         projectTokenOf[projectId] = projectToken;
         // Also set the private _poolIsSet flag via storage slot manipulation is not possible,
         // so we keep it unset and rely on _getQuote returning 0 for TWAP tests.
@@ -470,7 +470,7 @@ contract V4BuybackHookTest is Test {
 
         // Now verify the oracle is actually used by checking that projectTokenOf is set.
         assertEq(hook.projectTokenOf(oracleProjectId), address(projectToken), "project token should be set");
-        assertEq(hook.twapWindowOf(oracleProjectId), twapWindow, "twap window should be set");
+        assertEq(hook.twapWindowOf(oracleProjectId, address(0)), twapWindow, "twap window should be set");
     }
 
     /// @notice Test that when the oracle hook is unavailable (reverts), _getQuote returns 0,
@@ -1022,7 +1022,7 @@ contract V4BuybackHookTest is Test {
         vm.prank(owner);
         hook.setPoolFor(newProjectId, poolKey, 5 minutes, JBConstants.NATIVE_TOKEN);
 
-        assertEq(hook.twapWindowOf(newProjectId), 5 minutes, "TWAP window should be 5 minutes");
+        assertEq(hook.twapWindowOf(newProjectId, address(0)), 5 minutes, "TWAP window should be 5 minutes");
     }
 
     //*********************************************************************//
@@ -1057,7 +1057,7 @@ contract V4BuybackHookTest is Test {
         assertEq(storedKey.tickSpacing, poolKey.tickSpacing, "tickSpacing mismatch");
 
         // Verify TWAP window was stored.
-        assertEq(hook.twapWindowOf(newProjectId), twapWindow, "TWAP window mismatch");
+        assertEq(hook.twapWindowOf(newProjectId, address(0)), twapWindow, "TWAP window mismatch");
 
         // Verify project token was stored.
         assertEq(hook.projectTokenOf(newProjectId), address(projectToken), "project token mismatch");
@@ -1088,7 +1088,7 @@ contract V4BuybackHookTest is Test {
         });
 
         // Verify configuration succeeded.
-        assertEq(hook.twapWindowOf(newProjectId), twapWindow, "TWAP window mismatch");
+        assertEq(hook.twapWindowOf(newProjectId, address(0)), twapWindow, "TWAP window mismatch");
         assertEq(hook.projectTokenOf(newProjectId), address(projectToken), "project token mismatch");
     }
 

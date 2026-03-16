@@ -123,9 +123,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @custom:param projectId The ID of the project the token belongs to.
     mapping(uint256 projectId => address) public override projectTokenOf;
 
-    /// @notice The TWAP window for the given project.
-    /// @custom:param projectId The ID of the project to get the twap window for.
-    mapping(uint256 projectId => uint256) public override twapWindowOf;
+    /// @notice The TWAP window for a given project and terminal token pair.
+    /// @custom:param projectId The ID of the project to get the TWAP window for.
+    /// @custom:param terminalToken The terminal token address (normalized to address(0) for native).
+    mapping(uint256 projectId => mapping(address terminalToken => uint256)) public override twapWindowOf;
 
     //*********************************************************************//
     // --------------------- private stored properties ------------------- //
@@ -406,10 +407,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
     }
 
-    /// @notice Change the TWAP window for a project.
+    /// @notice Change the TWAP window for a project's terminal token.
     /// @param projectId The ID of the project to set the TWAP window of.
+    /// @param terminalToken The terminal token address (use JBConstants.NATIVE_TOKEN for native ETH).
     /// @param newWindow The new TWAP window.
-    function setTwapWindowOf(uint256 projectId, uint256 newWindow) external override {
+    function setTwapWindowOf(uint256 projectId, address terminalToken, uint256 newWindow) external override {
         // Enforce permissions.
         _requirePermissionFrom({
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_TWAP
@@ -420,10 +422,19 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             revert JBBuybackHook_InvalidTwapWindow(newWindow, MIN_TWAP_WINDOW, MAX_TWAP_WINDOW);
         }
 
-        uint256 oldWindow = twapWindowOf[projectId];
-        twapWindowOf[projectId] = newWindow;
+        // Normalize the terminal token — use address(0) for native.
+        address normalizedTerminalToken = terminalToken == JBConstants.NATIVE_TOKEN ? address(0) : terminalToken;
 
-        emit TwapWindowChanged({projectId: projectId, oldWindow: oldWindow, newWindow: newWindow, caller: _msgSender()});
+        uint256 oldWindow = twapWindowOf[projectId][normalizedTerminalToken];
+        twapWindowOf[projectId][normalizedTerminalToken] = newWindow;
+
+        emit TwapWindowChanged({
+            projectId: projectId,
+            terminalToken: normalizedTerminalToken,
+            oldWindow: oldWindow,
+            newWindow: newWindow,
+            caller: _msgSender()
+        });
     }
 
     /// @notice The V4 PoolManager unlock callback. Executes the swap and settles/takes tokens.
@@ -708,14 +719,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         _poolIsSet[projectId][normalizedTerminalToken] = true;
 
         // Read the current TWAP window before overwriting (for accurate event emission).
-        uint256 oldWindow = twapWindowOf[projectId];
+        uint256 oldWindow = twapWindowOf[projectId][normalizedTerminalToken];
 
         // Store the TWAP window and project token.
-        twapWindowOf[projectId] = twapWindow;
+        twapWindowOf[projectId][normalizedTerminalToken] = twapWindow;
         projectTokenOf[projectId] = projectToken;
 
         emit TwapWindowChanged({
-            projectId: projectId, oldWindow: oldWindow, newWindow: twapWindow, caller: _msgSender()
+            projectId: projectId,
+            terminalToken: normalizedTerminalToken,
+            oldWindow: oldWindow,
+            newWindow: twapWindow,
+            caller: _msgSender()
         });
         emit PoolAdded({
             projectId: projectId, terminalToken: normalizedTerminalToken, poolId: poolId, caller: _msgSender()
@@ -848,8 +863,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Make sure a pool has been configured.
         if (!_poolIsSet[projectId][terminalToken]) return 0;
 
-        // Get the TWAP window.
-        uint256 twapWindow = twapWindowOf[projectId];
+        // Get the TWAP window for this project/terminal token pair.
+        uint256 twapWindow = twapWindowOf[projectId][terminalToken];
 
         // Query the oracle hook (or spot if twapWindow is 0).
         int24 arithmeticMeanTick;
