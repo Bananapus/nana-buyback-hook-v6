@@ -369,7 +369,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
     /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`.
-    /// @dev Does not check permissions — callers (e.g. the registry) are responsible for authorization.
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
     /// @param tickSpacing The Uniswap V4 pool tick spacing.
@@ -387,6 +386,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         external
         override
     {
+        // Enforce permissions.
+        _requirePermissionFrom({
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
+        });
         (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
             _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
 

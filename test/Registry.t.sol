@@ -406,17 +406,19 @@ contract Test_BuybackHookRegistry_Unit is Test {
     // --- disallowHook clears defaultHook ------------------------------- //
     //*********************************************************************//
 
-    function test_disallowHook_clearsDefaultIfMatch() public {
+    function test_disallowHook_revertsIfDefaultHook() public {
         // Set hookA as default.
         vm.prank(owner);
         registry.setDefaultHook(hookA);
         assertEq(address(registry.defaultHook()), address(hookA));
 
-        // Disallow hookA — should clear the default.
+        // Disallow hookA — should revert because it is the current default.
         vm.prank(owner);
+        vm.expectRevert(JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector);
         registry.disallowHook(hookA);
 
-        assertEq(address(registry.defaultHook()), address(0), "defaultHook should be cleared when disallowed");
+        // Default hook should remain unchanged.
+        assertEq(address(registry.defaultHook()), address(hookA), "defaultHook should remain after failed disallow");
     }
 
     function test_disallowHook_doesNotClearDefaultIfNoMatch() public {
@@ -450,19 +452,20 @@ contract Test_BuybackHookRegistry_Unit is Test {
         registry.lockHookFor(projectId, hookA);
     }
 
-    function test_lockHookFor_revertsWhenDefaultWasDisallowed() public {
-        // Set default, then disallow it (clears default).
+    function test_disallowDefaultHook_revertsPreventingLockFailure() public {
+        // Set default hook.
         vm.prank(owner);
         registry.setDefaultHook(hookA);
+
+        // Attempting to disallow the default hook should revert, protecting the lock flow.
         vm.prank(owner);
+        vm.expectRevert(JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector);
         registry.disallowHook(hookA);
 
-        // No project hook, default is now zero — should revert.
+        // Default remains, so lock should still work.
         vm.prank(projectOwner);
-        vm.expectRevert(
-            abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotSet.selector, projectId)
-        );
         registry.lockHookFor(projectId, hookA);
+        assertTrue(registry.hasLockedHook(projectId), "should be locked since default was not disallowed");
     }
 
     function test_lockHookFor_revertsOnMismatch() public {

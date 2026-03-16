@@ -24,6 +24,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
+    error JBBuybackHookRegistry_CannotDisallowDefaultHook();
     error JBBuybackHookRegistry_HookLocked(uint256 projectId);
     error JBBuybackHookRegistry_HookMismatch(IJBRulesetDataHook currentHook, IJBRulesetDataHook expectedHook);
     error JBBuybackHookRegistry_HookNotAllowed(IJBRulesetDataHook hook);
@@ -99,11 +100,12 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @dev Only the owner can disallow a hook.
     /// @param hook The hook to disallow.
     function disallowHook(IJBRulesetDataHook hook) external onlyOwner {
+        // Revert if the hook is the current default — disallowing it would break payments
+        // for projects that rely on the default hook (beforePayRecordedWith calls methods on it).
+        if (defaultHook == hook) revert JBBuybackHookRegistry_CannotDisallowDefaultHook();
+
         // Disallow the hook.
         isHookAllowed[hook] = false;
-
-        // Clear default hook if it matches the hook being disallowed.
-        if (defaultHook == hook) defaultHook = IJBRulesetDataHook(address(0));
 
         emit JBBuybackHookRegistry_DisallowHook(hook);
     }
