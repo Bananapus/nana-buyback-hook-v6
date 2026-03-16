@@ -124,6 +124,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     mapping(uint256 projectId => address) public override projectTokenOf;
 
     /// @notice The TWAP window for the given project.
+    // By design — the TWAP window is set per project, not per terminal token. A project using multiple
+    // terminal tokens (e.g. ETH and USDC) shares the same TWAP window across all buyback pools. This
+    // simplifies configuration and avoids per-token state complexity.
     /// @custom:param projectId The ID of the project to get the twap window for.
     mapping(uint256 projectId => uint256) public override twapWindowOf;
 

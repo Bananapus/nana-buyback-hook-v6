@@ -88,6 +88,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
     /// @notice Allow a hook.
     /// @dev Only the owner can allow a hook.
+    // By design — allowing address(0) provides a mechanism for authorized operators to clear a
+    // project's hook assignment via setHookFor, returning to the default hook. This is the intended way to "unset" a
+    // project-specific hook.
     /// @param hook The hook to allow.
     function allowHook(IJBRulesetDataHook hook) external onlyOwner {
         // Allow the hook.
@@ -113,6 +116,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @notice Lock a hook for a project.
     /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
     /// owner can lock a hook for a project.
+    // By design — atomic set-and-lock (calling setHookFor then lockHookFor in one transaction) is a
+    // feature, not a bug. It allows trusted operators to configure and finalize hook settings in a single transaction,
+    // reducing the window for front-running or configuration changes between set and lock.
     /// @param projectId The ID of the project to lock the hook for.
     /// @param expectedHook The hook the caller expects to lock. Prevents race conditions where the hook changes
     /// between transaction submission and execution.
