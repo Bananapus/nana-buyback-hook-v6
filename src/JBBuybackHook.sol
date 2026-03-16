@@ -76,7 +76,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_ZeroProjectToken();
 
     //*********************************************************************//
-    // --------------------- public constant properties ------------------ //
+    // ------------------------- public constants ------------------------- //
     //*********************************************************************//
 
     /// @notice Projects cannot specify a TWAP window longer than this constant.
@@ -89,7 +89,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     uint256 public constant override TWAP_SLIPPAGE_DENOMINATOR = 10_000;
 
     //*********************************************************************//
-    // -------------------- public immutable properties ------------------ //
+    // ----------------- public immutable stored properties --------------- //
     //*********************************************************************//
 
     /// @notice The directory of terminals and controllers.
@@ -297,6 +297,45 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
     }
 
+    /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
+    /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`.
+    /// @param projectId The ID of the project to set the pool for.
+    /// @param fee The Uniswap V4 pool fee tier.
+    /// @param tickSpacing The Uniswap V4 pool tick spacing.
+    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param terminalToken The address of the terminal token that payments to the project are made in.
+    /// @param sqrtPriceX96 The initial sqrtPriceX96 for the pool (if not already initialized).
+    function initializePoolFor(
+        uint256 projectId,
+        uint24 fee,
+        int24 tickSpacing,
+        uint256 twapWindow,
+        address terminalToken,
+        uint160 sqrtPriceX96
+    )
+        external
+        override
+    {
+        // Enforce permissions.
+        _requirePermissionFrom({
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
+        });
+        (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
+            _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
+
+        // Initialize pool in PoolManager if not already initialized.
+        // slither-disable-next-line unused-return,reentrancy-no-eth,reentrancy-benign,reentrancy-events
+        try POOL_MANAGER.initialize({key: poolKey, sqrtPriceX96: sqrtPriceX96}) {} catch {}
+
+        _setPoolFor({
+            projectId: projectId,
+            poolKey: poolKey,
+            twapWindow: twapWindow,
+            normalizedTerminalToken: normalizedTerminalToken,
+            projectToken: projectToken
+        });
+    }
+
     /// @notice Set the V4 pool to use for a given project and terminal token pair.
     /// @dev Pool keys are intentionally immutable once set. This prevents manipulation of swap routing
     /// after a project's buyback hook is configured.
@@ -358,45 +397,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
             _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
-
-        _setPoolFor({
-            projectId: projectId,
-            poolKey: poolKey,
-            twapWindow: twapWindow,
-            normalizedTerminalToken: normalizedTerminalToken,
-            projectToken: projectToken
-        });
-    }
-
-    /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
-    /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`.
-    /// @param projectId The ID of the project to set the pool for.
-    /// @param fee The Uniswap V4 pool fee tier.
-    /// @param tickSpacing The Uniswap V4 pool tick spacing.
-    /// @param twapWindow The period of time over which the TWAP is computed.
-    /// @param terminalToken The address of the terminal token that payments to the project are made in.
-    /// @param sqrtPriceX96 The initial sqrtPriceX96 for the pool (if not already initialized).
-    function initializePoolFor(
-        uint256 projectId,
-        uint24 fee,
-        int24 tickSpacing,
-        uint256 twapWindow,
-        address terminalToken,
-        uint160 sqrtPriceX96
-    )
-        external
-        override
-    {
-        // Enforce permissions.
-        _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
-        });
-        (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
-            _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
-
-        // Initialize pool in PoolManager if not already initialized.
-        // slither-disable-next-line unused-return,reentrancy-no-eth,reentrancy-benign,reentrancy-events
-        try POOL_MANAGER.initialize({key: poolKey, sqrtPriceX96: sqrtPriceX96}) {} catch {}
 
         _setPoolFor({
             projectId: projectId,
