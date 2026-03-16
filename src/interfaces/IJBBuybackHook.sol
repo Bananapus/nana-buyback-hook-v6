@@ -40,12 +40,15 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
         address caller
     );
 
-    /// @notice Emitted when the TWAP window for a project is changed.
+    /// @notice Emitted when the TWAP window for a project/terminal token pair is changed.
     /// @param projectId The ID of the project whose TWAP window is being changed.
+    /// @param terminalToken The terminal token address the TWAP window applies to.
     /// @param oldWindow The previous TWAP window in seconds.
     /// @param newWindow The new TWAP window in seconds.
     /// @param caller The address that changed the TWAP window.
-    event TwapWindowChanged(uint256 indexed projectId, uint256 oldWindow, uint256 newWindow, address caller);
+    event TwapWindowChanged(
+        uint256 indexed projectId, address indexed terminalToken, uint256 oldWindow, uint256 newWindow, address caller
+    );
 
     /// @notice The directory of terminals and controllers.
     /// @return The directory contract.
@@ -90,10 +93,11 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     /// @return projectTokenOf The project's token address.
     function projectTokenOf(uint256 projectId) external view returns (address projectTokenOf);
 
-    /// @notice The TWAP window for the given project.
+    /// @notice The TWAP window for a given project and terminal token pair.
     /// @param projectId The ID of the project.
+    /// @param terminalToken The terminal token address (normalized to address(0) for native).
     /// @return window The TWAP window in seconds.
-    function twapWindowOf(uint256 projectId) external view returns (uint256 window);
+    function twapWindowOf(uint256 projectId, address terminalToken) external view returns (uint256 window);
 
     /// @notice Set the pool to use for a given project and terminal token.
     /// @param projectId The ID of the project to set the pool for.
@@ -143,8 +147,9 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     )
         external;
 
-    /// @notice Change the TWAP window for a project.
+    /// @notice Change the TWAP window for a project's terminal token.
     /// @param projectId The ID of the project to set the TWAP window of.
+    /// @param terminalToken The terminal token address (use JBConstants.NATIVE_TOKEN for native ETH).
     /// @param newWindow The new TWAP window.
-    function setTwapWindowOf(uint256 projectId, uint256 newWindow) external;
+    function setTwapWindowOf(uint256 projectId, address terminalToken, uint256 newWindow) external;
 }
