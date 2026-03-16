@@ -22,7 +22,7 @@ Route project payments through the better of two paths -- minting from the termi
 | `afterPayRecordedWith(context)` | Pay hook: pulls tokens from terminal, executes V4 swap via `POOL_MANAGER.unlock()`, burns swapped tokens, returns leftover to project balance via `addToBalanceOf`, mints total (swapped + leftover mint) via `controller.mintTokensOf` with `useReservedPercent: true`. Reverts with `JBBuybackHook_SpecifiedSlippageExceeded` if swap output < minimum. |
 | `setPoolFor(projectId, poolKey, twapWindow, terminalToken)` | Set the V4 pool for a project+terminal token pair using an explicit `PoolKey`. Validates: pool is initialized in PoolManager, currencies match project token and terminal token, TWAP window in bounds. Stores pool key, TWAP window, and project token. **Immutable once set.** Permission: `SET_BUYBACK_POOL` (ID 26). |
 | `setPoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken)` | Simplified overload. Constructs the `PoolKey` internally using the project token, terminal token, and the immutable `ORACLE_HOOK` as the pool's hooks address. The pool must already be initialized. Permission: `SET_BUYBACK_POOL` (ID 26). |
-| `initializePoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96)` | Atomically initializes a V4 pool (if not already initialized) and configures it as the buyback pool. Constructs the `PoolKey` using `ORACLE_HOOK`. Does not check permissions -- callers (e.g. the registry) are responsible for authorization. |
+| `initializePoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96)` | Atomically initializes a V4 pool (if not already initialized) and configures it as the buyback pool. Constructs the `PoolKey` using `ORACLE_HOOK`. Permission: `SET_BUYBACK_POOL` (ID 26). |
 | `setTwapWindowOf(projectId, newWindow)` | Change the TWAP window for a project (5 minutes to 2 days). Permission: `SET_BUYBACK_TWAP` (ID 25). |
 | `unlockCallback(data)` | V4 PoolManager callback. Decodes `SwapCallbackData`, computes `sqrtPriceLimitX96`, executes swap, settles input tokens, takes output tokens. Only callable by PoolManager. |
 | `poolKeyOf(projectId, terminalToken)` | Returns the V4 `PoolKey` for a project+terminal token pair. |
@@ -41,7 +41,7 @@ Route project payments through the better of two paths -- minting from the termi
 | `setHookFor(projectId, hook)` | Route a project to a specific allowed buyback hook. Reverts if hook is locked or not on the allowlist. Permission: `SET_BUYBACK_HOOK` (ID 27). |
 | `lockHookFor(projectId, expectedHook)` | Lock the hook choice for a project (irreversible). If using default, snapshots it into storage first. Requires a non-zero hook. Reverts with `JBBuybackHookRegistry_HookMismatch` if the resolved hook differs from `expectedHook` (prevents race conditions). Permission: `SET_BUYBACK_HOOK` (ID 27). |
 | `allowHook(hook)` | Add a hook to the allowlist. Owner only. |
-| `disallowHook(hook)` | Remove a hook from the allowlist. If the disallowed hook is the current default, also clears the default. Owner only. |
+| `disallowHook(hook)` | Remove a hook from the allowlist. Reverts with `JBBuybackHookRegistry_CannotDisallowDefaultHook` if the hook is the current default -- the owner must call `setDefaultHook` to change the default first. Owner only. |
 | `setDefaultHook(hook)` | Set the default hook (also adds to allowlist). Owner only. |
 | `supportsInterface(interfaceId)` | Returns `true` for `IJBBuybackHookRegistry`, `IJBRulesetDataHook`, `IERC165`. |
 
@@ -98,7 +98,7 @@ Route project payments through the better of two paths -- minting from the termi
 | ID | Constant | Used By | Grants |
 |----|----------|---------|--------|
 | 25 | `SET_BUYBACK_TWAP` | `JBBuybackHook.setTwapWindowOf` | Change the TWAP window for a project |
-| 26 | `SET_BUYBACK_POOL` | `JBBuybackHook.setPoolFor` | Set the V4 pool for a project+terminal token pair |
+| 26 | `SET_BUYBACK_POOL` | `JBBuybackHook.setPoolFor`, `initializePoolFor` | Set the V4 pool for a project+terminal token pair |
 | 27 | `SET_BUYBACK_HOOK` | `JBBuybackHookRegistry.setHookFor`, `lockHookFor` | Choose and lock the hook implementation for a project |
 
 ## Events
@@ -143,6 +143,7 @@ Route project payments through the better of two paths -- minting from the termi
 
 | Error | When |
 |-------|------|
+| `JBBuybackHookRegistry_CannotDisallowDefaultHook()` | `disallowHook` called on the current default hook |
 | `JBBuybackHookRegistry_HookLocked(uint256 projectId)` | `setHookFor` called on a locked project |
 | `JBBuybackHookRegistry_HookMismatch(IJBRulesetDataHook currentHook, IJBRulesetDataHook expectedHook)` | `lockHookFor` called but resolved hook differs from the caller's `expectedHook` |
 | `JBBuybackHookRegistry_HookNotAllowed(IJBRulesetDataHook hook)` | `setHookFor` called with a hook not on the allowlist |
@@ -171,7 +172,7 @@ Route project payments through the better of two paths -- minting from the termi
 - **Mint permission**: `hasMintPermissionFor` returns `false` on `JBBuybackHook` but returns `addr == address(hook)` on `JBBuybackHookRegistry`. The registry grants mint permission to whichever hook is active for the project.
 - **Registry locking**: `lockHookFor(projectId, expectedHook)` snapshots the default into `_hookOf[projectId]` if the project hasn't explicitly set one. The `expectedHook` parameter prevents race conditions: if the resolved hook differs from what the caller expects, it reverts with `HookMismatch`. This prevents a later `setDefaultHook` from changing the locked project's hook.
 - **Registry setDefaultHook**: `setDefaultHook(address(0))` reverts with `ZeroHook` to prevent DoS when projects without a specific hook try to use the default.
-- **Registry disallowHook**: If `disallowHook` removes the current default, it also clears `defaultHook` to `address(0)`.
+- **Registry disallowHook**: `disallowHook` reverts with `JBBuybackHookRegistry_CannotDisallowDefaultHook` if the hook being disallowed is the current default. The owner must call `setDefaultHook` to change the default before disallowing the old one.
 - **Currency conversion**: When the payment currency differs from the ruleset's base currency, the hook queries `PRICES.pricePerUnitOf(...)` for the conversion factor. This is used both in `beforePayRecordedWith` (for comparing mint vs swap) and in `afterPayRecordedWith` (for computing leftover mint tokens).
 
 ## Example Integration

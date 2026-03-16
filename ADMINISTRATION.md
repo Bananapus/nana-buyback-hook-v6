@@ -26,6 +26,7 @@ Admin privileges and their scope in nana-buyback-hook-v6.
 | Function | Required Role | Permission ID | Scope | What It Does |
 |----------|--------------|---------------|-------|--------------|
 | `setPoolFor(projectId, poolKey, twapWindow, terminalToken)` | Project owner or permissioned delegate | `SET_BUYBACK_POOL` (26) | Per-project, per-terminal-token. **One-time only** -- reverts with `JBBuybackHook_PoolAlreadySet` if already set. | Configures the Uniswap V4 pool for a project/terminal-token pair. Validates that the pool is initialized, currencies match the project token and terminal token, and the TWAP window is within bounds (5 min -- 2 days). Stores the pool key, TWAP window, and project token address. |
+| `initializePoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96)` | Project owner or permissioned delegate | `SET_BUYBACK_POOL` (26) | Per-project, per-terminal-token. **One-time only** -- reverts with `JBBuybackHook_PoolAlreadySet` if already set. | Atomically initializes a Uniswap V4 pool (if not already initialized) and configures it as the buyback pool. Constructs the `PoolKey` using the immutable `ORACLE_HOOK`. Same validation and storage as `setPoolFor`. |
 | `setTwapWindowOf(projectId, newWindow)` | Project owner or permissioned delegate | `SET_BUYBACK_TWAP` (25) | Per-project. Can be called multiple times. | Changes the TWAP window used for oracle-based slippage calculation. Must be between `MIN_TWAP_WINDOW` (5 minutes) and `MAX_TWAP_WINDOW` (2 days). |
 
 ### JBBuybackHookRegistry
@@ -33,7 +34,7 @@ Admin privileges and their scope in nana-buyback-hook-v6.
 | Function | Required Role | Permission ID | Scope | What It Does |
 |----------|--------------|---------------|-------|--------------|
 | `allowHook(hook)` | Registry owner | N/A (`onlyOwner`) | Global | Adds a buyback hook implementation to the allowlist. Projects can only use hooks that are on the allowlist. |
-| `disallowHook(hook)` | Registry owner | N/A (`onlyOwner`) | Global | Removes a buyback hook implementation from the allowlist. If the disallowed hook is the current default, clears the default to `address(0)`. Does **not** affect projects that have already set or locked this hook. |
+| `disallowHook(hook)` | Registry owner | N/A (`onlyOwner`) | Global | Removes a buyback hook implementation from the allowlist. Reverts with `JBBuybackHookRegistry_CannotDisallowDefaultHook` if the hook is the current default -- the owner must call `setDefaultHook` to change the default first. Does **not** affect projects that have already set or locked this hook. |
 | `setDefaultHook(hook)` | Registry owner | N/A (`onlyOwner`) | Global | Sets the default buyback hook used by projects that have not explicitly chosen one. Also adds the hook to the allowlist. Reverts if `hook` is `address(0)`. |
 | `setHookFor(projectId, hook)` | Project owner or permissioned delegate | `SET_BUYBACK_HOOK` (27) | Per-project | Sets which buyback hook implementation a project uses. The hook must be on the allowlist. Reverts if the project's hook is locked. |
 | `lockHookFor(projectId, expectedHook)` | Project owner or permissioned delegate | `SET_BUYBACK_HOOK` (27) | Per-project. **Irreversible.** | Permanently locks the hook for a project. If the project is using the default (no explicit hook set), the current default is snapshotted into storage before locking. Requires a non-zero resolved hook. The `expectedHook` parameter prevents race conditions where the hook changes between transaction submission and execution. |
@@ -45,7 +46,7 @@ Admin privileges and their scope in nana-buyback-hook-v6.
 The `JBBuybackHookRegistry` owner has three powers:
 
 1. **Allowlisting hooks** (`allowHook`) -- Gate which hook implementations projects can use. Only allowlisted hooks can be set via `setHookFor`.
-2. **Disallowing hooks** (`disallowHook`) -- Remove hooks from the allowlist. Clears the default if the disallowed hook was the default. Projects that already set or locked the hook are unaffected.
+2. **Disallowing hooks** (`disallowHook`) -- Remove hooks from the allowlist. Reverts if the hook is the current default (the owner must change the default first). Projects that already set or locked the hook are unaffected.
 3. **Setting the default hook** (`setDefaultHook`) -- Choose the hook that projects use when they have not explicitly set one. Also allowlists the hook.
 
 The owner cannot force a hook onto a project that has already set or locked its own hook. The owner cannot unlock a locked hook.

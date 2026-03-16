@@ -48,7 +48,7 @@ The `JBBuybackHookRegistry` sits between the terminal and individual hook implem
 - **Locking**: Project owners call `lockHookFor(projectId)` to permanently freeze their hook choice. Once locked, the hook cannot be changed. Same permission: `SET_BUYBACK_HOOK` (ID 27). Locking requires a non-zero hook (either explicitly set or inherited from default). If the project is using the default, locking snapshots that default into the project's storage.
 - **Mint permission delegation**: `hasMintPermissionFor` returns `true` only for the address of the hook active for the project, enabling the hook to mint tokens through the controller.
 
-When `disallowHook` removes a hook that is currently the default, the default is also cleared.
+`disallowHook` reverts if the hook being disallowed is the current default. The owner must call `setDefaultHook` to change the default before disallowing the old hook.
 
 ## Install
 
