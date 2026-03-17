@@ -288,6 +288,10 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         IJBRulesetDataHook hook = _hookOf[context.projectId];
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
 
+        // By design — a project's hook choice is sovereign. Disallowing a hook only prevents NEW
+        // projects from selecting it via setHookFor; it does not override existing assignments.
+        // The registry admin should not be able to unilaterally degrade a project's payment flow.
+
         // Forward the call to the hook.
         // slither-disable-next-line unused-return
         return hook.beforePayRecordedWith(context);

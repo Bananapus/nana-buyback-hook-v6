@@ -75,7 +75,7 @@ library JBSwapLib {
 
         // Try querying the oracle hook.
         try IGeomeanOracle(address(key.hooks)).observe({key: key, secondsAgos: _makeSecondsAgos(twapWindow)}) returns (
-            int56[] memory tickCumulatives, uint136[] memory secondsPerLiquidityCumulativeX128s
+            int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s
         ) {
             // Compute arithmetic mean tick from tick cumulatives.
             int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
@@ -93,7 +93,7 @@ library JBSwapLib {
             }
 
             // Compute harmonic mean liquidity from seconds-per-liquidity cumulatives.
-            uint136 secondsPerLiquidityDelta =
+            uint160 secondsPerLiquidityDelta =
                 secondsPerLiquidityCumulativeX128s[1] - secondsPerLiquidityCumulativeX128s[0];
 
             if (secondsPerLiquidityDelta > 0) {
@@ -108,17 +108,10 @@ library JBSwapLib {
                 tick: arithmeticMeanTick, baseAmount: amountIn, baseToken: baseToken, quoteToken: quoteToken
             });
         } catch {
-            // Oracle hook not available — fall back to spot price from the PoolManager.
-            // This ensures buybacks still work for callers that don't provide their own quote.
-            PoolId poolId = key.toId();
-            // slither-disable-next-line unused-return
-            (uint160 sqrtPriceX96, int24 tick,,) = poolManager.getSlot0(poolId);
-            if (sqrtPriceX96 == 0) return (0, 0, 0);
-            arithmeticMeanTick = tick;
-            harmonicMeanLiquidity = poolManager.getLiquidity(poolId);
-            amountOut = getQuoteAtTick({
-                tick: arithmeticMeanTick, baseAmount: amountIn, baseToken: baseToken, quoteToken: quoteToken
-            });
+            // Oracle hook not available — return zero to force the mint path.
+            // Falling back to spot price is trivially sandwich-attackable. Swaps will
+            // activate once the oracle warms up (~30 min after pool creation).
+            return (0, 0, 0);
         }
     }
 
