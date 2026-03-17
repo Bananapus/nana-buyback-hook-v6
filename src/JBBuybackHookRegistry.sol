@@ -288,6 +288,12 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         IJBRulesetDataHook hook = _hookOf[context.projectId];
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
 
+        // If the resolved hook is no longer allowed, return default mint weight with no hook specs.
+        // This protects locked projects whose hook was later disallowed.
+        if (!isHookAllowed[hook]) {
+            return (context.weight, hookSpecifications);
+        }
+
         // Forward the call to the hook.
         // slither-disable-next-line unused-return
         return hook.beforePayRecordedWith(context);
