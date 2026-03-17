@@ -86,7 +86,7 @@ The v6 `JBBuybackHookRegistry` gains forwarding methods that resolve the hook fo
 
 ### `JBSwapLib` Library (New File)
 A new shared library at `src/libraries/JBSwapLib.sol` extracts and improves swap math for reuse across `JBBuybackHook` and `JBSwapTerminal`:
-- `getQuoteFromOracle(...)` — queries a V4 oracle hook for TWAP data, with spot-price fallback.
+- `getQuoteFromOracle(...)` — queries a V4 oracle hook for TWAP data; returns `(0, 0, 0)` if the oracle is unavailable (forcing the mint path).
 - `getSlippageTolerance(uint256 impact, uint256 poolFeeBps)` — continuous sigmoid slippage curve (replaces v5's piecewise step function).
 - `calculateImpact(...)` — estimates price impact using `1e18` precision (vs v5's `10 * SLIPPAGE_DENOMINATOR`).
 - `getQuoteAtTick(...)` — ported from Uniswap V3 `OracleLibrary.getQuoteAtTick`, removing the V3 dependency.
@@ -212,7 +212,7 @@ Unchanged in signature.
 
 ### Oracle / TWAP Query
 - **v5:** Uses Uniswap V3's `OracleLibrary.consult()` and `OracleLibrary.getOldestObservationSecondsAgo()` to get TWAP data. Falls back to spot tick and liquidity when `oldestObservation == 0`.
-- **v6:** Uses `JBSwapLib.getQuoteFromOracle()` which calls `IGeomeanOracle(hookAddress).observe()` on the pool's V4 hook. Falls back to `POOL_MANAGER.getSlot0()` / `POOL_MANAGER.getLiquidity()` if the oracle hook reverts or if `twapWindow == 0`.
+- **v6:** Uses `JBSwapLib.getQuoteFromOracle()` which calls `IGeomeanOracle(hookAddress).observe()` on the pool's V4 hook. If the oracle hook reverts, returns `(0, 0, 0)` to force the mint path (spot-price fallback was removed as it is trivially sandwich-attackable). If `twapWindow == 0`, uses spot price from `poolManager.getSlot0()`.
 
 ### Pool Configuration (`_setPoolFor` / `setPoolFor`)
 - **v5:** Computes the pool address via CREATE2 hash (keccak256 of factory, token pair, fee, init code hash). Stores pool address directly.

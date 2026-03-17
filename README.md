@@ -31,7 +31,7 @@ sequenceDiagram
 1. A payment is made to a project's terminal.
 2. The terminal calls `beforePayRecordedWith(context)` on the data hook (this contract).
 3. The hook calculates how many tokens the payer would get by minting directly (`weight * amount / weightRatio`).
-4. It compares that against a Uniswap V4 quote. The TWAP-based quote uses the pool's oracle hook (if available) or falls back to spot price, then applies sigmoid-based slippage tolerance. The payer/frontend can also supply their own quote in metadata -- the hook uses whichever is higher (more protective).
+4. It compares that against a Uniswap V4 quote. The TWAP-based quote uses the pool's oracle hook (if available) or forces the mint path when unavailable, then applies sigmoid-based slippage tolerance. The payer/frontend can also supply their own quote in metadata -- the hook uses whichever is higher (more protective).
 5. If the swap yields more tokens, the hook returns `weight = 0` and specifies itself as a pay hook with the swap amount.
 6. The terminal calls `afterPayRecordedWith(context)` on the pay hook.
 7. The hook executes the swap via `POOL_MANAGER.unlock()`, burns the received project tokens, adds any leftover terminal tokens back to the project's balance, and mints the total (swapped + leftover mint) through the controller with `useReservedPercent: true`.
@@ -159,7 +159,7 @@ The TWAP window controls the time period over which the time-weighted average pr
 
 ### Oracle Behavior
 
-The hook stores an immutable `ORACLE_HOOK` (an `IHooks` address set at construction). All pools created via the simplified `setPoolFor` or `initializePoolFor` overloads embed this oracle hook in their `PoolKey`. The hook queries the oracle via the `IGeomeanOracle.observe` interface for TWAP data. If the oracle hook reverts or is not available, the hook falls back to the pool's current spot price and in-range liquidity from the PoolManager.
+The hook stores an immutable `ORACLE_HOOK` (an `IHooks` address set at construction). All pools created via the simplified `setPoolFor` or `initializePoolFor` overloads embed this oracle hook in their `PoolKey`. The hook queries the oracle via the `IGeomeanOracle.observe` interface for TWAP data. If the oracle hook reverts or is not available, the hook returns 0 for the quote, forcing the mint path. Spot-price fallback was removed because it is trivially sandwich-attackable. Swaps activate once the oracle warms up (~30 min after pool creation).
 
 When the oracle returns zero liquidity, the hook returns 0 for the quote, which causes it to fall back to minting rather than swapping -- protecting against swaps in pools with no liquidity.
 
@@ -209,6 +209,6 @@ Sepolia testnets for all four chains are also supported.
 - `setPoolFor` can only be called once per project + terminal token pair. If you need to use a different pool, a new hook deployment is needed.
 - If the TWAP window isn't set appropriately, payers may receive fewer tokens than expected.
 - Low liquidity pools are vulnerable to TWAP manipulation by attackers.
-- If the pool's oracle hook is absent or reverts, the hook falls back to spot price, which is more susceptible to manipulation.
+- If the pool's oracle hook is absent or reverts, the hook forces the mint path (no swaps until the oracle warms up, ~30 min after pool creation).
 - The `ORACLE_HOOK` immutable is set at construction and cannot be changed. If the oracle hook implementation has a bug or is deprecated, a new `JBBuybackHook` deployment is required.
 - The registry's `lockHookFor` is irreversible. Once locked, the project cannot change its hook implementation even if a security issue is found in that implementation.

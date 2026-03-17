@@ -62,7 +62,7 @@ A routing layer that maps projects to buyback hook implementations. Set as the d
 Shared library for oracle queries, slippage calculations, and price limit computation.
 
 **Key functions:**
-- `getQuoteFromOracle(poolManager, key, twapWindow, amountIn, baseToken, quoteToken)` -- Queries TWAP from oracle hook via `IGeomeanOracle.observe()`. Falls back to spot price via `getSlot0()` if the oracle reverts. Returns `(amountOut, arithmeticMeanTick, harmonicMeanLiquidity)`.
+- `getQuoteFromOracle(poolManager, key, twapWindow, amountIn, baseToken, quoteToken)` -- Queries TWAP from oracle hook via `IGeomeanOracle.observe()`. Returns `(0, 0, 0)` if the oracle reverts, forcing the mint path. Uses spot price via `getSlot0()` only when `twapWindow == 0`. Returns `(amountOut, arithmeticMeanTick, harmonicMeanLiquidity)`.
 - `getSlippageTolerance(impact, poolFeeBps)` -- Sigmoid slippage: `minSlippage + (MAX_SLIPPAGE - minSlippage) * impact / (impact + K)`. Range: `max(poolFee + 100bps, 200bps)` to `8800bps` (88%).
 - `calculateImpact(amountIn, liquidity, sqrtP, zeroForOne)` -- Estimates price impact at 1e18 precision.
 - `getQuoteAtTick(tick, baseAmount, baseToken, quoteToken)` -- Pure math: token amount at a specific tick. Ported from Uniswap V3 OracleLibrary.
@@ -87,7 +87,7 @@ Terminal calls beforePayRecordedWith(context)
   +--> Compute tokenCountWithoutHook = amountToSwapWith * weight / weightRatio
   |
   +--> Compute twapMinimum via _getQuote():
-  |      1. getQuoteFromOracle() -- TWAP or spot fallback
+  |      1. getQuoteFromOracle() -- TWAP (returns 0 if oracle unavailable)
   |      2. calculateImpact() + getSlippageTolerance() -- sigmoid slippage
   |      3. amountOut * (DENOMINATOR - slippageTolerance) / DENOMINATOR
   |
@@ -151,7 +151,7 @@ Terminal calls afterPayRecordedWith(context) with payment tokens
 | 1 | **Swap-vs-mint decision** (`beforePayRecordedWith`) | The core economic decision. If an attacker can force swaps when minting is better (or vice versa), they extract value. Verify the `max(payerQuote, twapQuote)` cross-validation, sigmoid slippage bounds, and the `tokenCountWithoutHook` comparison. |
 | 2 | **unlockCallback + swap settlement** | All fund movement happens here. Verify: caller auth (only PoolManager), delta interpretation (positive = received, negative = spent), settle/take ordering, sqrtPriceLimit enforcement. |
 | 3 | **Leftover handling** (`afterPayRecordedWith`) | Balance delta approach: `leftover = balanceAfter - balanceBefore`. Verify: native ETH msg.value subtraction, ERC-20 pull timing, addToBalanceOf failure path, mint arithmetic. |
-| 4 | **Spot fallback when oracle unavailable** | Pools without oracle hooks fall back to `getSlot0()` spot price. Spot is manipulable within a single block. Verify: can an attacker profit from manipulating spot to force mint or swap? |
+| 4 | **Oracle unavailable behavior** | When `observe()` reverts, the hook returns `(0, 0, 0)` forcing the mint path. Verify: no swap occurs during oracle warmup, payer-provided quotes still work, no path bypasses this fallback. |
 | 5 | **Registry delegation** | `beforePayRecordedWith` in the registry delegates to the resolved hook. Verify: hook resolution (project-specific vs default), `hasMintPermissionFor` consistency, lock/unlock race conditions. |
 | 6 | **Price conversion** | `weightRatio` depends on `PRICES.pricePerUnitOf()` when `baseCurrency != payment currency`. Verify: currency mismatch handling, decimal scaling. |
 | 7 | **sqrtPriceLimitFromAmounts overflow handling** | Three-tier precision approach for extreme price ratios. Verify: overflow guards, clamping to valid V4 range, behavior at boundary values. |
