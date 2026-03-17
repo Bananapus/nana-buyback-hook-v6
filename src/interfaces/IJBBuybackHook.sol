@@ -11,6 +11,8 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
+import {IJBBuybackHookRegistry} from "./IJBBuybackHookRegistry.sol";
+
 interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     /// @notice Emitted when leftover terminal tokens are minted as project tokens.
     /// @param projectId The ID of the project whose tokens are being minted.
@@ -73,6 +75,10 @@ interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
     /// @notice The project registry.
     /// @return The projects contract.
     function PROJECTS() external view returns (IJBProjects);
+
+    /// @notice The buyback hook registry that may forward pool configuration calls on behalf of authorized callers.
+    /// @return The registry contract.
+    function REGISTRY() external view returns (IJBBuybackHookRegistry);
 
     /// @notice The token registry.
     /// @return The tokens contract.

@@ -14,6 +14,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
+import {IJBBuybackHookRegistry} from "src/interfaces/IJBBuybackHookRegistry.sol";
 
 /// @notice Regression test: initializePoolFor lacks access control, allowing front-run pool lock.
 /// @dev Before the fix, `initializePoolFor` had no permission check, allowing anyone to front-run
@@ -38,7 +39,7 @@ contract InitializePoolAccessControl is Test {
 
     function setUp() public {
         hook = new JBBuybackHook(
-            directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder
+            directory, permissions, prices, projects, tokens, poolManager, oracleHook, IJBBuybackHookRegistry(address(0)), trustedForwarder
         );
 
         // Mock PROJECTS.ownerOf to return projectOwner.

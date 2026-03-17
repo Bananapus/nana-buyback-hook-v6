@@ -32,6 +32,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
+import {IJBBuybackHookRegistry} from "src/interfaces/IJBBuybackHookRegistry.sol";
 
 // Test mocks
 import {MockPoolManager} from "../mock/MockPoolManager.sol";
@@ -56,9 +57,10 @@ contract SFMF_ForTest_BuybackHook is JBBuybackHook {
         IJBTokens tokens,
         IPoolManager poolManager,
         IHooks oracleHook,
+        IJBBuybackHookRegistry registry,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
+        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, registry, trustedForwarder)
     {}
 
     function forTestInitPool(
@@ -125,6 +127,7 @@ contract SFMF_SwapFailureMintFallback is Test {
             tokens: tokens,
             poolManager: IPoolManager(address(mockPm)),
             oracleHook: IHooks(address(mockOracle)),
+            registry: IJBBuybackHookRegistry(address(0)),
             trustedForwarder: address(0)
         });
 

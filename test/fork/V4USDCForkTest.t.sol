@@ -40,6 +40,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
+import {IJBBuybackHookRegistry} from "src/interfaces/IJBBuybackHookRegistry.sol";
 import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
 
 //*********************************************************************//
@@ -146,9 +147,10 @@ contract ForTest_USDCBuybackHook is JBBuybackHook {
         IJBTokens tokens,
         IPoolManager poolManager,
         IHooks oracleHook,
+        IJBBuybackHookRegistry registry,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
+        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, registry, trustedForwarder)
     {}
 }
 
@@ -237,6 +239,7 @@ contract V4USDCForkTest is Test {
             tokens: tokens,
             poolManager: poolManager,
             oracleHook: IHooks(address(0)),
+            registry: IJBBuybackHookRegistry(address(0)),
             trustedForwarder: address(0)
         });
 
