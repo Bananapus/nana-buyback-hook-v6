@@ -45,6 +45,16 @@ If swap selected:
 | Pay hook | `IJBPayHook` | Executes the swap if chosen |
 | Registry | `IJBBuybackHookRegistry` | Maps projects → hooks |
 
+## Composition with JBUniswapV4Hook
+
+In production, `JBBuybackHook` is deployed with `JBUniswapV4Hook` as its `ORACLE_HOOK`. This same hook also serves as the pool's V4 hook (in `PoolKey.hooks`). This means:
+
+1. The buyback hook queries the oracle via `IGeomeanOracle(address(key.hooks)).observe()` — this is the same contract that handles `_beforeSwap` routing.
+2. When the buyback hook executes a swap, the V4 PoolManager calls `JBUniswapV4Hook._beforeSwap()`, which may try to route through Juicebox (triggering `terminal.pay()` → buyback hook again).
+3. `JBUniswapV4Hook` has a `_routing` reentrancy guard that detects this recursion and reverts the inner swap.
+4. The buyback hook's try/catch catches the revert and falls back to minting via the controller.
+5. The buyback hook passes `hookData: abi.encode(uint256(0))` to delegate slippage protection to the oracle's TWAP rather than specifying a fixed minimum.
+
 ## Dependencies
 - `@bananapus/core-v6` — Core protocol interfaces
 - `@bananapus/permission-ids-v6` — SET_BUYBACK_TWAP, SET_BUYBACK_POOL, SET_BUYBACK_HOOK

@@ -34,7 +34,15 @@
 - **Oracle Warmup Mint-Only Period**: Newly initialized pools lack observation history. The oracle `observe()` will revert until enough observations accumulate (~30 min). During this warmup period, the hook forces the mint path (no swaps). This is intentional — spot-price fallback was removed because it is trivially sandwich-attackable.
 - **Front-Running the Routing Decision**: `beforePayRecordedWith` is a `view` call executed by the terminal. An attacker who sees the pending payment in the mempool can manipulate the pool state to influence whether the hook returns `weight=0` (swap path) or `weight=original` (mint path). However, the TWAP resists single-block manipulation, and the payer quote provides an additional floor.
 
-## 4. Multi-Pool Risks
+## 4. Composition with JBUniswapV4Hook
+
+- **Same-pool composition**: In production, `ORACLE_HOOK` is typically `JBUniswapV4Hook`, which also serves as the V4 pool hook (`PoolKey.hooks`). The buyback hook queries the oracle and executes swaps on the same pool.
+- **Reentrancy path**: When the buyback hook swaps, `JBUniswapV4Hook._beforeSwap()` fires. If the router hook decides to route through Juicebox (calling `terminal.pay()`), this re-enters the buyback hook via the data hook. The `_routing` reentrancy guard in `JBUniswapV4Hook` detects this recursion and reverts.
+- **hookData format**: The buyback hook passes `hookData: abi.encode(uint256(0))` to the V4 swap. The `0` value delegates slippage protection to `JBUniswapV4Hook`'s own TWAP oracle rather than specifying a fixed minimum output. `JBUniswapV4Hook._beforeSwap()` requires exactly 32 bytes of hookData — empty bytes (`""`) would revert with `AmountOutMinRequired`.
+- **Double fallback**: The reentrancy guard revert is caught by the buyback hook's try/catch in `_swap()`, falling back to minting. This is the expected behavior — the buyback hook's TWAP comparison already determined that swapping is better than minting, but if the swap can't execute, minting is the safe fallback.
+- **Oracle warmup interaction**: During the first ~30 minutes after pool creation, the oracle lacks sufficient observations. Both `JBUniswapV4Hook` (spot fallback) and `JBBuybackHook` (mint fallback via 0 quote) degrade gracefully — payments always succeed via minting.
+
+## 5. Multi-Pool Risks
 
 - **Independent Pool Configurations Per Terminal Token**: Each `(projectId, terminalToken)` pair has its own PoolKey, TWAP window, and `_poolIsSet` flag. Pools operate independently -- a manipulated ETH pool does not affect a USDC pool for the same project.
 - **TWAP Window Is Per-Project-Per-Token**: `twapWindowOf[projectId][normalizedTerminalToken]` is stored independently for each terminal token. Projects can set different TWAP windows for ETH vs USDC pools.
@@ -42,7 +50,7 @@
 - **No Pool Migration**: If a pool's liquidity dries up, the project cannot switch to a different pool for the same terminal token. The hook permanently falls back to the mint path for that pair.
 - **Shared Oracle Hook**: `ORACLE_HOOK` is immutable at construction and baked into all pool keys constructed via `_buildPoolKey`. All projects share the same oracle hook implementation. The `setPoolFor(PoolKey)` overload allows custom hooks per pool, but the simplified overload always uses `ORACLE_HOOK`.
 
-## 5. Access Control
+## 6. Access Control
 
 - **`SET_BUYBACK_POOL`** (JBPermissionIds): Required for `setPoolFor` and `initializePoolFor`. One-shot per (project, terminalToken) pair. Checked via `_requirePermissionFrom` against project owner. Delegatable via JBPermissions.
 - **`SET_BUYBACK_TWAP`** (JBPermissionIds): Required for `setTwapWindowOf`. Can be called repeatedly. Bounded to [5 minutes, 2 days]. Delegatable.
@@ -52,7 +60,7 @@
 - **`unlockCallback` Gating**: Only `POOL_MANAGER` can call. No user or external contract can trigger the swap settlement path directly.
 - **`afterPayRecordedWith` Gating**: Only verified terminals (via `DIRECTORY.isTerminalOf`) can call. Prevents arbitrary callers from triggering swaps.
 
-## 6. DoS Vectors
+## 7. DoS Vectors
 
 - **Pool Revert Cascading to Payment Failure**: If `POOL_MANAGER.unlock()` reverts, the try/catch in `_swap` catches it and sets `swapFailed = true`. The payment falls through to the mint path. No DoS -- the mint fallback is always available.
 - **Oracle Observation Gaps**: If the oracle hook has insufficient observation history (newly initialized pool, or observations pruned), `observe()` reverts. The catch block returns `(0, 0, 0)`, forcing the mint path. No DoS — payments succeed via minting until the oracle warms up.
@@ -62,7 +70,7 @@
 - **Pool Deinitialization**: If a V4 pool's `sqrtPriceX96` becomes 0 (not possible in practice), `_getQuote` returns 0, permanently forcing the mint path.
 - **Gas Exhaustion**: The swap path involves `unlock` -> `unlockCallback` -> `swap` -> `settle`/`take` -> `burnTokensOf` -> `addToBalanceOf` -> `mintTokensOf`. Multiple external calls. If gas is tight, the swap may fail and fall back to mint (caught by try/catch). The mint fallback itself still requires `addToBalanceOf` + `mintTokensOf`.
 
-## 7. Invariants to Verify
+## 8. Invariants to Verify
 
 - **Users always get at least bonding curve value**: `beforePayRecordedWith` only routes to swap when `minimumSwapAmountOut > tokenCountWithoutHook`. If the swap produces less than `minimumSwapAmountOut`, either the slippage check reverts (non-failure case) or `swapFailed == true` triggers full mint fallback. The user never receives fewer tokens than the mint path would have provided.
 - **Swap fallback to mint works correctly**: When `POOL_MANAGER.unlock()` reverts, `_swap` returns `(0, true)`. The slippage check is skipped (`!swapFailed` guard). All payment tokens become leftover, are sent to `addToBalanceOf`, and minted at the current weight. Verified by `SwapFailureMintFallback.t.sol`.
