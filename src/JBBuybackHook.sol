@@ -287,14 +287,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         partialMintTokenCount += mulDiv({x: amountToMintWith, y: context.weight, denominator: weightRatio});
 
         // Mint the calculated amount of tokens for the beneficiary, including any leftover amount.
-        // slither-disable-next-line unused-return
-        controller.mintTokensOf({
-            projectId: context.projectId,
-            tokenCount: exactSwapAmountOut + partialMintTokenCount,
-            beneficiary: address(context.beneficiary),
-            memo: "",
-            useReservedPercent: true
-        });
+        // Skip if there are no tokens to mint (e.g. weight=0 and swap failed).
+        uint256 totalTokensToMint = exactSwapAmountOut + partialMintTokenCount;
+        if (totalTokensToMint != 0) {
+            // slither-disable-next-line unused-return
+            controller.mintTokensOf({
+                projectId: context.projectId,
+                tokenCount: totalTokensToMint,
+                beneficiary: address(context.beneficiary),
+                memo: "",
+                useReservedPercent: true
+            });
+        }
     }
 
     /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
@@ -317,6 +321,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         override
     {
         // Enforce permissions.
+        // The buyback hook registry (or any other contract) can call these functions on behalf of project owners
+        // by having SET_BUYBACK_POOL permission granted through JBPermissions — no special-casing needed here.
         _requirePermissionFrom({
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });
@@ -353,6 +359,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         override
     {
         // Enforce permissions.
+        // The buyback hook registry (or any other contract) can call these functions on behalf of project owners
+        // by having SET_BUYBACK_POOL permission granted through JBPermissions — no special-casing needed here.
         _requirePermissionFrom({
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });
@@ -391,6 +399,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         override
     {
         // Enforce permissions.
+        // The buyback hook registry (or any other contract) can call these functions on behalf of project owners
+        // by having SET_BUYBACK_POOL permission granted through JBPermissions — no special-casing needed here.
         _requirePermissionFrom({
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });

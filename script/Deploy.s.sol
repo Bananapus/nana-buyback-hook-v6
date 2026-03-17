@@ -51,22 +51,24 @@ contract DeployScript is Script, Sphinx {
         trustedForwarder = core.permissions.trustedForwarder();
 
         // Uniswap V4 PoolManager addresses per chain.
+        // Mainnet addresses are canonical. Testnet addresses use the canonical V4 address —
+        // verify against https://docs.uniswap.org/contracts/v4/deployments before deploying.
         if (block.chainid == 1) {
             poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Ethereum Mainnet
         } else if (block.chainid == 11_155_111) {
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Ethereum Sepolia
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Ethereum Sepolia (verify before deploy)
         } else if (block.chainid == 10) {
             poolManager = 0x9a13F98Cb987694C9F086b1F5eB990EeA8264Ec3; // Optimism Mainnet
         } else if (block.chainid == 8453) {
             poolManager = 0x498581fF718922c3f8e6A244956aF099B2652b2b; // Base Mainnet
         } else if (block.chainid == 11_155_420) {
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Optimism Sepolia
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Optimism Sepolia (verify before deploy)
         } else if (block.chainid == 84_532) {
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Base Sepolia
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Base Sepolia (verify before deploy)
         } else if (block.chainid == 42_161) {
             poolManager = 0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32; // Arbitrum Mainnet
         } else if (block.chainid == 421_614) {
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Arbitrum Sepolia
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Arbitrum Sepolia (verify before deploy)
         } else {
             revert("Invalid RPC / no juice contracts deployed on this network");
         }
@@ -100,6 +102,9 @@ contract DeployScript is Script, Sphinx {
         registry.setDefaultHook(hook);
     }
 
+    /// @dev This uses the deterministic CREATE2 deployer (0x4e59b44847b379578588920cA78FbF26c0B4956C),
+    /// but Sphinx deployments use a different deployer address. As a result, this check will not
+    /// detect contracts deployed via the Sphinx pipeline. Only useful for non-Sphinx deployments.
     function _isDeployed(bytes32 salt, bytes memory creationCode, bytes memory arguments) internal view returns (bool) {
         address _deployedTo = vm.computeCreate2Address({
             salt: salt,
