@@ -155,6 +155,7 @@ Terminal calls afterPayRecordedWith(context) with payment tokens
 | 5 | **Registry delegation** | `beforePayRecordedWith` in the registry delegates to the resolved hook. Verify: hook resolution (project-specific vs default), `hasMintPermissionFor` consistency, lock/unlock race conditions. |
 | 6 | **Price conversion** | `weightRatio` depends on `PRICES.pricePerUnitOf()` when `baseCurrency != payment currency`. Verify: currency mismatch handling, decimal scaling. |
 | 7 | **sqrtPriceLimitFromAmounts overflow handling** | Three-tier precision approach for extreme price ratios. Verify: overflow guards, clamping to valid V4 range, behavior at boundary values. |
+| 8 | **Composition with JBUniswapV4Hook** | In production, `ORACLE_HOOK` is `JBUniswapV4Hook`, which also serves as the V4 pool hook. The buyback hook passes `hookData: abi.encode(uint256(0))` — verify this doesn't bypass slippage protection. When the router hook re-routes through JB, a `_routing` reentrancy guard prevents infinite recursion. Verify: the try/catch fallback to minting works correctly, no tokens are lost in the reentrancy path. |
 
 ## Invariants to Verify
 

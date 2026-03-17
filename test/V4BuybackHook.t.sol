@@ -1137,4 +1137,40 @@ contract V4BuybackHookTest is Test {
     }
 
     /// @notice initializePoolFor reverts if caller is not authorized.
+
+    /// @notice Verify that the buyback hook passes exactly 32 bytes of hookData encoding uint256(0)
+    ///         to the V4 PoolManager swap. This is required for composition with JBUniswapV4Hook,
+    ///         which reverts with AmountOutMinRequired if hookData is not exactly 32 bytes.
+    function test_hookDataFormat_encodesAmountOutMinZero() public {
+        bool projectTokenIs0 = address(projectToken) < address(0);
+        uint256 payAmount = 1 ether;
+        uint256 swapOut = 500e18;
+
+        // Configure mock deltas.
+        if (projectTokenIs0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(int128(uint128(swapOut)), -int128(uint128(payAmount)));
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
+        }
+
+        // Pre-fund the MockPoolManager with project tokens.
+        projectToken.mint(address(mockPm), swapOut);
+
+        // Build the afterPay context (native ETH payment).
+        JBAfterPayRecordedContext memory ctx =
+            _makeAfterPayContext(JBConstants.NATIVE_TOKEN, payAmount, projectTokenIs0, 0, 0);
+
+        // Call afterPayRecordedWith from the terminal.
+        vm.deal(address(terminal), payAmount);
+        vm.prank(address(terminal));
+        hook.afterPayRecordedWith{value: payAmount}(ctx);
+
+        // Verify hookData is exactly 32 bytes encoding uint256(0).
+        bytes memory hookData = mockPm.lastSwapHookData();
+        assertEq(hookData.length, 32, "hookData must be exactly 32 bytes for JBUniswapV4Hook compatibility");
+        uint256 amountOutMin = abi.decode(hookData, (uint256));
+        assertEq(amountOutMin, 0, "hookData should encode amountOutMin = 0 (oracle-delegated slippage)");
+    }
 }

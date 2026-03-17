@@ -472,7 +472,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 amountSpecified: -int256(params.amountIn), // Negative = exact input
                 sqrtPriceLimitX96: sqrtPriceLimit
             }),
-            hookData: ""
+            hookData: abi.encode(uint256(0))
         });
 
         // Determine the input and output amounts from the delta.

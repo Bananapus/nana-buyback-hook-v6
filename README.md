@@ -163,6 +163,10 @@ The hook stores an immutable `ORACLE_HOOK` (an `IHooks` address set at construct
 
 When the oracle returns zero liquidity, the hook returns 0 for the quote, which causes it to fall back to minting rather than swapping -- protecting against swaps in pools with no liquidity.
 
+### Composition with JBUniswapV4Hook
+
+In production, `ORACLE_HOOK` is typically `JBUniswapV4Hook` -- the same contract that serves as the V4 pool hook. This means the buyback hook queries the oracle and executes swaps on the same pool managed by the same hook. When the buyback hook swaps, `JBUniswapV4Hook._beforeSwap()` fires and its routing logic may try to re-enter the buyback hook via `terminal.pay()`. A `_routing` reentrancy guard in `JBUniswapV4Hook` detects this recursion and reverts the inner swap. The buyback hook's try/catch catches the revert and falls back to minting. The hookData passed to V4 swaps is `abi.encode(uint256(0))`, which delegates slippage protection to the hook's own TWAP oracle.
+
 ### Slippage Tolerance
 
 The buyback hook uses a continuous sigmoid formula (`JBSwapLib.getSlippageTolerance`) to dynamically calculate slippage tolerance based on the estimated price impact of the swap:
