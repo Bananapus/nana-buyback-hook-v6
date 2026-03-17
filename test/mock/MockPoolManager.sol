@@ -32,6 +32,9 @@ contract MockPoolManager {
     /// @notice Whether swap was called during the current unlock.
     bool public swapCalled;
 
+    /// @notice The hookData passed to the last swap() call.
+    bytes public lastSwapHookData;
+
     /// @notice If true, unlock() reverts instead of calling back.
     bool public shouldRevertOnUnlock;
 
@@ -131,9 +134,10 @@ contract MockPoolManager {
         return IUnlockCallback(msg.sender).unlockCallback(data);
     }
 
-    /// @notice Returns the pre-configured mock deltas.
-    function swap(PoolKey memory, SwapParams memory, bytes calldata) external returns (BalanceDelta) {
+    /// @notice Returns the pre-configured mock deltas. Captures hookData for assertions.
+    function swap(PoolKey memory, SwapParams memory, bytes calldata hookData) external returns (BalanceDelta) {
         swapCalled = true;
+        lastSwapHookData = hookData;
         return toBalanceDelta(mockDelta0, mockDelta1);
     }
 
