@@ -12,7 +12,6 @@ import {Script} from "forge-std/Script.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
-import {IJBBuybackHookRegistry} from "src/interfaces/IJBBuybackHookRegistry.sol";
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
 
@@ -96,7 +95,6 @@ contract DeployScript is Script, Sphinx {
             tokens: core.tokens,
             poolManager: IPoolManager(poolManager),
             oracleHook: router.hook,
-            registry: IJBBuybackHookRegistry(address(registry)),
             trustedForwarder: trustedForwarder
         });
 

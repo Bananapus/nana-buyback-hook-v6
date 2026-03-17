@@ -41,7 +41,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 import {IJBBuybackHook} from "./interfaces/IJBBuybackHook.sol";
-import {IJBBuybackHookRegistry} from "./interfaces/IJBBuybackHookRegistry.sol";
 import {JBSwapLib} from "./libraries/JBSwapLib.sol";
 
 /// @custom:benediction DEVS BENEDICAT ET PROTEGAT CONTRACTVS MEAM
@@ -111,9 +110,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice The oracle hook used for all JB V4 pools (provides TWAP via observe()).
     IHooks public immutable ORACLE_HOOK;
 
-    /// @notice The buyback hook registry that may forward pool configuration calls on behalf of authorized callers.
-    IJBBuybackHookRegistry public immutable REGISTRY;
-
     //*********************************************************************//
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
@@ -163,7 +159,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param tokens The token registry.
     /// @param poolManager The Uniswap V4 PoolManager singleton.
     /// @param oracleHook The oracle hook for all JB V4 pools (provides TWAP via observe()).
-    /// @param registry The buyback hook registry that forwards pool configuration calls.
     /// @param trustedForwarder A trusted forwarder of transactions to this contract.
     constructor(
         IJBDirectory directory,
@@ -173,7 +168,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         IJBTokens tokens,
         IPoolManager poolManager,
         IHooks oracleHook,
-        IJBBuybackHookRegistry registry,
         address trustedForwarder
     )
         JBPermissioned(permissions)
@@ -185,7 +179,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         PRICES = prices;
         POOL_MANAGER = poolManager;
         ORACLE_HOOK = oracleHook;
-        REGISTRY = registry;
     }
 
     //*********************************************************************//
@@ -327,14 +320,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         external
         override
     {
-        // Enforce permissions. Skip if the caller is the registry (it already validated the original caller).
-        if (_msgSender() != address(REGISTRY)) {
-            _requirePermissionFrom({
-                account: PROJECTS.ownerOf(projectId),
-                projectId: projectId,
-                permissionId: JBPermissionIds.SET_BUYBACK_POOL
-            });
-        }
+        // Enforce permissions.
+        // The buyback hook registry (or any other contract) can call these functions on behalf of project owners
+        // by having SET_BUYBACK_POOL permission granted through JBPermissions — no special-casing needed here.
+        _requirePermissionFrom({
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
+        });
         (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
             _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
 
@@ -367,14 +358,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         external
         override
     {
-        // Enforce permissions. Skip if the caller is the registry (it already validated the original caller).
-        if (_msgSender() != address(REGISTRY)) {
-            _requirePermissionFrom({
-                account: PROJECTS.ownerOf(projectId),
-                projectId: projectId,
-                permissionId: JBPermissionIds.SET_BUYBACK_POOL
-            });
-        }
+        // Enforce permissions.
+        // The buyback hook registry (or any other contract) can call these functions on behalf of project owners
+        // by having SET_BUYBACK_POOL permission granted through JBPermissions — no special-casing needed here.
+        _requirePermissionFrom({
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
+        });
 
         // Normalize the terminal token — use address(0) for native.
         address normalizedTerminalToken = terminalToken == JBConstants.NATIVE_TOKEN ? address(0) : terminalToken;
@@ -409,14 +398,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         external
         override
     {
-        // Enforce permissions. Skip if the caller is the registry (it already validated the original caller).
-        if (_msgSender() != address(REGISTRY)) {
-            _requirePermissionFrom({
-                account: PROJECTS.ownerOf(projectId),
-                projectId: projectId,
-                permissionId: JBPermissionIds.SET_BUYBACK_POOL
-            });
-        }
+        // Enforce permissions.
+        // The buyback hook registry (or any other contract) can call these functions on behalf of project owners
+        // by having SET_BUYBACK_POOL permission granted through JBPermissions — no special-casing needed here.
+        _requirePermissionFrom({
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
+        });
 
         (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
             _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});

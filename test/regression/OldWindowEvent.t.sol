@@ -24,7 +24,6 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {IJBBuybackHook} from "src/interfaces/IJBBuybackHook.sol";
-import {IJBBuybackHookRegistry} from "src/interfaces/IJBBuybackHookRegistry.sol";
 
 // Test mocks
 import {MockPoolManager} from "../mock/MockPoolManager.sol";
@@ -76,7 +75,6 @@ contract OWE_OldWindowEvent is Test {
             tokens: tokens,
             poolManager: IPoolManager(address(mockPm)),
             oracleHook: IHooks(address(0)),
-            registry: IJBBuybackHookRegistry(address(0)),
             trustedForwarder: address(0)
         });
 
