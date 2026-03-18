@@ -555,4 +555,76 @@ contract TestOracleRevertBehavior is Test {
         // This is the expected graceful degradation: the buyback hook is a no-op when the oracle is broken,
         // and the terminal mints tokens based on the project's weight as if no buyback hook existed.
     }
+
+    /// @notice Proves that the MockOracleHook correctly handles uint160 seconds-per-liquidity values
+    /// that exceed the old uint136 range. IGeomeanOracle.observe returns uint160[] for
+    /// secondsPerLiquidityCumulativeX128s, so the mock must support the full uint160 range.
+    function test_oracle_uint160SecPerLiquidity_exceedsUint136Max() public {
+        // Use a value that exceeds type(uint136).max to prove the wider uint160 range works.
+        // type(uint136).max = 2^136 - 1 ≈ 8.7e40
+        // We use 2^150, which is ~1.4e45, well above uint136 max.
+        uint160 largeSecPerLiq = uint160(1) << 150;
+        assertTrue(
+            uint256(largeSecPerLiq) > type(uint136).max,
+            "Test value must exceed uint136 max to prove uint160 works"
+        );
+
+        // Set the oracle with a uint160 value exceeding uint136 range.
+        // secPerLiq0 = 0, secPerLiq1 = largeSecPerLiq => delta = largeSecPerLiq
+        mockOracle.setObserveData(0, 0, 0, largeSecPerLiq);
+
+        // Verify the stored values are correct (not truncated).
+        assertEq(uint256(mockOracle.secPerLiq1()), uint256(largeSecPerLiq), "Stored value must not be truncated");
+
+        // Set up a project to query through the full flow.
+        uint256 u160ProjectId = 105;
+        vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (u160ProjectId)), abi.encode(owner));
+        vm.mockCall(
+            address(tokens),
+            abi.encodeCall(tokens.tokenOf, (u160ProjectId)),
+            abi.encode(IJBToken(address(projectToken)))
+        );
+        vm.mockCall(
+            address(directory), abi.encodeCall(directory.controllerOf, (u160ProjectId)), abi.encode(controller)
+        );
+        _mockCurrentRuleset(u160ProjectId);
+
+        uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
+
+        vm.prank(owner);
+        hook.setPoolFor(u160ProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
+
+        // Build beforePay context — the oracle query must succeed (not revert) with the large uint160 value.
+        JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
+            terminal: address(terminal),
+            payer: payer,
+            amount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                value: 1 ether
+            }),
+            projectId: u160ProjectId,
+            rulesetId: 1,
+            beneficiary: beneficiary,
+            weight: 1e18,
+            reservedPercent: 0,
+            metadata: ""
+        });
+
+        // This call exercises the full oracle path: observe() returns uint160[] values,
+        // JBSwapLib.getQuoteFromOracle computes the delta, and a valid quote is produced.
+        // If the mock were still uint136, this value would be truncated and the test would fail.
+        (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
+
+        // With a very large secondsPerLiquidity delta, harmonicMeanLiquidity is very small
+        // (twapWindow << 128 / largeSecPerLiq ≈ tiny), leading to high slippage.
+        // The oracle returns a valid quote (non-zero), but the swap/mint decision depends on comparison.
+        // The key assertion: the call did NOT revert, proving uint160 values flow through correctly.
+        assertTrue(
+            (specs.length == 0 && weight > 0) || (specs.length == 1 && weight == 0),
+            "Oracle with uint160 values exceeding uint136 max should produce a valid swap/mint decision"
+        );
+    }
 }

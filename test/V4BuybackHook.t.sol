@@ -440,7 +440,7 @@ contract V4BuybackHookTest is Test {
         //
         // For seconds-per-liquidity, set a non-zero delta to get a valid harmonicMeanLiquidity:
         // secPerLiq1 - secPerLiq0 = small value => high harmonic mean liquidity
-        mockOracle.setObserveData(0, 0, 0, uint136(uint256(twapWindow) << 64));
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
 
         // Set up the pool via setPoolFor to make _poolIsSet = true.
         // First, clear the pool from forTestInitPool.
@@ -897,7 +897,7 @@ contract V4BuybackHookTest is Test {
 
         // Configure oracle: tick=0 means price=1, so 1 ETH -> ~1 token.
         // With slippage applied, the TWAP-based quote will be somewhat less than 1e18 but still substantial.
-        mockOracle.setObserveData(0, 0, 0, uint136(uint256(twapWindow) << 64));
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
 
         // Mock currentRulesetOf for this project.
         JBRulesetMetadata memory meta = JBRulesetMetadata({
