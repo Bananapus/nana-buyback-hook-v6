@@ -14,7 +14,7 @@ import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
-import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
+
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
@@ -182,6 +182,8 @@ contract BuybackHookHandler is Test {
         if (secPerLiqDeltaRaw > type(uint160).max) {
             secPerLiqDelta = type(uint160).max;
         } else {
+            // casting to 'uint160' is safe because we clamp to type(uint160).max above
+            // forge-lint: disable-next-line(unsafe-typecast)
             secPerLiqDelta = uint160(secPerLiqDeltaRaw);
         }
 
@@ -334,9 +336,7 @@ contract BuybackHookHandler is Test {
         uint256 tokenCountWithoutHook = mulDiv({x: payAmount, y: weight, denominator: 1e18});
 
         // Call beforePayRecordedWith. May revert if amountToSwapWith > payAmount, but we bounded it.
-        try hook.beforePayRecordedWith(ctx) returns (
-            uint256 returnedWeight, JBPayHookSpecification[] memory specs
-        ) {
+        try hook.beforePayRecordedWith(ctx) returns (uint256 returnedWeight, JBPayHookSpecification[] memory specs) {
             callCount++;
 
             if (specs.length == 0) {
@@ -425,9 +425,7 @@ contract BuybackHookHandler is Test {
         });
 
         vm.mockCall(
-            address(controller),
-            abi.encodeCall(IJBController.currentRulesetOf, (PROJECT_ID)),
-            abi.encode(ruleset, meta)
+            address(controller), abi.encodeCall(IJBController.currentRulesetOf, (PROJECT_ID)), abi.encode(ruleset, meta)
         );
     }
 }
@@ -510,9 +508,7 @@ contract BuybackHookInvariantTest is StdInvariant, Test {
             abi.encode(true)
         );
         vm.mockCall(
-            address(tokens),
-            abi.encodeCall(tokens.tokenOf, (PROJECT_ID)),
-            abi.encode(IJBToken(address(projectToken)))
+            address(tokens), abi.encodeCall(tokens.tokenOf, (PROJECT_ID)), abi.encode(IJBToken(address(projectToken)))
         );
         vm.mockCall(
             address(permissions),
@@ -536,17 +532,7 @@ contract BuybackHookInvariantTest is StdInvariant, Test {
 
         // Deploy handler.
         handler = new BuybackHookHandler(
-            hook,
-            mockPm,
-            mockOracle,
-            projectToken,
-            directory,
-            prices,
-            projects,
-            tokens,
-            controller,
-            terminal,
-            poolKey
+            hook, mockPm, mockOracle, projectToken, directory, prices, projects, tokens, controller, terminal, poolKey
         );
 
         // Target only the handler for invariant testing.

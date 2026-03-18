@@ -741,6 +741,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
             }),
             useTotalSurplus: false,
             cashOutTaxRate: 5000,
+            beneficiaryIsFeeless: false,
             metadata: ""
         });
     }
