@@ -238,7 +238,7 @@ Unchanged in signature.
 - `@bananapus/core-v5` → `@bananapus/core-v6`
 - `@bananapus/permission-ids-v5` → `@bananapus/permission-ids-v6`
 - `@uniswap/v3-core` and `@uniswap/v3-periphery` → `@uniswap/v4-core`
-- `ERC165` (abstract contract) → `IERC165` (interface only) for the import in `JBBuybackHookRegistry`
+- `IERC165` import path changed from `ERC165.sol` to `IERC165.sol` in `JBBuybackHookRegistry` (both versions import the `IERC165` interface, just from a different file)
 
 ---
 
