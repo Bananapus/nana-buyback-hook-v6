@@ -565,8 +565,7 @@ contract TestOracleRevertBehavior is Test {
         // We use 2^150, which is ~1.4e45, well above uint136 max.
         uint160 largeSecPerLiq = uint160(1) << 150;
         assertTrue(
-            uint256(largeSecPerLiq) > type(uint136).max,
-            "Test value must exceed uint136 max to prove uint160 works"
+            uint256(largeSecPerLiq) > type(uint136).max, "Test value must exceed uint136 max to prove uint160 works"
         );
 
         // Set the oracle with a uint160 value exceeding uint136 range.
@@ -584,9 +583,7 @@ contract TestOracleRevertBehavior is Test {
             abi.encodeCall(tokens.tokenOf, (u160ProjectId)),
             abi.encode(IJBToken(address(projectToken)))
         );
-        vm.mockCall(
-            address(directory), abi.encodeCall(directory.controllerOf, (u160ProjectId)), abi.encode(controller)
-        );
+        vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (u160ProjectId)), abi.encode(controller));
         _mockCurrentRuleset(u160ProjectId);
 
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);

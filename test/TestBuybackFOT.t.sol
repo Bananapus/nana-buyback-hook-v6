@@ -14,7 +14,7 @@ import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
-import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
 import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";

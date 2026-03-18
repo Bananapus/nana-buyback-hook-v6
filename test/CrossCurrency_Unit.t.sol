@@ -221,7 +221,7 @@ contract CrossCurrency_Unit is Test {
         // Without a pool, the hook returns early before hitting the price feed.
         // We need the hook to have a pool registered to exercise the weight ratio code.
         address mockToken = makeAddr("projectToken");
-        PoolKey memory key = PoolKey({
+        PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(mockToken),
             fee: 3000,
@@ -257,7 +257,7 @@ contract CrossCurrency_Unit is Test {
     /// @notice Test 4: Verify the weight ratio math at the JBTerminalStore level.
     /// When amount.currency != baseCurrency, weightRatio = pricePerUnitOf(_, currency, baseCurrency, decimals).
     /// tokenCount = mulDiv(amount.value, weight, weightRatio).
-    function test_cc_weightRatio_tokenCountCalculation() public {
+    function test_cc_weightRatio_tokenCountCalculation() public pure {
         // This is a pure math verification test.
         // For baseCurrency=USD(2), weight=1000e18, ETH payment of 1e18:
         // pricePerUnitOf(_, nativeCurrency, USD, 18) = 5e14 (inverse of $2000)
