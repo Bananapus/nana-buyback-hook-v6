@@ -305,6 +305,8 @@ contract TestBuybackFOT is Test {
     function test_fot_mintFallback_afterSwapFailure() public {
         bool projectTokenIs0 = address(projectToken) < address(fotToken);
         uint256 payAmount = 10 ether;
+        uint256 fotFee = (payAmount * 100) / 10_000; // 1% = 0.1 ether
+        uint256 netReceived = payAmount - fotFee; // 9.9 ether
 
         // Force the swap to fail (unlock reverts).
         mockPm.setShouldRevertOnUnlock(true);
@@ -324,6 +326,22 @@ contract TestBuybackFOT is Test {
             address(terminal),
             abi.encodeWithSignature("addToBalanceOf(uint256,address,uint256,bool,string,bytes)"),
             abi.encode()
+        );
+
+        // Expect the hook to call addToBalanceOf on the terminal with the net received amount
+        // (after FOT deduction). Since it's an ERC20 (not native token), msg.value = 0.
+        vm.expectCall(
+            address(terminal),
+            0, // no ETH value (ERC20 token, not native)
+            abi.encodeWithSignature(
+                "addToBalanceOf(uint256,address,uint256,bool,string,bytes)",
+                projectId,
+                address(fotToken),
+                netReceived,
+                false,
+                "",
+                bytes("")
+            )
         );
 
         // Execute from terminal. Should not revert despite FOT deduction.
@@ -395,7 +413,7 @@ contract TestBuybackFOT is Test {
     /// behavior has no impact on the decision to swap vs mint.
     function test_fot_beforePay_oracleQueryUnaffected() public {
         // Set oracle to return a valid TWAP (tick=0, price=1.0).
-        mockOracle.setObserveData(0, 0, 0, uint136(uint256(twapWindow) << 64));
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
 
         // Use setPoolFor so _poolIsSet = true.
         uint256 fotProjectId = 99;
@@ -498,11 +516,27 @@ contract TestBuybackFOT is Test {
         vm.prank(address(terminal));
         fotToken.approve(address(hook), payAmount);
 
-        // Mock addToBalanceOf — capture what amount is passed.
+        // Mock addToBalanceOf on terminal (for leftover funds returned by the hook).
         vm.mockCall(
             address(terminal),
             abi.encodeWithSignature("addToBalanceOf(uint256,address,uint256,bool,string,bytes)"),
             abi.encode()
+        );
+
+        // Expect addToBalanceOf to be called with the net received amount (99 ether, not the
+        // nominal 100 ether), proving the balance-delta calculation correctly accounts for FOT.
+        vm.expectCall(
+            address(terminal),
+            0, // no ETH value (ERC20 token, not native)
+            abi.encodeWithSignature(
+                "addToBalanceOf(uint256,address,uint256,bool,string,bytes)",
+                projectId,
+                address(fotToken),
+                netReceived,
+                false,
+                "",
+                bytes("")
+            )
         );
 
         // Execute from terminal.
