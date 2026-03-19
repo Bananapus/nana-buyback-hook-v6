@@ -318,12 +318,10 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint160 secPerLiqDelta = uint160((uint256(twapWindow) << 128) / liquidity);
 
-        MockOracleHook(ORACLE_ADDR).setObserveData({
-            _tickCumulative0: 0,
-            _tickCumulative1: tickCumulativeDelta,
-            _secPerLiq0: 0,
-            _secPerLiq1: secPerLiqDelta
-        });
+        MockOracleHook(ORACLE_ADDR)
+            .setObserveData({
+                _tickCumulative0: 0, _tickCumulative1: tickCumulativeDelta, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta
+            });
 
         // Build a PoolKey pointing to the mock oracle. The pool does not need to exist in V4
         // for the TWAP path, because getQuoteFromOracle with twapWindow > 0 calls the oracle
@@ -384,12 +382,13 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint160 secPerLiqDelta = uint160((uint256(twapWindow) << 128) / poolLiquidity);
 
-        MockOracleHook(ORACLE_ADDR).setObserveData({
-            _tickCumulative0: 0,
-            _tickCumulative1: 0, // tick=0 -> 1:1 price
-            _secPerLiq0: 0,
-            _secPerLiq1: secPerLiqDelta
-        });
+        MockOracleHook(ORACLE_ADDR)
+            .setObserveData({
+                _tickCumulative0: 0,
+                _tickCumulative1: 0, // tick=0 -> 1:1 price
+                _secPerLiq0: 0,
+                _secPerLiq1: secPerLiqDelta
+            });
 
         // Build the beforePay context.
         JBBeforePayRecordedContext memory ctx = JBBeforePayRecordedContext({
@@ -440,12 +439,13 @@ contract V4RealOracleForkTest is Test {
 
         // Configure oracle with valid tick cumulatives but zero liquidity delta.
         // secondsPerLiq0 == secondsPerLiq1 => delta = 0 => harmonicMeanLiquidity = 0.
-        MockOracleHook(ORACLE_ADDR).setObserveData({
-            _tickCumulative0: 0,
-            _tickCumulative1: 0,
-            _secPerLiq0: 100, // same value
-            _secPerLiq1: 100 // same value => delta = 0
-        });
+        MockOracleHook(ORACLE_ADDR)
+            .setObserveData({
+                _tickCumulative0: 0,
+                _tickCumulative1: 0,
+                _secPerLiq0: 100, // same value
+                _secPerLiq1: 100 // same value => delta = 0
+            });
 
         // First verify at the library level that harmonicMeanLiquidity is 0.
         (uint256 libAmountOut,, uint128 libHarmonicMeanLiquidity) = quoteHarness.getQuoteFromOracle({
@@ -522,12 +522,10 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint160 secPerLiqDelta5min = uint160((uint256(window5min) << 128) / liquidity);
 
-        MockOracleHook(ORACLE_ADDR).setObserveData({
-            _tickCumulative0: 0,
-            _tickCumulative1: tickCumDelta5min,
-            _secPerLiq0: 0,
-            _secPerLiq1: secPerLiqDelta5min
-        });
+        MockOracleHook(ORACLE_ADDR)
+            .setObserveData({
+                _tickCumulative0: 0, _tickCumulative1: tickCumDelta5min, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta5min
+            });
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
@@ -562,12 +560,10 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint160 secPerLiqDelta2hr = uint160((uint256(window2hr) << 128) / liquidity);
 
-        MockOracleHook(ORACLE_ADDR).setObserveData({
-            _tickCumulative0: 0,
-            _tickCumulative1: tickCumDelta2hr,
-            _secPerLiq0: 0,
-            _secPerLiq1: secPerLiqDelta2hr
-        });
+        MockOracleHook(ORACLE_ADDR)
+            .setObserveData({
+                _tickCumulative0: 0, _tickCumulative1: tickCumDelta2hr, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta2hr
+            });
 
         (uint256 amountOut2hr, int24 meanTick2hr, uint128 meanLiq2hr) = quoteHarness.getQuoteFromOracle({
             poolManager: poolManager,
@@ -601,12 +597,13 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int56 tickCumDelta2hrShift = int56(recentTick) * int56(int32(window5min)); // = 200 * 300 = 60000
 
-        MockOracleHook(ORACLE_ADDR).setObserveData({
-            _tickCumulative0: 0,
-            _tickCumulative1: tickCumDelta5minShift,
-            _secPerLiq0: 0,
-            _secPerLiq1: secPerLiqDelta5min
-        });
+        MockOracleHook(ORACLE_ADDR)
+            .setObserveData({
+                _tickCumulative0: 0,
+                _tickCumulative1: tickCumDelta5minShift,
+                _secPerLiq0: 0,
+                _secPerLiq1: secPerLiqDelta5min
+            });
 
         (uint256 amountOut5minShift, int24 meanTick5minShift,) = quoteHarness.getQuoteFromOracle({
             poolManager: poolManager,
@@ -617,12 +614,13 @@ contract V4RealOracleForkTest is Test {
             quoteToken: address(projectToken)
         });
 
-        MockOracleHook(ORACLE_ADDR).setObserveData({
-            _tickCumulative0: 0,
-            _tickCumulative1: tickCumDelta2hrShift,
-            _secPerLiq0: 0,
-            _secPerLiq1: secPerLiqDelta2hr
-        });
+        MockOracleHook(ORACLE_ADDR)
+            .setObserveData({
+                _tickCumulative0: 0,
+                _tickCumulative1: tickCumDelta2hrShift,
+                _secPerLiq0: 0,
+                _secPerLiq1: secPerLiqDelta2hr
+            });
 
         (uint256 amountOut2hrShift, int24 meanTick2hrShift,) = quoteHarness.getQuoteFromOracle({
             poolManager: poolManager,
@@ -635,8 +633,12 @@ contract V4RealOracleForkTest is Test {
 
         console.log("");
         console.log("  After price shift (tick 0 -> 200):");
-        console.log("    5min meanTick: %s, amountOut: %s", _toStringSigned(meanTick5minShift), _formatEther(amountOut5minShift));
-        console.log("    2hr  meanTick: %s, amountOut: %s", _toStringSigned(meanTick2hrShift), _formatEther(amountOut2hrShift));
+        console.log(
+            "    5min meanTick: %s, amountOut: %s", _toStringSigned(meanTick5minShift), _formatEther(amountOut5minShift)
+        );
+        console.log(
+            "    2hr  meanTick: %s, amountOut: %s", _toStringSigned(meanTick2hrShift), _formatEther(amountOut2hrShift)
+        );
 
         assertGt(amountOut5minShift, 0, "5min shifted window must return non-zero quote");
         assertGt(amountOut2hrShift, 0, "2hr shifted window must return non-zero quote");
@@ -651,7 +653,11 @@ contract V4RealOracleForkTest is Test {
             "5min window should be more responsive to recent price changes than 2hr"
         );
 
-        console.log("  -> 5min window is more responsive: %s vs %s tokens", _formatEther(amountOut5minShift), _formatEther(amountOut2hrShift));
+        console.log(
+            "  -> 5min window is more responsive: %s vs %s tokens",
+            _formatEther(amountOut5minShift),
+            _formatEther(amountOut2hrShift)
+        );
     }
 
     //*********************************************************************//
