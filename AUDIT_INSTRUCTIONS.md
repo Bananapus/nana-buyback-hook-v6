@@ -33,7 +33,7 @@ The core contract. Implements both `IJBRulesetDataHook` (called during payment r
 - `twapWindowOf[projectId][terminalToken]` -- TWAP window in seconds
 
 **Key functions:**
-- `beforePayRecordedWith(JBBeforePayRecordedContext)` -- Data hook. Computes swap-vs-mint decision. Returns `weight=0` with a pay hook spec when swapping wins, or the original weight when minting wins.
+- `beforePayRecordedWith(JBBeforePayRecordedContext)` -- Data hook. Computes swap-vs-mint decision. Returns `weight=0` with a pay hook spec when swapping wins, or the original weight when minting wins. The hook spec metadata encodes 8 fields: `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId)`. Fields 1-4 are consumed by `afterPayRecordedWith`; fields 5-8 are informational for preview clients.
 - `afterPayRecordedWith(JBAfterPayRecordedContext)` -- Pay hook. Executes the swap via V4 unlock/callback, burns received project tokens, computes leftover, mints tokens for leftover + swap amount.
 - `unlockCallback(bytes)` -- V4 PoolManager callback. Executes `swap()`, settles input tokens, takes output tokens. Only callable by `POOL_MANAGER`.
 - `setPoolFor(projectId, PoolKey, twapWindow, terminalToken)` -- Configure pool (immutable once set). Requires `SET_BUYBACK_POOL` permission.
@@ -95,10 +95,17 @@ Terminal calls beforePayRecordedWith(context)
   |
   +--> If minimumSwapAmountOut > tokenCountWithoutHook:
   |      Return weight=0 + JBPayHookSpecification(this, amountToSwapWith, metadata)
-  |      metadata = abi.encode(projectTokenIs0, mintFromExcess, minimumSwapAmountOut,
-  |                            controller, tokenCountWithoutHook)
-  |      Note: afterPayRecordedWith decodes only the first 4 fields.
-  |      The 5th (tokenCountWithoutHook) is informational for preview clients.
+  |      metadata = abi.encode(
+  |        projectTokenIs0,          // 1 — bool
+  |        mintFromExcess,           // 2 — uint256
+  |        minimumSwapAmountOut,     // 3 — uint256
+  |        controller,               // 4 — IJBController
+  |        tokenCountWithoutHook,    // 5 — uint256 (informational)
+  |        twapTick,                 // 6 — int24 (informational)
+  |        twapLiquidity,            // 7 — uint128 (informational)
+  |        poolId                    // 8 — PoolId (informational)
+  |      )
+  |      NOTE: afterPayRecordedWith only decodes fields 1-4. Fields 5-8 are for preview clients.
   |    Else:
   |      Return original weight (mint path)
 ```

@@ -1232,28 +1232,38 @@ contract V4BuybackHookTest is Test {
         // The swap path must have been chosen.
         assertEq(specs.length, 1, "Swap path should be chosen");
 
-        // Decode all 5 fields from the hook spec metadata.
+        // Decode all 8 fields from the hook spec metadata.
         (
             bool projectTokenIs0,
             uint256 mintFromExcess,
             uint256 minimumSwapAmountOut,
             IJBController decodedController,
-            uint256 tokenCountWithoutHook
-        ) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController, uint256));
+            uint256 tokenCountWithoutHook,
+            int24 twapTick,
+            uint128 twapLiquidity,
+            PoolId decodedPoolId
+        ) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController, uint256, int24, uint128, PoolId));
 
-        // Verify the 5th field: with weight=1e18, baseCurrency=NATIVE_TOKEN, paying 1 ETH in native,
+        // Verify field 5: with weight=1e18, baseCurrency=NATIVE_TOKEN, paying 1 ETH in native,
         // weightRatio = 10^18, so tokenCountWithoutHook = mulDiv(1e18, 1e18, 1e18) = 1e18.
         assertEq(
             tokenCountWithoutHook, 1e18, "tokenCountWithoutHook should equal amountToSwapWith * weight / weightRatio"
         );
 
-        // Verify other fields are consistent.
+        // Verify fields 1-4.
         assertEq(address(decodedController), address(controller), "controller should match");
         assertEq(mintFromExcess, 0, "mintFromExcess should be 0 when amountToSwapWith == totalPaid");
         assertGt(minimumSwapAmountOut, 0, "minimumSwapAmountOut should be non-zero");
-
-        // projectTokenIs0 should reflect the address comparison.
         assertEq(projectTokenIs0, address(projectToken) < address(0), "projectTokenIs0 should match address comparison");
+
+        // Verify field 6: twapTick (oracle configured with tick=0).
+        assertEq(twapTick, int24(0), "twapTick should match oracle tick");
+
+        // Verify field 7: twapLiquidity (should be > 0 when oracle is available).
+        assertGt(twapLiquidity, 0, "twapLiquidity should be > 0");
+
+        // Verify field 8: poolId (should match the configured pool).
+        assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
     }
 
     /// @notice initializePoolFor reverts if caller is not authorized.
