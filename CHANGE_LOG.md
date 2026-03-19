@@ -4,6 +4,17 @@ This document describes all changes between `nana-buyback-hook` (v5) and `nana-b
 
 ---
 
+## 0.1. Post-v6 Changes
+
+### Hook Spec Metadata: `tokenCountWithoutHook` (5th field)
+`beforePayRecordedWith` now encodes a 5th field in the `JBPayHookSpecification.metadata` when the swap path is chosen:
+```
+(bool projectTokenIs0, uint256 mintFromExcess, uint256 minimumSwapAmountOut, IJBController controller, uint256 tokenCountWithoutHook)
+```
+`tokenCountWithoutHook` is the number of tokens that direct minting (without the buyback hook) would have yielded. This is informational for preview clients (e.g., `JBTerminalStore.previewPayFrom`) -- `afterPayRecordedWith` only decodes the first 4 fields. The 5th field is ABI-compatible: `abi.decode` ignores trailing data.
+
+---
+
 ## 1. Breaking Changes
 
 ### Uniswap V3 → V4 Migration

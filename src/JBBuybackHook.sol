@@ -616,13 +616,19 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Keep a reference to the token being used by the terminal. Use address(0) for native ETH.
         address terminalToken = context.amount.token == JBConstants.NATIVE_TOKEN ? address(0) : context.amount.token;
 
-        // Always compute the TWAP-based minimum.
-        uint256 twapMinimum = _getQuote({
-            projectId: context.projectId,
-            projectToken: projectToken,
-            amountIn: amountToSwapWith,
-            terminalToken: terminalToken
-        });
+        // Always compute the TWAP-based minimum and pool info.
+        uint256 twapMinimum;
+        int24 twapTick;
+        uint128 twapLiquidity;
+        PoolId poolId;
+        {
+            (twapMinimum, twapTick, twapLiquidity, poolId) = _getQuote({
+                projectId: context.projectId,
+                projectToken: projectToken,
+                amountIn: amountToSwapWith,
+                terminalToken: terminalToken
+            });
+        }
 
         // Use the higher of the payer's quote and the TWAP quote.
         // This prevents a stale/malicious payer quote from getting a worse deal than the oracle suggests.
@@ -641,7 +647,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     projectTokenIs0,
                     totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith,
                     minimumSwapAmountOut,
-                    controller
+                    controller,
+                    tokenCountWithoutHook,
+                    twapTick,
+                    twapLiquidity,
+                    poolId
                 )
             });
 
@@ -857,6 +867,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param amountIn The number of terminal tokens being used to swap.
     /// @param terminalToken The terminal token being paid in (normalized to address(0) for native).
     /// @return amountOut The minimum number of tokens to receive based on the TWAP and slippage.
+    /// @return twapTick The arithmetic mean tick from the TWAP oracle.
+    /// @return twapLiquidity The harmonic mean liquidity from the TWAP oracle.
+    /// @return poolId The V4 pool identifier used for the quote.
     function _getQuote(
         uint256 projectId,
         address projectToken,
@@ -865,21 +878,22 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     )
         internal
         view
-        returns (uint256 amountOut)
+        returns (uint256 amountOut, int24 twapTick, uint128 twapLiquidity, PoolId poolId)
     {
         // Get the pool key for this project/terminal token pair.
         PoolKey memory key = _poolKeyOf[projectId][terminalToken];
 
         // Make sure a pool has been configured.
-        if (!_poolIsSet[projectId][terminalToken]) return 0;
+        if (!_poolIsSet[projectId][terminalToken]) return (0, 0, 0, PoolId.wrap(0));
 
         // Get the TWAP window for this project/terminal token pair.
         uint256 twapWindow = twapWindowOf[projectId][terminalToken];
 
+        // Keep a reference to the pool ID.
+        poolId = key.toId();
+
         // Query the oracle hook (or spot if twapWindow is 0).
-        int24 arithmeticMeanTick;
-        uint128 meanLiquidity;
-        (amountOut, arithmeticMeanTick, meanLiquidity) = JBSwapLib.getQuoteFromOracle({
+        (amountOut, twapTick, twapLiquidity) = JBSwapLib.getQuoteFromOracle({
             poolManager: POOL_MANAGER,
             key: key,
             // Safe: twapWindow is validated <= MAX_TWAP_WINDOW (2 days = 172800), fits in uint32.
@@ -893,16 +907,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
 
         // If oracle returned 0, no quote available — trigger mint fallback.
-        if (amountOut == 0) return 0;
+        if (amountOut == 0) return (0, twapTick, twapLiquidity, poolId);
 
         // If there's no liquidity data, return 0 to trigger mint.
-        if (meanLiquidity == 0) return 0;
+        if (twapLiquidity == 0) return (0, twapTick, twapLiquidity, poolId);
 
         // Calculate price impact.
         bool zeroForOne = terminalToken < projectToken;
-        uint160 sqrtP = TickMath.getSqrtPriceAtTick(arithmeticMeanTick);
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(twapTick);
         uint256 impact = JBSwapLib.calculateImpact({
-            amountIn: amountIn, liquidity: meanLiquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
+            amountIn: amountIn, liquidity: twapLiquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
         });
 
         // Get the pool fee in bps (V4 fees are in hundredths of a bip, so divide by 100).
@@ -912,7 +926,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 slippageTolerance = JBSwapLib.getSlippageTolerance({impact: impact, poolFeeBps: poolFeeBps});
 
         // If the slippage tolerance is the maximum, return 0 to trigger mint.
-        if (slippageTolerance >= TWAP_SLIPPAGE_DENOMINATOR) return 0;
+        if (slippageTolerance >= TWAP_SLIPPAGE_DENOMINATOR) return (0, twapTick, twapLiquidity, poolId);
 
         // Apply slippage to the oracle quote.
         amountOut -= (amountOut * slippageTolerance) / TWAP_SLIPPAGE_DENOMINATOR;

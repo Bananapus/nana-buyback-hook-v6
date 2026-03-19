@@ -1136,6 +1136,136 @@ contract V4BuybackHookTest is Test {
         });
     }
 
+    /// @notice Verify that tokenCountWithoutHook is encoded as the 5th field in hook spec metadata.
+    /// @dev When the swap path is chosen (specs.length == 1), the metadata should contain all 5 fields:
+    ///      (bool projectTokenIs0, uint256 mintFromExcess, uint256 minimumSwapAmountOut, IJBController controller,
+    /// uint256 tokenCountWithoutHook)
+    function test_hookSpecMetadataContainsTokenCountWithoutHook() public {
+        // Set up a new project with setPoolFor.
+        uint256 tcProjectId = 500;
+        vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (tcProjectId)), abi.encode(owner));
+        vm.mockCall(
+            address(tokens), abi.encodeCall(tokens.tokenOf, (tcProjectId)), abi.encode(IJBToken(address(projectToken)))
+        );
+        vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (tcProjectId)), abi.encode(controller));
+
+        uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setLiquidity(poolId, 1_000_000 ether);
+
+        vm.prank(owner);
+        hook.setPoolFor(tcProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
+
+        // Configure the oracle to produce a high TWAP quote so the swap path is chosen.
+        // tick=0 means price=1, so 1 ETH -> ~1 token. With slippage the quote should still be > 0.
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+
+        // Mock ruleset with baseCurrency = NATIVE_TOKEN, weight = 1e18 (so tokenCountWithoutHook = amountToSwapWith).
+        JBRulesetMetadata memory meta = JBRulesetMetadata({
+            reservedPercent: 0,
+            cashOutTaxRate: 0,
+            baseCurrency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+            pausePay: false,
+            pauseCreditTransfers: false,
+            allowOwnerMinting: true,
+            allowSetCustomToken: true,
+            allowTerminalMigration: false,
+            allowSetTerminals: false,
+            ownerMustSendPayouts: false,
+            allowSetController: false,
+            allowAddAccountingContext: false,
+            allowAddPriceFeed: false,
+            holdFees: false,
+            useTotalSurplusForCashOuts: false,
+            useDataHookForPay: true,
+            useDataHookForCashOut: false,
+            dataHook: address(hook),
+            metadata: 0
+        });
+
+        JBRuleset memory ruleset = JBRuleset({
+            cycleNumber: 1,
+            id: 1,
+            basedOnId: 0,
+            start: uint48(block.timestamp),
+            duration: 30 days,
+            weight: 1e18,
+            weightCutPercent: 0,
+            approvalHook: IJBRulesetApprovalHook(address(0)),
+            metadata: meta.packRulesetMetadata()
+        });
+
+        vm.mockCall(
+            address(controller),
+            abi.encodeCall(IJBController.currentRulesetOf, (tcProjectId)),
+            abi.encode(ruleset, meta)
+        );
+
+        // Pay with 1 ETH and provide a very high payer quote (2e18 tokens) so swap path is guaranteed.
+        uint256 amountToSwapWith = 1 ether;
+        uint256 highPayerQuote = 2e18;
+
+        bytes memory quoteMetadata = abi.encode(amountToSwapWith, highPayerQuote);
+        // Use the hook's address for the metadata ID, since the hook decodes using its own address(this).
+        bytes4 metadataId = JBMetadataResolver.getId("quote", address(hook));
+        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
+
+        JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
+            terminal: address(terminal),
+            payer: payer,
+            amount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                value: amountToSwapWith
+            }),
+            projectId: tcProjectId,
+            rulesetId: 1,
+            beneficiary: beneficiary,
+            weight: 1e18,
+            reservedPercent: 0,
+            metadata: fullMetadata
+        });
+
+        (, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
+
+        // The swap path must have been chosen.
+        assertEq(specs.length, 1, "Swap path should be chosen");
+
+        // Decode all 8 fields from the hook spec metadata.
+        (
+            bool projectTokenIs0,
+            uint256 mintFromExcess,
+            uint256 minimumSwapAmountOut,
+            IJBController decodedController,
+            uint256 tokenCountWithoutHook,
+            int24 twapTick,
+            uint128 twapLiquidity,
+            PoolId decodedPoolId
+        ) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController, uint256, int24, uint128, PoolId));
+
+        // Verify field 5: with weight=1e18, baseCurrency=NATIVE_TOKEN, paying 1 ETH in native,
+        // weightRatio = 10^18, so tokenCountWithoutHook = mulDiv(1e18, 1e18, 1e18) = 1e18.
+        assertEq(
+            tokenCountWithoutHook, 1e18, "tokenCountWithoutHook should equal amountToSwapWith * weight / weightRatio"
+        );
+
+        // Verify fields 1-4.
+        assertEq(address(decodedController), address(controller), "controller should match");
+        assertEq(mintFromExcess, 0, "mintFromExcess should be 0 when amountToSwapWith == totalPaid");
+        assertGt(minimumSwapAmountOut, 0, "minimumSwapAmountOut should be non-zero");
+        assertEq(projectTokenIs0, address(projectToken) < address(0), "projectTokenIs0 should match address comparison");
+
+        // Verify field 6: twapTick (oracle configured with tick=0).
+        assertEq(twapTick, int24(0), "twapTick should match oracle tick");
+
+        // Verify field 7: twapLiquidity (should be > 0 when oracle is available).
+        assertGt(twapLiquidity, 0, "twapLiquidity should be > 0");
+
+        // Verify field 8: poolId (should match the configured pool).
+        assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
+    }
+
     /// @notice initializePoolFor reverts if caller is not authorized.
 
     /// @notice Verify that the buyback hook passes exactly 32 bytes of hookData encoding uint256(0)

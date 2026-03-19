@@ -194,6 +194,76 @@ The hook reads metadata with key `"quote"` (resolved via `JBMetadataResolver`), 
 - If `amountToSwapWith > totalPaid`, the transaction reverts with `JBBuybackHook_InsufficientPayAmount`.
 - The `minimumSwapAmountOut` is compared against the TWAP-derived minimum -- the higher value is used.
 
+### Hook Specification Metadata
+
+When the swap path is chosen, the `JBPayHookSpecification.metadata` returned by `beforePayRecordedWith` encodes 8 fields:
+
+| # | Field | Type | Purpose |
+|---|-------|------|---------|
+| 1 | `projectTokenIs0` | `bool` | Token sort order in the V4 pool (`true` if project token is `currency0`) |
+| 2 | `mintFromExcess` | `uint256` | Leftover amount to mint with (`totalPaid - amountToSwapWith`), or `0` if the full payment is swapped |
+| 3 | `minimumSwapAmountOut` | `uint256` | Slippage floor -- the minimum acceptable swap output |
+| 4 | `controller` | `IJBController` | Cached controller reference for burn/mint calls |
+| 5 | `tokenCountWithoutHook` | `uint256` | Tokens that would have been minted without the buyback hook (informational) |
+| 6 | `twapTick` | `int24` | TWAP oracle tick used for the price quote (informational) |
+| 7 | `twapLiquidity` | `uint128` | Harmonic mean liquidity from the TWAP oracle (informational) |
+| 8 | `poolId` | `PoolId` | V4 pool identifier used for the swap (informational) |
+
+`afterPayRecordedWith` only decodes fields 1-4 to execute the swap. Fields 5-8 are informational -- they allow preview/simulation clients to inspect the swap decision context (what minting would have yielded, the TWAP oracle state, and which pool was selected) without replaying the computation.
+
+### Interpreting the Informational Fields
+
+**`twapTick` (int24) — TWAP Price**
+
+The tick encodes the time-weighted average price using Uniswap V4's logarithmic scale:
+
+```
+price = 1.0001 ^ tick
+```
+
+- `tick = 0` → price = 1.0 (tokens trade 1:1)
+- `tick > 0` → `currency1` is more expensive than `currency0`
+- `tick < 0` → `currency0` is more expensive than `currency1`
+
+The price is always expressed as `currency1 / currency0`. To get the human-readable price of the project token in terms of the payment token, check `projectTokenIs0`:
+
+- If `projectTokenIs0 == true`: project token is `currency0`, so `price = 1.0001^tick` gives payment tokens per project token.
+- If `projectTokenIs0 == false`: project token is `currency1`, so `1 / (1.0001^tick)` gives payment tokens per project token.
+
+In JavaScript/TypeScript:
+```js
+const price = 1.0001 ** tick;
+const projectTokenPrice = projectTokenIs0 ? price : 1 / price;
+```
+
+On-chain, use `TickMath.getSqrtPriceAtTick(twapTick)` to get the `sqrtPriceX96` (a Q64.96 fixed-point square root of the price), then square it:
+```solidity
+uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(twapTick);
+// price = (sqrtPriceX96 / 2^96)^2 = sqrtPriceX96^2 / 2^192
+```
+
+**`twapLiquidity` (uint128) — Pool Liquidity**
+
+The harmonic mean of in-range liquidity over the TWAP window. This is Uniswap V4's `L` value — the amount of virtual liquidity concentrated around the current tick.
+
+- Higher values → deeper liquidity → lower price impact for swaps, more reliable TWAP.
+- Lower values → thinner liquidity → higher price impact, TWAP more susceptible to manipulation.
+- `0` → no liquidity data available (the hook falls back to minting).
+
+To estimate price impact from liquidity, use the formula: `impact ≈ amountIn / (liquidity * sqrtPrice)` for `zeroForOne` swaps (see `JBSwapLib.calculateImpact`).
+
+Liquidity is denominated in the pool's native units (sqrt(token0 * token1)) and is not human-readable on its own. Compare it against other pools or historical values to gauge depth.
+
+**`poolId` (PoolId / bytes32) — Pool Identifier**
+
+The V4 pool identifier is `keccak256(abi.encode(poolKey))` where `poolKey = (currency0, currency1, fee, tickSpacing, hooks)`. Use it to:
+
+- Look up the pool on-chain: `IPoolManager.getSlot0(poolId)` for current price/tick, `IPoolManager.getLiquidity(poolId)` for current liquidity.
+- Match against a known pool: compare with `PoolIdLibrary.toId(poolKey)`.
+- Display in UIs: show as a hex string (e.g. `0xabc...def`) or link to a V4 pool explorer.
+
+To recover the full `PoolKey` from a `poolId`, use `JBBuybackHook.poolKeyOf(projectId, terminalToken)` — the pool ID alone is a one-way hash.
+
 ## Supported Chains
 
 The deployment script (`Deploy.s.sol`) supports:
