@@ -641,7 +641,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     projectTokenIs0,
                     totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith,
                     minimumSwapAmountOut,
-                    controller
+                    controller,
+                    tokenCountWithoutHook
                 )
             });
 
