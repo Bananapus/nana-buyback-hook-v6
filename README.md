@@ -194,6 +194,22 @@ The hook reads metadata with key `"quote"` (resolved via `JBMetadataResolver`), 
 - If `amountToSwapWith > totalPaid`, the transaction reverts with `JBBuybackHook_InsufficientPayAmount`.
 - The `minimumSwapAmountOut` is compared against the TWAP-derived minimum -- the higher value is used.
 
+### Hook Specification Metadata
+
+When the swap path is chosen, the `JBPayHookSpecification.metadata` returned by `beforePayRecordedWith` encodes five fields:
+
+```
+(bool projectTokenIs0, uint256 mintFromExcess, uint256 minimumSwapAmountOut, IJBController controller, uint256 tokenCountWithoutHook)
+```
+
+- `projectTokenIs0`: Whether the project token is `currency0` in the V4 pool.
+- `mintFromExcess`: The amount of the payment that will be minted directly (not swapped). Zero when the full payment is used for the swap.
+- `minimumSwapAmountOut`: The minimum acceptable swap output (higher of payer quote and TWAP quote).
+- `controller`: The project's controller (used by `afterPayRecordedWith` to mint/burn).
+- `tokenCountWithoutHook`: The number of tokens that direct minting (without the buyback hook) would have yielded. Useful for preview clients comparing swap yield vs mint yield.
+
+Only the first four fields are decoded by `afterPayRecordedWith`. The fifth field (`tokenCountWithoutHook`) is informational -- it enables preview clients (e.g., `JBTerminalStore.previewPayFrom`) to show users the mint-vs-swap comparison without additional on-chain queries.
+
 ## Supported Chains
 
 The deployment script (`Deploy.s.sol`) supports:

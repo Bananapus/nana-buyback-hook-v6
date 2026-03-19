@@ -27,6 +27,7 @@ Payment → JBTerminalStore calls data hook
     → Read TWAP price from Uniswap V4 pool
     → If TWAP gives more tokens:
       → Return swap specification as pay hook
+      → Hook spec metadata includes tokenCountWithoutHook for preview clients
     → Else:
       → Return empty (direct mint wins)
 

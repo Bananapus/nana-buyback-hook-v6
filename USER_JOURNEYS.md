@@ -22,6 +22,7 @@ A payer sends ETH to a project whose ruleset has the buyback hook as its data ho
    - Queries the oracle for a TWAP-based minimum: `_getQuote(projectId, projectToken, amountIn, terminalToken)`.
    - Takes the higher of the payer quote and the TWAP quote: `minimumSwapAmountOut = max(payerQuote, twapMinimum)`.
    - Since `minimumSwapAmountOut > tokenCountWithoutHook`, returns `weight = 0` and a `JBPayHookSpecification` pointing to itself with `amount = amountToSwapWith`.
+   - The hook spec metadata encodes `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook)`. The 5th field lets preview clients (e.g., `JBTerminalStore.previewPayFrom`) show users the mint-vs-swap comparison.
 
 5. `JBTerminalStore` records the payment with `weight = 0` (no tokens minted directly). The terminal then calls the pay hook.
 

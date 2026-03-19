@@ -95,6 +95,10 @@ Terminal calls beforePayRecordedWith(context)
   |
   +--> If minimumSwapAmountOut > tokenCountWithoutHook:
   |      Return weight=0 + JBPayHookSpecification(this, amountToSwapWith, metadata)
+  |      metadata = abi.encode(projectTokenIs0, mintFromExcess, minimumSwapAmountOut,
+  |                            controller, tokenCountWithoutHook)
+  |      Note: afterPayRecordedWith decodes only the first 4 fields.
+  |      The 5th (tokenCountWithoutHook) is informational for preview clients.
   |    Else:
   |      Return original weight (mint path)
 ```
