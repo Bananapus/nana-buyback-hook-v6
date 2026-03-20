@@ -185,7 +185,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @dev The terminal has already burned the holder's project tokens by the time this callback runs, so this hook
     /// remints the same amount to itself before executing the sell.
     /// @param context Standard Juicebox cash-out hook context. `hookMetadata` optionally encodes a
-    /// `minimumSwapAmountOut` floor chosen during `beforeCashOutRecordedWith`.
+    /// `minimumSwapAmountOut` floor chosen during `beforeCashOutRecordedWith`, followed by informational sell-side
+    /// routing metadata.
     function afterCashOutRecordedWith(JBAfterCashOutRecordedContext calldata context) external payable override {
         // Make sure only payment terminals of the project can trigger the sell-side hook.
         if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
@@ -642,9 +643,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             }
         }
 
-        // If the user did not provide a minimum reclaimed amount, derive one from the sell-side TWAP quote.
+        // Keep references to pool diagnostics. Explicit minimums skip the TWAP lookup, so diagnostics remain zeroed.
+        int24 twapTick;
+        uint128 twapLiquidity;
+        PoolId poolId = _poolKeyOf[context.projectId][terminalToken].toId();
         if (!hasUserSpecifiedMinimumSwapAmountOut) {
-            (minimumSwapAmountOut,,,) = _getQuote({
+            (minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
                 projectId: context.projectId,
                 amountIn: context.cashOutCount,
                 baseToken: projectToken,
@@ -652,19 +656,19 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        // Keep the protocol cash-out path if the pool cannot beat it.
-        if (minimumSwapAmountOut <= directCashOutAmount) {
-            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
-        }
+        bool noop = minimumSwapAmountOut <= directCashOutAmount;
 
-        // Route into the post-record cash-out hook so the burned project tokens can be reminted and sold.
+        // Return sell-side routing metadata in both cases so preview clients can inspect the route comparison without
+        // forcing the terminal to execute `afterCashOutRecordedWith`.
         hookSpecifications = new JBCashOutHookSpecification[](1);
         hookSpecifications[0] = JBCashOutHookSpecification({
             hook: IJBCashOutHook(address(this)),
-            noop: false,
+            noop: noop,
             amount: 0,
-            metadata: abi.encode(minimumSwapAmountOut)
+            metadata: abi.encode(minimumSwapAmountOut, directCashOutAmount, twapTick, twapLiquidity, poolId)
         });
+
+        if (noop) return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
 
         // Max the tax rate so the terminal does not reclaim surplus directly before the hook executes the sell.
         return (JBConstants.MAX_CASH_OUT_TAX_RATE, context.cashOutCount, context.totalSupply, hookSpecifications);

@@ -1360,8 +1360,20 @@ contract V4BuybackHookTest is Test {
         assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "cash out should be rerouted through the pool");
         assertEq(specs.length, 1, "cash out hook spec should be returned");
         assertEq(address(specs[0].hook), address(hook), "hook should execute the sell-side swap");
+        assertFalse(specs[0].noop, "sell-side execution spec should not be marked noop");
         assertEq(specs[0].amount, 0, "sell-side hook should not consume protocol reclaim funds");
-        assertEq(abi.decode(specs[0].metadata, (uint256)), explicitMinimumReclaimed, "explicit cash-out minimum should be honored");
+        (
+            uint256 minimumSwapAmountOut,
+            uint256 minimumProtocolAmountOut,
+            int24 twapTick,
+            uint128 twapLiquidity,
+            PoolId decodedPoolId
+        ) = abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        assertEq(minimumSwapAmountOut, explicitMinimumReclaimed, "explicit cash-out minimum should be honored");
+        assertEq(minimumProtocolAmountOut, 0.5 ether, "protocol minimum should reflect the direct cash out amount");
+        assertEq(twapTick, 0, "explicit minimum should skip TWAP diagnostics");
+        assertEq(twapLiquidity, 0, "explicit minimum should skip TWAP diagnostics");
+        assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
     }
 
     function test_beforeCashOutRecordedWith_passesThroughWhenProtocolCashOutBeatsSellQuote() public {
@@ -1399,7 +1411,22 @@ contract V4BuybackHookTest is Test {
         assertEq(cashOutTaxRate, context.cashOutTaxRate, "cash out tax rate should pass through");
         assertEq(cashOutCount, context.cashOutCount, "cash out count should pass through");
         assertEq(totalSupply, context.totalSupply, "total supply should pass through");
-        assertEq(specs.length, 0, "hook should not reroute when protocol cash out is better");
+        assertEq(specs.length, 1, "informational sell-side metadata should still be returned");
+        assertTrue(specs[0].noop, "protocol-winning path should be marked noop");
+        assertEq(specs[0].amount, 0, "noop sell-side spec should not consume protocol reclaim funds");
+        (
+            uint256 minimumSwapAmountOut,
+            uint256 minimumProtocolAmountOut,
+            int24 twapTick,
+            uint128 twapLiquidity,
+            PoolId decodedPoolId
+        ) = abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        assertEq(minimumProtocolAmountOut, 50 ether, "metadata should include the protocol minimum");
+        assertGt(minimumSwapAmountOut, 0, "metadata should include a non-zero sell-side minimum");
+        assertLt(minimumSwapAmountOut, minimumProtocolAmountOut, "sell-side minimum should lose to the protocol path");
+        assertEq(twapTick, 0, "TWAP tick should be surfaced in informational metadata");
+        assertGt(twapLiquidity, 0, "TWAP liquidity should be surfaced in informational metadata");
+        assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
     }
 
     function test_afterCashOutRecordedWith_remintsAndSwapsForBeneficiary() public {
