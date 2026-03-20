@@ -17,10 +17,13 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
@@ -471,6 +474,118 @@ contract TestAuditGaps is Test {
         hook.afterPayRecordedWith(ctx);
 
         assertTrue(mockPm.swapCalled(), "swap() should have been called for 8-decimal WBTC payment");
+    }
+
+    /// @notice Test that sell-side routing also works with a 6-decimal ERC-20 terminal token.
+    function test_non18Decimal_sellSideRoutesWithUSDC6() public {
+        MockProjectTokenDecimals usdc = new MockProjectTokenDecimals("USDC", "USDC", 6);
+        MockProjectTokenDecimals projToken = new MockProjectTokenDecimals("ProjectToken", "PT", 6);
+
+        vm.mockCall(
+            address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projToken)))
+        );
+
+        (Currency c0, Currency c1) = address(usdc) < address(projToken)
+            ? (Currency.wrap(address(usdc)), Currency.wrap(address(projToken)))
+            : (Currency.wrap(address(projToken)), Currency.wrap(address(usdc)));
+
+        PoolKey memory poolKey =
+            PoolKey({currency0: c0, currency1: c1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(mockOracle))});
+        PoolId poolId = poolKey.toId();
+
+        uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setLiquidity(poolId, 1_000_000 ether);
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+
+        vm.prank(owner);
+        hook.setPoolFor({projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: address(usdc)});
+
+        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: 10e6,
+            totalSupply: 100e6,
+            surplus: JBTokenAmount({
+                token: address(usdc), value: 5e6, decimals: 6, currency: uint32(uint160(address(usdc)))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: ""
+        });
+
+        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "USDC sell-side should reroute through swap");
+        assertEq(specs.length, 1, "USDC sell-side should return a hook spec");
+    }
+
+    /// @notice Test that sell-side settlement correctly transfers 6-decimal ERC-20 proceeds to the beneficiary.
+    function test_non18Decimal_sellSideSettlementWithUSDC6() public {
+        MockProjectTokenDecimals usdc = new MockProjectTokenDecimals("USDC", "USDC", 6);
+        MockProjectTokenDecimals projToken = new MockProjectTokenDecimals("ProjectToken", "PT", 6);
+
+        vm.mockCall(
+            address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projToken)))
+        );
+
+        (Currency c0, Currency c1) = address(usdc) < address(projToken)
+            ? (Currency.wrap(address(usdc)), Currency.wrap(address(projToken)))
+            : (Currency.wrap(address(projToken)), Currency.wrap(address(usdc)));
+
+        PoolKey memory poolKey =
+            PoolKey({currency0: c0, currency1: c1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(mockOracle))});
+        PoolId poolId = poolKey.toId();
+        bool projectTokenIs0 = address(projToken) < address(usdc);
+
+        uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
+        mockPm.setLiquidity(poolId, 1_000_000 ether);
+
+        vm.prank(owner);
+        hook.setPoolFor({projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: address(usdc)});
+
+        uint256 cashOutCount = 10e6;
+        uint256 amountOut = 15e6;
+
+        projToken.mint(address(hook), cashOutCount);
+        usdc.mint(address(mockPm), amountOut);
+
+        if (projectTokenIs0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(-int128(uint128(cashOutCount)), int128(uint128(amountOut)));
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mockPm.setMockDeltas(int128(uint128(amountOut)), -int128(uint128(cashOutCount)));
+        }
+
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: address(usdc), value: 0, decimals: 6, currency: uint32(uint160(address(usdc)))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: address(usdc), value: 0, decimals: 6, currency: uint32(uint160(address(usdc)))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: abi.encode(amountOut),
+            cashOutMetadata: ""
+        });
+
+        uint256 balanceBefore = usdc.balanceOf(beneficiary);
+
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(context);
+
+        assertTrue(mockPm.swapCalled(), "USDC sell-side settlement should swap through V4");
+        assertEq(usdc.balanceOf(beneficiary) - balanceBefore, amountOut, "beneficiary should receive USDC proceeds");
     }
 
     //*********************************************************************//

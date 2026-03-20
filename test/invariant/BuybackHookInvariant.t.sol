@@ -220,12 +220,16 @@ contract BuybackHookHandler is Test {
         callCount++;
 
         // Check the invariant based on which path was chosen.
-        if (specs.length == 0) {
+        if (specs.length == 0 || specs[0].noop) {
             // Mint path: weight should be returned unchanged.
             mintChosenCount++;
             if (returnedWeight != weight) {
                 invariantViolated = true;
                 violationReason = "Mint path: returned weight differs from input weight";
+            }
+            if (specs.length == 1 && specs[0].amount != 0) {
+                invariantViolated = true;
+                violationReason = "Mint path noop spec should not forward funds";
             }
             // Mint path tokens = mulDiv(payAmount, weight, 1e18) = tokenCountWithoutHook.
             // This is exactly what a no-hook mint produces, so the invariant trivially holds.
@@ -339,11 +343,15 @@ contract BuybackHookHandler is Test {
         try hook.beforePayRecordedWith(ctx) returns (uint256 returnedWeight, JBPayHookSpecification[] memory specs) {
             callCount++;
 
-            if (specs.length == 0) {
+            if (specs.length == 0 || specs[0].noop) {
                 mintChosenCount++;
                 if (returnedWeight != weight) {
                     invariantViolated = true;
                     violationReason = "Quote path mint: returned weight differs from input weight";
+                }
+                if (specs.length == 1 && specs[0].amount != 0) {
+                    invariantViolated = true;
+                    violationReason = "Quote path mint noop spec should not forward funds";
                 }
             } else if (specs.length == 1) {
                 swapChosenCount++;
@@ -507,6 +515,7 @@ contract BuybackHookInvariantTest is StdInvariant, Test {
             abi.encodeCall(directory.isTerminalOf, (PROJECT_ID, IJBTerminal(address(terminal)))),
             abi.encode(true)
         );
+        vm.mockCall(address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (PROJECT_ID)), abi.encode(IJBToken(address(projectToken)))
         );

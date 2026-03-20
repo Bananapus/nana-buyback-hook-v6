@@ -17,8 +17,11 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
 import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
@@ -403,6 +406,53 @@ contract V4USDCForkTest is Test {
         }
     }
 
+    function test_fork_usdc_sellSide_e2e() public onlyFork {
+        console.log("");
+        console.log("====== FORK E2E: SELL SIDE (USDC) ======");
+        console.log("");
+
+        uint256 pid = _nextProjectId();
+        MockUSDC usdc = new MockUSDC();
+        (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
+
+        uint256 proceeds = _executeSellE2eUsdc(pid, key, projectToken, usdc, 1e6);
+
+        console.log("  Sell 1.0 project tokens -> %s USDC received", _formatUsdc(proceeds));
+        assertGt(proceeds, 0, "Sell-side USDC E2E should complete swap");
+    }
+
+    function test_fork_usdc_sellSide_noopWhenProtocolBetter() public onlyFork {
+        uint256 pid = _nextProjectId();
+        MockUSDC usdc = new MockUSDC();
+        _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
+
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1)));
+
+        JBBeforeCashOutRecordedContext memory beforeCtx = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: pid,
+            rulesetId: 1,
+            cashOutCount: 1e6,
+            totalSupply: 2e6,
+            surplus: JBTokenAmount({
+                token: address(usdc), value: 100e6, decimals: 6, currency: uint32(uint160(address(usdc)))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: fullMetadata
+        });
+
+        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(beforeCtx);
+
+        assertEq(cashOutTaxRate, 0, "protocol path should be preserved when USDC reclaim is better");
+        assertEq(specs.length, 1, "sell-side noop path should still return metadata");
+        assertTrue(specs[0].noop, "protocol-winning USDC sell path should be noop");
+    }
+
     //*********************************************************************//
     // ----------------------- Internal Setup ---------------------------- //
     //*********************************************************************//
@@ -519,6 +569,7 @@ contract V4USDCForkTest is Test {
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
             abi.encode(0)
         );
+        vm.mockCall(address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0));
         vm.mockCall(
             address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );
@@ -812,6 +863,73 @@ contract V4USDCForkTest is Test {
         }
     }
 
+    function _executeSellE2eUsdc(
+        uint256 projectId,
+        PoolKey memory,
+        USDCProjectToken projectToken,
+        MockUSDC usdc,
+        uint256 cashOutCount
+    )
+        internal
+        returns (uint256 received)
+    {
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1)));
+
+        bytes memory specMetadata;
+        {
+            JBBeforeCashOutRecordedContext memory beforeCtx = JBBeforeCashOutRecordedContext({
+                terminal: address(terminal),
+                holder: payer,
+                projectId: projectId,
+                rulesetId: 1,
+                cashOutCount: cashOutCount,
+                totalSupply: 100e6,
+                surplus: JBTokenAmount({
+                    token: address(usdc), value: 1, decimals: 6, currency: uint32(uint160(address(usdc)))
+                }),
+                useTotalSurplus: false,
+                cashOutTaxRate: 0,
+                beneficiaryIsFeeless: false,
+                metadata: fullMetadata
+            });
+
+            (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+                hook.beforeCashOutRecordedWith(beforeCtx);
+
+            assertEq(
+                cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "USDC sell-side E2E should choose the pool route"
+            );
+            assertEq(specs.length, 1, "USDC sell-side E2E should return one hook specification");
+            assertFalse(specs[0].noop, "USDC sell-side E2E should return an active hook spec");
+            specMetadata = specs[0].metadata;
+        }
+
+        projectToken.mint(address(hook), cashOutCount);
+
+        JBAfterCashOutRecordedContext memory afterCtx = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: address(usdc), value: 0, decimals: 6, currency: uint32(uint160(address(usdc)))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: address(usdc), value: 0, decimals: 6, currency: uint32(uint160(address(usdc)))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: specMetadata,
+            cashOutMetadata: fullMetadata
+        });
+
+        uint256 balanceBefore = usdc.balanceOf(beneficiary);
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(afterCtx);
+        received = usdc.balanceOf(beneficiary) - balanceBefore;
+    }
+
     //*********************************************************************//
     // ----------------------------- Helpers ----------------------------- //
     //*********************************************************************//
@@ -819,6 +937,13 @@ contract V4USDCForkTest is Test {
     function _formatEther(uint256 weiAmount) internal pure returns (string memory) {
         uint256 whole = weiAmount / 1e18;
         uint256 frac = (weiAmount % 1e18) / 1e16;
+        if (frac < 10) return string(abi.encodePacked(_toString(whole), ".0", _toString(frac)));
+        return string(abi.encodePacked(_toString(whole), ".", _toString(frac)));
+    }
+
+    function _formatUsdc(uint256 amount) internal pure returns (string memory) {
+        uint256 whole = amount / 1e6;
+        uint256 frac = (amount % 1e6) / 1e4;
         if (frac < 10) return string(abi.encodePacked(_toString(whole), ".0", _toString(frac)));
         return string(abi.encodePacked(_toString(whole), ".", _toString(frac)));
     }

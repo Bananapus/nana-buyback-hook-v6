@@ -22,7 +22,7 @@ Three contracts form the buyback system:
 
 ### JBBuybackHook (src/JBBuybackHook.sol)
 
-The core contract. Implements both `IJBRulesetDataHook` (called during payment recording) and `IJBPayHook` (called during payment fulfillment).
+The core contract. Implements `IJBRulesetDataHook` (called during payment and cash-out recording), `IJBPayHook` (called during payment fulfillment), and `IJBCashOutHook` (called during cash-out fulfillment).
 
 **Immutables:** `DIRECTORY`, `PRICES`, `PROJECTS`, `TOKENS`, `POOL_MANAGER` (V4 singleton), `ORACLE_HOOK` (shared oracle for all JB V4 pools).
 
@@ -33,22 +33,22 @@ The core contract. Implements both `IJBRulesetDataHook` (called during payment r
 - `twapWindowOf[projectId][terminalToken]` -- TWAP window in seconds
 
 **Key functions:**
-- `beforePayRecordedWith(JBBeforePayRecordedContext)` -- Data hook. Computes swap-vs-mint decision. Returns `weight=0` with a pay hook spec when swapping wins, or the original weight when minting wins. The hook spec metadata encodes 8 fields: `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId)`. Fields 1-4 are consumed by `afterPayRecordedWith`; fields 5-8 are informational for preview clients.
+- `beforePayRecordedWith(JBBeforePayRecordedContext)` -- Data hook. Computes swap-vs-mint decision. Returns `weight=0` with an active pay hook spec when swapping wins, or the original weight plus a noop pay hook spec when minting wins and a pool is configured. The hook spec metadata encodes 10 fields: `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId, minimumBeneficiaryTokenCount, minimumReservedTokenCount)`. Fields 1-4 are consumed by `afterPayRecordedWith`; fields 5-10 are informational for preview clients.
 - `afterPayRecordedWith(JBAfterPayRecordedContext)` -- Pay hook. Executes the swap via V4 unlock/callback, burns received project tokens, computes leftover, mints tokens for leftover + swap amount.
+- `beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext)` -- Data hook. Compares direct protocol cash-out value against a TWAP-protected pool sell quote. Returns a cash-out hook spec when selling into the pool is better.
+- `afterCashOutRecordedWith(JBAfterCashOutRecordedContext)` -- Cash-out hook. Remints burned project tokens to the hook, executes the pool sale, and forwards proceeds to the beneficiary.
 - `unlockCallback(bytes)` -- V4 PoolManager callback. Executes `swap()`, settles input tokens, takes output tokens. Only callable by `POOL_MANAGER`.
 - `setPoolFor(projectId, PoolKey, twapWindow, terminalToken)` -- Configure pool (immutable once set). Requires `SET_BUYBACK_POOL` permission.
 - `setPoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken)` -- Simplified overload that builds the PoolKey internally.
 - `initializePoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96)` -- Atomically initializes pool in V4 PoolManager and configures it.
 - `setTwapWindowOf(projectId, terminalToken, newWindow)` -- Adjust TWAP window (5 min to 2 days). Requires `SET_BUYBACK_TWAP` permission.
-- `beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext)` -- Pass-through (no-op for cash outs).
-
 ### JBBuybackHookRegistry (src/JBBuybackHookRegistry.sol)
 
 A routing layer that maps projects to buyback hook implementations. Set as the data hook in a project's ruleset; delegates `beforePayRecordedWith` calls to the resolved hook implementation.
 
 **Key functions:**
 - `beforePayRecordedWith(context)` -- Resolves the hook for `context.projectId` (project-specific or default) and delegates the call.
-- `beforeCashOutRecordedWith(context)` -- Pass-through (returns context unchanged).
+- `beforeCashOutRecordedWith(context)` -- Resolves the hook for `context.projectId` (project-specific or default) and delegates the call.
 - `hasMintPermissionFor(projectId, ruleset, addr)` -- Returns true only if `addr` is the resolved hook for the project.
 - `hookOf(projectId)` -- Returns the resolved hook (project-specific or default fallback).
 - `setHookFor(projectId, hook)` -- Set a project's hook. Requires `SET_BUYBACK_HOOK` permission. Reverts if locked.

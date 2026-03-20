@@ -2,13 +2,13 @@
 
 ## Purpose
 
-DEX buyback hook for Juicebox V6. When a payment arrives, the hook compares the token amount from direct minting (via weight) against buying on a Uniswap V4 pool. Whichever yields more tokens wins. Uses TWAP oracle to prevent sandwich attacks.
+DEX buyback hook for Juicebox V6. When a payment arrives, the hook compares the token amount from direct minting (via weight) against buying on a Uniswap V4 pool. When a cash out arrives, it compares protocol cash-out value against selling into the pool. Whichever yields more value wins. Uses a TWAP oracle to prevent sandwich attacks.
 
 ## Contract Map
 
 ```
 src/
-├── JBBuybackHook.sol         — Data hook: TWAP comparison (via ORACLE_HOOK), swap execution, mint fallback
+├── JBBuybackHook.sol         — Data hook: TWAP comparison (via ORACLE_HOOK), pay/cash-out routing, swap execution, mint fallback
 ├── JBBuybackHookRegistry.sol — Registry mapping projects to their buyback hooks
 ├── interfaces/
 │   ├── IJBBuybackHook.sol
@@ -24,18 +24,35 @@ src/
 Payment → JBTerminalStore calls data hook
   → JBBuybackHook.beforePayRecordedWith()
     → Calculate mintable tokens from weight
-    → Read TWAP price from Uniswap V4 pool
-    → If TWAP gives more tokens:
-      → Return swap specification as pay hook
-      → Hook spec metadata includes tokenCountWithoutHook for preview clients
+    → Read minimum from explicit quote metadata or, by default, from the TWAP/geomean oracle path
+    → If swap minimum gives more tokens:
+      → Return active pay specification as pay hook
+      → Hook spec metadata includes routing diagnostics for preview clients
     → Else:
-      → Return empty (direct mint wins)
+      → Return noop pay specification with routing diagnostics (direct mint wins)
 
 If swap selected:
   → JBBuybackHook.afterPayRecordedWith()
     → Execute swap on Uniswap V4
     → If swap succeeds: transfer bought tokens + mint reserved portion
     → If swap fails: fall back to direct minting via controller
+
+### Sell-side Cash-out Decision
+```
+Cash out → JBTerminalStore calls data hook
+  → JBBuybackHook.beforeCashOutRecordedWith()
+    → Calculate direct protocol cash-out value
+    → Read minimum from explicit cash-out metadata or, by default, from the TWAP/geomean oracle path
+    → Always return cash-out hook specification with routing diagnostics when pool is configured
+    → If pool sale is better:
+      → Spec is active (`noop = false`)
+      → JBBuybackHook.afterCashOutRecordedWith()
+        → Remint burned tokens to the hook
+        → Execute swap on Uniswap V4
+        → Forward proceeds to beneficiary
+    → Else:
+      → Spec is informational (`noop = true`)
+```
 ```
 
 ## Extension Points

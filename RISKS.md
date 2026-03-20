@@ -11,7 +11,7 @@
 
 ## 2. Economic Risks
 
-- **Mint-vs-Swap Routing Manipulation**: The decision at `beforePayRecordedWith` compares `tokenCountWithoutHook` (bonding curve mint) against `minimumSwapAmountOut` (TWAP-derived or payer-provided). An attacker who can suppress the TWAP quote (e.g., by draining pool liquidity so `harmonicMeanLiquidity == 0` triggers return 0) forces the mint path when swap would have been more favorable -- or vice versa by inflating the TWAP above fair value.
+- **Mint-vs-Swap Routing Manipulation**: The decision at `beforePayRecordedWith` compares `tokenCountWithoutHook` (bonding curve mint) against `minimumSwapAmountOut` (TWAP-derived by default, or explicitly provided by metadata). An attacker who can suppress the TWAP quote (e.g., by draining pool liquidity so `harmonicMeanLiquidity == 0` triggers return 0) forces the mint path when swap would have been more favorable -- or vice versa by inflating the TWAP above fair value. With noop hook specifications in core, the mint path can still surface pool diagnostics without invoking `afterPayRecordedWith`.
 - **TWAP Window Selection**: Configurable from `MIN_TWAP_WINDOW` (5 minutes / 25 blocks) to `MAX_TWAP_WINDOW` (2 days). Shorter windows are cheaper to manipulate via multi-block MEV. Longer windows lag real price movements, potentially routing swaps at stale prices. No dynamic adjustment -- the project owner must choose a static trade-off via `setTwapWindowOf`.
 - **Sigmoid Slippage Function Edge Cases**:
   - `MAX_SLIPPAGE = 8800` (88%) means the hook can accept receiving only 12% of the oracle quote for high-impact swaps in thin pools. This is by design but permits significant value loss.
@@ -32,7 +32,7 @@
 - **Sandwich Attack Outcome**: When circuit breaker fires, victim gets mint-rate tokens (zero MEV extraction). Attacker loses 2x pool fees on the round trip. Verified by `V4SandwichForkTest.t.sol::test_fork_sandwich_mintFallback` (asserts `attackerProfit < 0`).
 - **TWAP Manipulation Cost**: 5-minute minimum window requires dominating 25 consecutive blocks. For a 1M-liquidity pool, ~10,000 ETH of capital plus ~60 ETH in round-trip fees. Economically viable only for very large payments (>10,000 ETH). Risk: LOW for typical projects, MEDIUM for whale-sized payments.
 - **Oracle Warmup Mint-Only Period**: Newly initialized pools lack observation history. The oracle `observe()` will revert until enough observations accumulate (~30 min). During this warmup period, the hook forces the mint path (no swaps). This is intentional — spot-price fallback was removed because it is trivially sandwich-attackable.
-- **Front-Running the Routing Decision**: `beforePayRecordedWith` is a `view` call executed by the terminal. An attacker who sees the pending payment in the mempool can manipulate the pool state to influence whether the hook returns `weight=0` (swap path) or `weight=original` (mint path). However, the TWAP resists single-block manipulation, and the payer quote provides an additional floor.
+- **Front-Running the Routing Decision**: `beforePayRecordedWith` is a `view` call executed by the terminal. An attacker who sees the pending payment in the mempool can manipulate the pool state to influence whether the hook returns `weight=0` (swap path) or `weight=original` (mint path with noop diagnostics). However, the TWAP resists single-block manipulation, and the payer quote provides an additional floor.
 
 ## 4. Composition with JBUniswapV4Hook
 
@@ -59,6 +59,7 @@
 - **Pool Registration Permissions**: The registry's `setPoolFor` and `initializePoolFor` enforce `SET_BUYBACK_POOL` at the registry level, then forward to the resolved hook's `setPoolFor`/`initializePoolFor`, which enforces `SET_BUYBACK_POOL` again. Double permission check -- the hook-level check is the effective gate.
 - **`unlockCallback` Gating**: Only `POOL_MANAGER` can call. No user or external contract can trigger the swap settlement path directly.
 - **`afterPayRecordedWith` Gating**: Only verified terminals (via `DIRECTORY.isTerminalOf`) can call. Prevents arbitrary callers from triggering swaps.
+- **`afterCashOutRecordedWith` Gating**: Only verified terminals can call. Prevents arbitrary callers from reminting burned tokens into the hook and forcing a sell-side swap.
 
 ## 7. DoS Vectors
 
@@ -72,7 +73,8 @@
 
 ## 8. Invariants to Verify
 
-- **Users always get at least bonding curve value**: `beforePayRecordedWith` only routes to swap when `minimumSwapAmountOut > tokenCountWithoutHook`. If the swap produces less than `minimumSwapAmountOut`, either the slippage check reverts (non-failure case) or `swapFailed == true` triggers full mint fallback. The user never receives fewer tokens than the mint path would have provided.
+- **Users always get at least bonding curve value**: `beforePayRecordedWith` only routes to swap when `minimumSwapAmountOut > tokenCountWithoutHook`. Otherwise it returns the normal mint weight plus a noop informational pay spec. If the swap produces less than `minimumSwapAmountOut`, either the slippage check reverts (non-failure case) or `swapFailed == true` triggers full mint fallback. The user never receives fewer tokens than the mint path would have provided.
+- **Cash-out beneficiaries always get at least direct protocol cash-out value when routed through the pool**: `beforeCashOutRecordedWith` only routes to the sell path when the sell-side minimum beats the direct reclaim amount. That sell-side minimum comes from explicit `cashOutMinReclaimed` metadata when provided, otherwise from the TWAP/geomean oracle path.
 - **Swap fallback to mint works correctly**: When `POOL_MANAGER.unlock()` reverts, `_swap` returns `(0, true)`. The slippage check is skipped (`!swapFailed` guard). All payment tokens become leftover, are sent to `addToBalanceOf`, and minted at the current weight. Verified by `SwapFailureMintFallback.t.sol`.
 - **No value extraction through routing manipulation**: The `max(payerQuote, twapQuote)` cross-validation ensures neither party can unilaterally degrade the minimum. The `sqrtPriceLimitFromAmounts` circuit breaker prevents execution at prices worse than the minimum. Partial fills route leftover to mint. Fork-tested across multiple attack vectors.
 - **Leftover accounting is delta-based**: `balanceBefore` is captured before pulling funds (ETH: `address(this).balance - msg.value`; ERC-20: before `safeTransferFrom`). Leftover = `balanceAfter - balanceBefore`. Pre-existing contract balances do not inflate leftovers. Verified by `BalanceDeltaLeftover.t.sol`.

@@ -17,8 +17,11 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
 import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
@@ -422,6 +425,54 @@ contract V4ForkTest is Test {
         assertGt(received, 0, "E2E ERC-20 should complete swap");
     }
 
+    function test_fork_sellSide_e2e_fullFlow() public onlyFork {
+        console.log("");
+        console.log("====== FORK E2E: SELL SIDE (NATIVE) ======");
+        console.log("");
+
+        uint256 pid = _nextProjectId();
+        (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 100_000 ether);
+
+        uint256 proceeds = _executeSellE2e(pid, key, projectToken, 1 ether);
+
+        console.log("  Sell 1.0 project tokens -> %s ETH received", _formatEther(proceeds));
+        assertGt(proceeds, 0, "Sell-side E2E should complete swap");
+    }
+
+    function test_fork_sellSide_noopWhenProtocolBetter() public onlyFork {
+        uint256 pid = _nextProjectId();
+        _setupProjectWithPool(pid, 100_000 ether);
+
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1)));
+
+        JBBeforeCashOutRecordedContext memory beforeCtx = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: pid,
+            rulesetId: 1,
+            cashOutCount: 1 ether,
+            totalSupply: 2 ether,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 100 ether,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: fullMetadata
+        });
+
+        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(beforeCtx);
+
+        assertEq(cashOutTaxRate, 0, "protocol path should be preserved when reclaim is better");
+        assertEq(specs.length, 1, "sell-side noop path should still return metadata");
+        assertTrue(specs[0].noop, "protocol-winning sell path should be noop");
+    }
+
     //*********************************************************************//
     // ------------ E2E: No Payer Quote (programmatic caller) ------------ //
     //*********************************************************************//
@@ -609,6 +660,7 @@ contract V4ForkTest is Test {
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
             abi.encode(0)
         );
+        vm.mockCall(address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0));
         vm.mockCall(
             address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );
@@ -1038,6 +1090,79 @@ contract V4ForkTest is Test {
 
             received = projectToken.balanceOf(address(hook)) - balBefore;
         }
+    }
+
+    function _executeSellE2e(
+        uint256 projectId,
+        PoolKey memory,
+        ForkProjectToken projectToken,
+        uint256 cashOutCount
+    )
+        internal
+        returns (uint256 received)
+    {
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1)));
+
+        bytes memory specMetadata;
+        {
+            JBBeforeCashOutRecordedContext memory beforeCtx = JBBeforeCashOutRecordedContext({
+                terminal: address(terminal),
+                holder: payer,
+                projectId: projectId,
+                rulesetId: 1,
+                cashOutCount: cashOutCount,
+                totalSupply: 100 ether,
+                surplus: JBTokenAmount({
+                    token: JBConstants.NATIVE_TOKEN,
+                    value: 1,
+                    decimals: 18,
+                    currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+                }),
+                useTotalSurplus: false,
+                cashOutTaxRate: 0,
+                beneficiaryIsFeeless: false,
+                metadata: fullMetadata
+            });
+
+            (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+                hook.beforeCashOutRecordedWith(beforeCtx);
+
+            assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "sell-side E2E should choose the pool route");
+            assertEq(specs.length, 1, "sell-side E2E should return one hook specification");
+            assertFalse(specs[0].noop, "sell-side E2E should return an active hook spec");
+            specMetadata = specs[0].metadata;
+        }
+
+        projectToken.mint(address(hook), cashOutCount);
+
+        JBAfterCashOutRecordedContext memory afterCtx = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: specMetadata,
+            cashOutMetadata: fullMetadata
+        });
+
+        uint256 balanceBefore = beneficiary.balance;
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(afterCtx);
+        received = beneficiary.balance - balanceBefore;
     }
 
     //*********************************************************************//

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBCashOutHook} from "@bananapus/core-v6/src/interfaces/IJBCashOutHook.sol";
 import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
 import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
@@ -11,7 +12,17 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-interface IJBBuybackHook is IJBPayHook, IJBRulesetDataHook {
+interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
+    /// @notice Emitted when project tokens are reminted and sold during a cash out.
+    /// @param projectId The ID of the project whose tokens are being sold.
+    /// @param cashOutCount The amount of project tokens reminted and sold.
+    /// @param poolId The ID of the Uniswap V4 pool used.
+    /// @param amountReceived The amount of terminal tokens received from the swap.
+    /// @param caller The address that triggered the cash out.
+    event CashOutSwap(
+        uint256 indexed projectId, uint256 cashOutCount, PoolId indexed poolId, uint256 amountReceived, address caller
+    );
+
     /// @notice Emitted when leftover terminal tokens are minted as project tokens.
     /// @param projectId The ID of the project whose tokens are being minted.
     /// @param leftoverAmount The amount of terminal tokens used for minting.

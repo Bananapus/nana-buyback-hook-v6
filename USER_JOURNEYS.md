@@ -19,15 +19,17 @@ A payer sends ETH to a project whose ruleset has the buyback hook as its data ho
 
 4. `JBBuybackHook.beforePayRecordedWith(context)` runs the swap-vs-mint decision:
    - Computes `tokenCountWithoutHook = amountToSwapWith * weight / weightRatio` (what direct minting would yield).
-   - Queries the oracle for a TWAP-based minimum: `_getQuote(projectId, projectToken, amountIn, terminalToken)`.
-   - Takes the higher of the payer quote and the TWAP quote: `minimumSwapAmountOut = max(payerQuote, twapMinimum)`.
-   - Since `minimumSwapAmountOut > tokenCountWithoutHook`, returns `weight = 0` and a `JBPayHookSpecification` pointing to itself with `amount = amountToSwapWith` and `metadata` encoding 8 fields: `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId)`. Fields 1-4 are consumed by `afterPayRecordedWith`; fields 5-8 are informational for preview clients.
+   - If no explicit quote metadata was provided, queries the oracle for a TWAP/geomean-based minimum: `_getQuote(projectId, projectToken, amountIn, terminalToken)`.
+   - If explicit quote metadata was provided, honors that minimum directly and skips the TWAP lookup.
+   - Since `minimumSwapAmountOut > tokenCountWithoutHook`, returns `weight = 0` and a `JBPayHookSpecification` pointing to itself with `noop = false`, `amount = amountToSwapWith`, and `metadata` encoding 10 fields: `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId, minimumBeneficiaryTokenCount, minimumReservedTokenCount)`. Fields 1-4 are consumed by `afterPayRecordedWith`; fields 5-10 are informational for preview clients.
 
-   **Interpreting the informational fields (5-8) for preview UIs:**
+   **Interpreting the informational fields (5-10) for preview UIs:**
    - `tokenCountWithoutHook` (uint256): The number of project tokens the payer would have received from direct minting (no swap). Compare against `minimumSwapAmountOut` to show the user how much better the swap is.
    - `twapTick` (int24): The time-weighted average price from the oracle, encoded as a Uniswap tick. Convert to a human-readable price: `price = 1.0001^tick`. If `projectTokenIs0 == true`, this is payment tokens per project token; if `false`, invert it (`1 / price`). In JS: `const price = projectTokenIs0 ? 1.0001 ** tick : 1 / (1.0001 ** tick)`.
    - `twapLiquidity` (uint128): The harmonic mean of in-range liquidity over the TWAP window. Higher values mean deeper liquidity and more reliable pricing. A value of `0` means no liquidity data was available (the hook would have fallen back to minting).
    - `poolId` (bytes32): The V4 pool identifier (`keccak256(abi.encode(poolKey))`). Use with `IPoolManager.getSlot0(poolId)` to look up live pool state, or call `JBBuybackHook.poolKeyOf(projectId, terminalToken)` to recover the full pool key.
+   - `minimumBeneficiaryTokenCount` (uint256): Minimum share of the swap output that would go to the beneficiary after applying the reserved rate.
+   - `minimumReservedTokenCount` (uint256): Minimum share of the swap output that would be reserved after applying the reserved rate.
 
 5. `JBTerminalStore` records the payment with `weight = 0` (no tokens minted directly). The terminal then calls the pay hook.
 
@@ -69,11 +71,28 @@ Same setup, but the pool price is worse than the mint rate.
 4. `JBBuybackHook.beforePayRecordedWith(context)`:
    - Computes `tokenCountWithoutHook = 400` (what minting yields).
    - Computes `minimumSwapAmountOut = 350` (pool is worse than minting).
-   - Since `minimumSwapAmountOut <= tokenCountWithoutHook`, returns the original `weight` and an empty `hookSpecifications` array.
+   - Since `minimumSwapAmountOut <= tokenCountWithoutHook`, returns the original `weight` and a noop `JBPayHookSpecification` with `amount = 0`. The metadata still includes the same 10 routing/preview fields as the swap path.
 
-5. `JBTerminalStore` records the payment with the original weight. The terminal mints 400 tokens for the payer directly. No pay hook is called.
+5. `JBTerminalStore` records the payment with the original weight. The terminal mints 400 tokens for the payer directly. Because the spec is marked noop, no pay hook callback is made.
 
-**Result:** Payer receives 400 tokens via direct minting. The buyback hook is not involved in the payment execution.
+**Result:** Payer receives 400 tokens via direct minting. The buyback hook is not involved in execution, but preview/simulation callers still receive pool diagnostics from the noop spec metadata.
+
+## 2b. Cash Out -- Pool Sell Wins
+
+A holder cashes out project tokens, and selling reminted tokens into the configured V4 pool yields more terminal tokens than the protocol cash-out path.
+
+1. Holder calls `cashOutTokensOf(...)`.
+2. Terminal/store calls `beforeCashOutRecordedWith(...)`.
+3. If no explicit `"cashOutMinReclaimed"` metadata was provided, the hook derives a TWAP/geomean-based sell minimum with `_getQuote(...)`.
+4. If explicit `"cashOutMinReclaimed"` metadata was provided, the hook honors that minimum directly and skips the TWAP lookup.
+5. The hook compares the direct protocol reclaim amount against that sell-side minimum.
+6. It always returns a cash-out hook specification with routing metadata when a pool is configured.
+7. If the pool sale is better, the spec is active (`noop = false`) and suppresses the direct protocol reclaim path.
+8. If the protocol cash out is better, the spec is informational (`noop = true`) and the terminal skips the cash-out hook callback.
+9. After the terminal burns the holder's tokens on the active path, it calls `afterCashOutRecordedWith(...)`.
+10. The hook remints `cashOutCount` to itself, executes the swap, and forwards the received ETH/ERC20 terminal tokens to the beneficiary.
+
+**Result:** The cash-out beneficiary receives the better sell-side execution route.
 
 ## 3. Configure Pool for Project
 

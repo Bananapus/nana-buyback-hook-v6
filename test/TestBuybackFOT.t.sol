@@ -254,6 +254,8 @@ contract TestBuybackFOT is Test {
     }
 
     function _mockControllerMint() internal {
+        vm.mockCall(address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0));
+
         vm.mockCall(
             address(controller),
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
@@ -487,9 +489,11 @@ contract TestBuybackFOT is Test {
         (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
         // The result depends on the TWAP quote vs mint calculation — just verify it completes.
-        // Either swap path (specs.length == 1, weight == 0) or mint path (specs.length == 0, weight > 0).
+        // Either swap path (specs.length == 1, weight == 0, noop == false) or mint path
+        // (specs.length == 0, weight > 0) / (specs.length == 1, weight > 0, noop == true).
         assertTrue(
-            (specs.length == 0 && weight > 0) || (specs.length == 1 && weight == 0),
+            (specs.length == 0 && weight > 0) || (specs.length == 1 && weight == 0 && !specs[0].noop)
+                || (specs.length == 1 && weight > 0 && specs[0].noop),
             "beforePayRecordedWith should choose swap or mint path without reverting"
         );
     }

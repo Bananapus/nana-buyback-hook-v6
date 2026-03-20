@@ -279,16 +279,30 @@ contract Test_BuybackHookRegistry_Unit is Test {
     // --- beforeCashOutRecordedWith ------------------------------------- //
     //*********************************************************************//
 
-    function test_beforeCashOutRecordedWith_passThrough() public {
+    function test_beforeCashOutRecordedWith_forwardsResolvedHook() public {
+        vm.prank(owner);
+        registry.setDefaultHook(hookB);
+
         JBBeforeCashOutRecordedContext memory context = _makeCashOutContext(projectId);
+        JBCashOutHookSpecification[] memory specs = new JBCashOutHookSpecification[](1);
 
-        (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, JBCashOutHookSpecification[] memory specs) =
-            registry.beforeCashOutRecordedWith(context);
+        vm.mockCall(
+            address(hookB),
+            abi.encodeWithSelector(IJBRulesetDataHook.beforeCashOutRecordedWith.selector),
+            abi.encode(uint256(123), uint256(456), uint256(789), specs)
+        );
 
-        assertEq(cashOutTaxRate, context.cashOutTaxRate, "should pass through cashOutTaxRate");
-        assertEq(cashOutCount, context.cashOutCount, "should pass through cashOutCount");
-        assertEq(totalSupply, context.totalSupply, "should pass through totalSupply");
-        assertEq(specs.length, 0, "should return empty specs");
+        (
+            uint256 cashOutTaxRate,
+            uint256 cashOutCount,
+            uint256 totalSupply,
+            JBCashOutHookSpecification[] memory returnedSpecs
+        ) = registry.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, 123, "should forward cashOutTaxRate");
+        assertEq(cashOutCount, 456, "should forward cashOutCount");
+        assertEq(totalSupply, 789, "should forward totalSupply");
+        assertEq(returnedSpecs.length, 1, "should forward specs");
     }
 
     //*********************************************************************//

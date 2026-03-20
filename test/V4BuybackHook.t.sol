@@ -15,10 +15,14 @@ import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBCashOuts} from "@bananapus/core-v6/src/libraries/JBCashOuts.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
 import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
@@ -35,6 +39,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
+import {SwapCallbackData} from "src/structs/SwapCallbackData.sol";
 import {JBSwapLib} from "src/libraries/JBSwapLib.sol";
 
 // Test mocks
@@ -257,6 +262,7 @@ contract V4BuybackHookTest is Test {
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
             abi.encode(0) // return value doesn't matter for our tests
         );
+        vm.mockCall(address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0));
     }
 
     /// @notice Mock controller.burnTokensOf to succeed.
@@ -379,12 +385,11 @@ contract V4BuybackHookTest is Test {
     ///      with JBBuybackHook_CallerNotPoolManager.
     function test_unlockCallbackAuth() public {
         bytes memory fakeData = abi.encode(
-            JBBuybackHook.SwapCallbackData({
+            SwapCallbackData({
                 key: poolKey,
-                projectTokenIs0: address(projectToken) < address(0),
+                zeroForOne: !(address(projectToken) < address(0)),
                 amountIn: 1 ether,
-                minimumSwapAmountOut: 0,
-                terminalToken: JBConstants.NATIVE_TOKEN
+                minimumSwapAmountOut: 0
             })
         );
 
@@ -557,12 +562,15 @@ contract V4BuybackHookTest is Test {
         });
 
         // When oracle reverts, _getQuote returns 0, meaning minimumSwapAmountOut = 0.
-        // Since tokenCountWithoutHook > 0, mint path is chosen (no hook specifications returned).
+        // Since tokenCountWithoutHook > 0, mint path is chosen. A noop spec is returned so pool metadata can still
+        // be surfaced without triggering afterPay.
         (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
         // Weight should be returned unchanged (mint path).
         assertEq(weight, 1e18, "Weight should be unchanged when oracle is unavailable (mint path)");
-        assertEq(specs.length, 0, "No hook specifications when falling back to mint");
+        assertEq(specs.length, 1, "A noop hook specification should carry mint-path pool diagnostics");
+        assertTrue(specs[0].noop, "Mint path specification should be marked noop");
+        assertEq(specs[0].amount, 0, "Mint path noop specification should not forward funds");
     }
 
     /// @notice Deterministic formula regression test at known fee tiers and key points.
@@ -876,10 +884,9 @@ contract V4BuybackHookTest is Test {
         assertTrue(mockPm.swapCalled(), "swap() should have been called for partial fill");
     }
 
-    /// @notice Test that a payer's bad quote is overridden by a higher TWAP minimum.
-    /// @dev Sets up the oracle to return a higher quote than the payer specified, then verifies
-    ///      the hook uses the TWAP quote (higher of the two) in the swap decision.
-    function test_payerQuoteCrossValidation() public {
+    /// @notice Test that an explicit payer quote is honored without consulting the TWAP.
+    /// @dev The oracle is configured to revert, proving the hook does not depend on TWAP when quote metadata exists.
+    function test_payerQuoteIsHonored() public {
         // Set up a project with _poolIsSet = true via setPoolFor.
         uint256 cvProjectId = 300;
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (cvProjectId)), abi.encode(owner));
@@ -895,9 +902,8 @@ contract V4BuybackHookTest is Test {
         vm.prank(owner);
         hook.setPoolFor(cvProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
 
-        // Configure oracle: tick=0 means price=1, so 1 ETH -> ~1 token.
-        // With slippage applied, the TWAP-based quote will be somewhat less than 1e18 but still substantial.
-        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+        // The oracle should not be consulted when the payer provides an explicit quote.
+        mockOracle.setShouldRevert(true);
 
         // Mock currentRulesetOf for this project.
         JBRulesetMetadata memory meta = JBRulesetMetadata({
@@ -940,13 +946,13 @@ contract V4BuybackHookTest is Test {
             abi.encode(ruleset, meta)
         );
 
-        // Payer provides a very low quote (1 token), meaning they'd accept terrible execution.
+        // Payer provides an explicit quote that should be used as-is.
         uint256 badPayerQuote = 1;
         uint256 amountToSwapWith = 1 ether;
 
         // Encode the payer's bad quote as metadata.
         bytes memory quoteMetadata = abi.encode(amountToSwapWith, badPayerQuote);
-        bytes4 metadataId = JBMetadataResolver.getId("quote");
+        bytes4 metadataId = JBMetadataResolver.getId("quote", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
 
         JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
@@ -966,19 +972,11 @@ contract V4BuybackHookTest is Test {
             metadata: fullMetadata
         });
 
-        // Call beforePayRecordedWith. If the TWAP quote > payer's bad quote,
-        // the hook should use the TWAP quote (the higher one).
         (, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
-        // The hook should still choose the swap path (specs.length == 1) because the TWAP quote
-        // should exceed the mint count. The minimumSwapAmountOut in the hook spec metadata
-        // should be the TWAP-based value (> 1).
-        if (specs.length == 1) {
-            (,, uint256 minOut,) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController));
-            assertGt(minOut, badPayerQuote, "TWAP minimum should override bad payer quote");
-        }
-        // If specs.length == 0, the mint path was chosen (TWAP returned 0) — still valid,
-        // the cross-validation didn't make things worse.
+        assertEq(specs.length, 1, "explicit payer quote should still produce a hook spec");
+        (,, uint256 minOut,) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController));
+        assertEq(minOut, badPayerQuote, "explicit payer quote should be honored");
     }
 
     /// @notice Test that setPoolFor rejects TWAP windows shorter than the new 5-minute minimum.
@@ -1223,7 +1221,7 @@ contract V4BuybackHookTest is Test {
             rulesetId: 1,
             beneficiary: beneficiary,
             weight: 1e18,
-            reservedPercent: 0,
+            reservedPercent: 2500,
             metadata: fullMetadata
         });
 
@@ -1232,7 +1230,7 @@ contract V4BuybackHookTest is Test {
         // The swap path must have been chosen.
         assertEq(specs.length, 1, "Swap path should be chosen");
 
-        // Decode all 8 fields from the hook spec metadata.
+        // Decode all 10 fields from the hook spec metadata.
         (
             bool projectTokenIs0,
             uint256 mintFromExcess,
@@ -1241,8 +1239,13 @@ contract V4BuybackHookTest is Test {
             uint256 tokenCountWithoutHook,
             int24 twapTick,
             uint128 twapLiquidity,
-            PoolId decodedPoolId
-        ) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController, uint256, int24, uint128, PoolId));
+            PoolId decodedPoolId,
+            uint256 minimumBeneficiaryTokenCount,
+            uint256 minimumReservedTokenCount
+        ) = abi.decode(
+            specs[0].metadata,
+            (bool, uint256, uint256, IJBController, uint256, int24, uint128, PoolId, uint256, uint256)
+        );
 
         // Verify field 5: with weight=1e18, baseCurrency=NATIVE_TOKEN, paying 1 ETH in native,
         // weightRatio = 10^18, so tokenCountWithoutHook = mulDiv(1e18, 1e18, 1e18) = 1e18.
@@ -1253,17 +1256,31 @@ contract V4BuybackHookTest is Test {
         // Verify fields 1-4.
         assertEq(address(decodedController), address(controller), "controller should match");
         assertEq(mintFromExcess, 0, "mintFromExcess should be 0 when amountToSwapWith == totalPaid");
-        assertGt(minimumSwapAmountOut, 0, "minimumSwapAmountOut should be non-zero");
+        assertEq(minimumSwapAmountOut, highPayerQuote, "minimumSwapAmountOut should honor the explicit payer quote");
         assertEq(projectTokenIs0, address(projectToken) < address(0), "projectTokenIs0 should match address comparison");
 
-        // Verify field 6: twapTick (oracle configured with tick=0).
-        assertEq(twapTick, int24(0), "twapTick should match oracle tick");
-
-        // Verify field 7: twapLiquidity (should be > 0 when oracle is available).
-        assertGt(twapLiquidity, 0, "twapLiquidity should be > 0");
+        // Verify fields 6-7: explicit payer quotes skip TWAP lookup, so diagnostics remain zeroed.
+        assertEq(twapTick, int24(0), "twapTick should be zero when TWAP is skipped");
+        assertEq(twapLiquidity, 0, "twapLiquidity should be zero when TWAP is skipped");
 
         // Verify field 8: poolId (should match the configured pool).
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
+
+        // Verify fields 9-10: minimum beneficiary/reserved split for the swap path.
+        (uint256 expectedBeneficiaryTokenCount, uint256 expectedReservedTokenCount) = controller.previewMintOf({
+            projectId: tcProjectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true
+        });
+
+        assertEq(
+            minimumBeneficiaryTokenCount,
+            expectedBeneficiaryTokenCount,
+            "minimumBeneficiaryTokenCount should match controller.previewMintOf"
+        );
+        assertEq(
+            minimumReservedTokenCount,
+            expectedReservedTokenCount,
+            "minimumReservedTokenCount should match controller.previewMintOf"
+        );
     }
 
     /// @notice initializePoolFor reverts if caller is not authorized.
@@ -1302,5 +1319,325 @@ contract V4BuybackHookTest is Test {
         assertEq(hookData.length, 32, "hookData must be exactly 32 bytes for JBUniswapV4Hook compatibility");
         uint256 amountOutMin = abi.decode(hookData, (uint256));
         assertEq(amountOutMin, 0, "hookData should encode amountOutMin = 0 (oracle-delegated slippage)");
+    }
+
+    function test_beforeCashOutRecordedWith_routesWhenSellQuoteBeatsProtocolCashOut() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+
+        uint256 cashOutCount = 10 ether;
+        uint256 explicitMinimumReclaimed = 0.5 ether + 1;
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory fullMetadata =
+            JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimumReclaimed));
+        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            totalSupply: 100 ether,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 5 ether,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: fullMetadata
+        });
+
+        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "cash out should be rerouted through the pool");
+        assertEq(specs.length, 1, "cash out hook spec should be returned");
+        assertEq(address(specs[0].hook), address(hook), "hook should execute the sell-side swap");
+        assertFalse(specs[0].noop, "sell-side execution spec should not be marked noop");
+        assertEq(specs[0].amount, 0, "sell-side hook should not consume protocol reclaim funds");
+        (
+            uint256 minimumSwapAmountOut,
+            uint256 minimumProtocolAmountOut,
+            int24 twapTick,
+            uint128 twapLiquidity,
+            PoolId decodedPoolId
+        ) = abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        assertEq(minimumSwapAmountOut, explicitMinimumReclaimed, "explicit cash-out minimum should be honored");
+        assertEq(minimumProtocolAmountOut, 0.5 ether, "protocol minimum should reflect the direct cash out amount");
+        assertEq(twapTick, 0, "explicit minimum should skip TWAP diagnostics");
+        assertEq(twapLiquidity, 0, "explicit minimum should skip TWAP diagnostics");
+        assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
+    }
+
+    function test_beforeCashOutRecordedWith_passesThroughWhenProtocolCashOutBeatsSellQuote() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+
+        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: 1 ether,
+            totalSupply: 2 ether,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 100 ether,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: ""
+        });
+
+        (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, context.cashOutTaxRate, "cash out tax rate should pass through");
+        assertEq(cashOutCount, context.cashOutCount, "cash out count should pass through");
+        assertEq(totalSupply, context.totalSupply, "total supply should pass through");
+        assertEq(specs.length, 1, "informational sell-side metadata should still be returned");
+        assertTrue(specs[0].noop, "protocol-winning path should be marked noop");
+        assertEq(specs[0].amount, 0, "noop sell-side spec should not consume protocol reclaim funds");
+        (
+            uint256 minimumSwapAmountOut,
+            uint256 minimumProtocolAmountOut,
+            int24 twapTick,
+            uint128 twapLiquidity,
+            PoolId decodedPoolId
+        ) = abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        assertEq(minimumProtocolAmountOut, 50 ether, "metadata should include the protocol minimum");
+        assertGt(minimumSwapAmountOut, 0, "metadata should include a non-zero sell-side minimum");
+        assertLt(minimumSwapAmountOut, minimumProtocolAmountOut, "sell-side minimum should lose to the protocol path");
+        assertEq(twapTick, 0, "TWAP tick should be surfaced in informational metadata");
+        assertGt(twapLiquidity, 0, "TWAP liquidity should be surfaced in informational metadata");
+        assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
+    }
+
+    function testFuzz_beforeCashOutRecordedWith_explicitMinimumAboveProtocolRoutes(
+        uint96 cashOutCountSeed,
+        uint96 totalSupplySeed,
+        uint96 surplusSeed,
+        uint96 deltaSeed
+    )
+        public
+    {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+
+        uint256 cashOutCount = bound(uint256(cashOutCountSeed), 1, 1_000_000 ether);
+        uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
+        uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
+        uint256 protocolMinimum = JBCashOuts.cashOutFrom({
+            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
+        });
+        uint256 explicitMinimum = protocolMinimum + bound(uint256(deltaSeed), 1, 1_000_000 ether);
+
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum));
+
+        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            totalSupply: totalSupply,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: surplus,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: metadata
+        });
+
+        (
+            uint256 cashOutTaxRate,
+            uint256 returnedCashOutCount,
+            uint256 returnedTotalSupply,
+            JBCashOutHookSpecification[] memory specs
+        ) = hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "sell-side route should be activated");
+        assertEq(returnedCashOutCount, cashOutCount, "cashOutCount should pass through");
+        assertEq(returnedTotalSupply, totalSupply, "totalSupply should pass through");
+        assertEq(specs.length, 1, "sell-side route should surface one hook spec");
+        assertFalse(specs[0].noop, "sell-side route should not be noop");
+
+        (uint256 minimumSwapAmountOut, uint256 minimumProtocolAmountOut,,,) =
+            abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
+        assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface protocol minimum");
+    }
+
+    function testFuzz_beforeCashOutRecordedWith_explicitMinimumAtOrBelowProtocolNoops(
+        uint96 cashOutCountSeed,
+        uint96 totalSupplySeed,
+        uint96 surplusSeed,
+        uint96 deltaSeed
+    )
+        public
+    {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+
+        uint256 cashOutCount = bound(uint256(cashOutCountSeed), 1, 1_000_000 ether);
+        uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
+        uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
+        uint256 protocolMinimum = JBCashOuts.cashOutFrom({
+            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
+        });
+        uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
+        uint256 explicitMinimum = protocolMinimum - delta;
+
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum));
+
+        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            totalSupply: totalSupply,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: surplus,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: metadata
+        });
+
+        (
+            uint256 cashOutTaxRate,
+            uint256 returnedCashOutCount,
+            uint256 returnedTotalSupply,
+            JBCashOutHookSpecification[] memory specs
+        ) = hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, 0, "protocol path should keep the original tax rate");
+        assertEq(returnedCashOutCount, cashOutCount, "cashOutCount should pass through");
+        assertEq(returnedTotalSupply, totalSupply, "totalSupply should pass through");
+        assertEq(specs.length, 1, "noop sell-side metadata should still be returned");
+        assertTrue(specs[0].noop, "protocol-winning path should be noop");
+
+        (uint256 minimumSwapAmountOut, uint256 minimumProtocolAmountOut,,,) =
+            abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
+        assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface protocol minimum");
+        assertLe(
+            minimumSwapAmountOut, minimumProtocolAmountOut, "noop path should only happen at or below protocol minimum"
+        );
+    }
+
+    function test_afterCashOutRecordedWith_remintsAndSwapsForBeneficiary() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+
+        uint256 cashOutCount = 10 ether;
+        uint256 amountOut = 5 ether;
+
+        projectToken.mint(address(hook), cashOutCount);
+        vm.deal(address(mockPm), amountOut);
+
+        // project token is currency1, native ETH is currency0, so selling project token is oneForZero.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(int128(uint128(amountOut)), -int128(uint128(cashOutCount)));
+
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: abi.encode(amountOut),
+            cashOutMetadata: ""
+        });
+
+        uint256 balanceBefore = beneficiary.balance;
+
+        vm.expectCall(
+            address(controller),
+            abi.encodeWithSignature(
+                "mintTokensOf(uint256,uint256,address,string,bool)", projectId, cashOutCount, address(hook), "", false
+            )
+        );
+
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(context);
+
+        assertTrue(mockPm.swapCalled(), "sell-side swap should hit the pool manager");
+        assertEq(beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive swap proceeds");
+    }
+
+    function test_afterCashOutRecordedWith_revertsIfCallerIsNotProjectTerminal() public {
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: 1 ether,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: "",
+            cashOutMetadata: ""
+        });
+
+        address attacker = makeAddr("attacker");
+        vm.mockCall(
+            address(directory),
+            abi.encodeCall(directory.isTerminalOf, (projectId, IJBTerminal(attacker))),
+            abi.encode(false)
+        );
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_CallerNotTerminal.selector, attacker));
+        hook.afterCashOutRecordedWith(context);
     }
 }

@@ -242,7 +242,7 @@ contract TestOracleRevertBehavior is Test {
     //*********************************************************************//
 
     /// @notice When the oracle reverts, beforePayRecordedWith returns the original weight (mint path)
-    /// with no hook specifications (no swap). This is the core safety property.
+    /// with a noop hook specification carrying diagnostics instead of a swap. This is the core safety property.
     function test_oracleRevert_fallbackToMint() public {
         // Set the oracle to revert on observe().
         mockOracle.setShouldRevert(true);
@@ -285,12 +285,14 @@ contract TestOracleRevertBehavior is Test {
         });
 
         // When oracle reverts, _getQuote returns 0, so minimumSwapAmountOut = 0.
-        // tokenCountWithoutHook = 1 ether * 1e18 / 1e18 = 1e18 > 0 = minimumSwapAmountOut
-        // Therefore, mint path is chosen (weight unchanged, no specs).
+        // tokenCountWithoutHook = 1 ether * 1e18 / 1e18 = 1e18 > 0 = minimumSwapAmountOut.
+        // Therefore, mint path is chosen with a noop spec carrying the pool diagnostics.
         (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
         assertEq(weight, 1e18, "Weight should be unchanged when oracle reverts (mint path)");
-        assertEq(specs.length, 0, "No hook specifications when falling back to mint due to oracle revert");
+        assertEq(specs.length, 1, "A noop hook specification should be returned on mint path");
+        assertTrue(specs[0].noop, "Mint path specification should be marked noop");
+        assertEq(specs[0].amount, 0, "Mint path noop specification should not forward funds");
     }
 
     /// @notice When the oracle reverts AND the pool is unavailable (unlock reverts), the full payment
@@ -394,7 +396,8 @@ contract TestOracleRevertBehavior is Test {
         (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
         assertEq(weight, 1e18, "Weight should be unchanged for new pool with no observation history");
-        assertEq(specs.length, 0, "No hook specifications for new pool without oracle data");
+        assertEq(specs.length, 1, "A noop hook specification should be returned for a configured pool");
+        assertTrue(specs[0].noop, "Mint path specification should be marked noop");
     }
 
     /// @notice When the oracle returns zero liquidity (secondsPerLiquidity delta = 0), _getQuote
@@ -443,7 +446,8 @@ contract TestOracleRevertBehavior is Test {
         (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
         assertEq(weight, 1e18, "Weight should be unchanged when oracle returns zero liquidity");
-        assertEq(specs.length, 0, "No hook specifications when oracle returns zero liquidity");
+        assertEq(specs.length, 1, "A noop hook specification should be returned when mint path wins");
+        assertTrue(specs[0].noop, "Mint path specification should be marked noop");
     }
 
     /// @notice When the oracle is broken but the payer provides an explicit quote in metadata,
@@ -497,7 +501,8 @@ contract TestOracleRevertBehavior is Test {
 
         // With broken oracle and no explicit quote, mint path is always chosen.
         assertEq(weight, 1e18, "Weight unchanged when oracle broken and no payer quote");
-        assertEq(specs.length, 0, "No hook specs when oracle broken and no payer quote");
+        assertEq(specs.length, 1, "A noop hook specification should be returned when mint path wins");
+        assertTrue(specs[0].noop, "Mint path specification should be marked noop");
     }
 
     /// @notice Full integration: project with buyback hook, broken oracle, full payment flow.
@@ -549,11 +554,11 @@ contract TestOracleRevertBehavior is Test {
 
         // Mint path chosen.
         assertEq(weight, 1e18, "E2E: weight unchanged with broken oracle");
-        assertEq(specs.length, 0, "E2E: no hook specs, tokens will be minted directly by terminal");
+        assertEq(specs.length, 1, "E2E: noop hook spec should carry mint-path diagnostics");
+        assertTrue(specs[0].noop, "E2E: mint path specification should be marked noop");
 
-        // Step 2: Since specs is empty, the terminal would mint tokens directly (no afterPayRecordedWith).
-        // This is the expected graceful degradation: the buyback hook is a no-op when the oracle is broken,
-        // and the terminal mints tokens based on the project's weight as if no buyback hook existed.
+        // Step 2: Since the spec is noop, the terminal still mints tokens directly and skips afterPayRecordedWith.
+        // This is the expected graceful degradation: the buyback hook surfaces diagnostics without changing execution.
     }
 
     /// @notice Proves that the MockOracleHook correctly handles uint160 seconds-per-liquidity values
@@ -620,7 +625,8 @@ contract TestOracleRevertBehavior is Test {
         // The oracle returns a valid quote (non-zero), but the swap/mint decision depends on comparison.
         // The key assertion: the call did NOT revert, proving uint160 values flow through correctly.
         assertTrue(
-            (specs.length == 0 && weight > 0) || (specs.length == 1 && weight == 0),
+            (specs.length == 0 && weight > 0) || (specs.length == 1 && weight == 0 && !specs[0].noop)
+                || (specs.length == 1 && weight > 0 && specs[0].noop),
             "Oracle with uint160 values exceeding uint136 max should produce a valid swap/mint decision"
         );
     }
