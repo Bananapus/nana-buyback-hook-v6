@@ -760,12 +760,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        uint256 estimatedBeneficiaryTokenCount;
-        uint256 estimatedReservedTokenCount;
+        uint256 minimumBeneficiaryTokenCount;
+        uint256 minimumReservedTokenCount;
 
         // Use the controller's preview path so the metadata mirrors the actual beneficiary/reserved split logic.
         if (minimumSwapAmountOut != 0) {
-            (estimatedBeneficiaryTokenCount, estimatedReservedTokenCount) = controller.previewMintOf({
+            (minimumBeneficiaryTokenCount, minimumReservedTokenCount) = controller.previewMintOf({
                 projectId: context.projectId,
                 tokenCount: minimumSwapAmountOut,
                 useReservedPercent: true
@@ -775,12 +775,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (PoolId.unwrap(poolId) != bytes32(0)) {
             bool projectTokenIs0 = address(projectToken) < terminalToken;
             uint256 amountToMintWith = totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith;
+            bool noop = tokenCountWithoutHook >= minimumSwapAmountOut;
 
             hookSpecifications = new JBPayHookSpecification[](1);
             hookSpecifications[0] = JBPayHookSpecification({
                 hook: IJBPayHook(this),
-                noop: tokenCountWithoutHook >= minimumSwapAmountOut,
-                amount: tokenCountWithoutHook < minimumSwapAmountOut ? amountToSwapWith : 0,
+                noop: noop,
+                amount: noop ? 0 : amountToSwapWith,
                 metadata: abi.encode(
                     projectTokenIs0,
                     amountToMintWith,
@@ -790,13 +791,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     twapTick,
                     twapLiquidity,
                     poolId,
-                    estimatedBeneficiaryTokenCount,
-                    estimatedReservedTokenCount
+                    minimumBeneficiaryTokenCount,
+                    minimumReservedTokenCount
                 )
             });
 
             // All the minting will be done in `afterPayRecordedWith`. Return a weight of 0.
-            if (tokenCountWithoutHook < minimumSwapAmountOut) return (0, hookSpecifications);
+            if (!noop) return (0, hookSpecifications);
         }
     }
 

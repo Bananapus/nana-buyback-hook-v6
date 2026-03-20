@@ -212,8 +212,8 @@ When a pool is configured, the `JBPayHookSpecification.metadata` returned by `be
 | 6 | `twapTick` | `int24` | TWAP oracle tick used for the price quote (informational) |
 | 7 | `twapLiquidity` | `uint128` | Harmonic mean liquidity from the TWAP oracle (informational) |
 | 8 | `poolId` | `PoolId` | V4 pool identifier used for the swap (informational) |
-| 9 | `estimatedBeneficiaryTokenCount` | `uint256` | Estimated beneficiary portion of `minimumSwapAmountOut` after the reserved rate |
-| 10 | `estimatedReservedTokenCount` | `uint256` | Estimated reserved portion of `minimumSwapAmountOut` after the reserved rate |
+| 9 | `minimumBeneficiaryTokenCount` | `uint256` | Minimum beneficiary portion of `minimumSwapAmountOut` after the reserved rate |
+| 10 | `minimumReservedTokenCount` | `uint256` | Minimum reserved portion of `minimumSwapAmountOut` after the reserved rate |
 
 `afterPayRecordedWith` only decodes fields 1-4 to execute the swap. Fields 5-10 are informational -- they allow preview/simulation clients to inspect the routing decision context without replaying the computation. On mint-path noop specs, all 10 fields are still present even though no pay-hook callback will be executed.
 

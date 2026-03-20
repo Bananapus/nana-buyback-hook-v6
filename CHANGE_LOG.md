@@ -31,8 +31,8 @@ The pay hook metadata has since expanded beyond the original 5 fields. It now in
     int24 twapTick,
     uint128 twapLiquidity,
     PoolId poolId,
-    uint256 estimatedBeneficiaryTokenCount,
-    uint256 estimatedReservedTokenCount
+    uint256 minimumBeneficiaryTokenCount,
+    uint256 minimumReservedTokenCount
 )
 ```
 

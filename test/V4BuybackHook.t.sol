@@ -1241,8 +1241,8 @@ contract V4BuybackHookTest is Test {
             int24 twapTick,
             uint128 twapLiquidity,
             PoolId decodedPoolId,
-            uint256 estimatedBeneficiaryTokenCount,
-            uint256 estimatedReservedTokenCount
+            uint256 minimumBeneficiaryTokenCount,
+            uint256 minimumReservedTokenCount
         ) = abi.decode(
             specs[0].metadata,
             (bool, uint256, uint256, IJBController, uint256, int24, uint128, PoolId, uint256, uint256)
@@ -1267,19 +1267,19 @@ contract V4BuybackHookTest is Test {
         // Verify field 8: poolId (should match the configured pool).
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
 
-        // Verify fields 9-10: estimated beneficiary/reserved split for the swap path.
+        // Verify fields 9-10: minimum beneficiary/reserved split for the swap path.
         (uint256 expectedBeneficiaryTokenCount, uint256 expectedReservedTokenCount) =
             controller.previewMintOf({projectId: tcProjectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true});
 
         assertEq(
-            estimatedBeneficiaryTokenCount,
+            minimumBeneficiaryTokenCount,
             expectedBeneficiaryTokenCount,
-            "estimatedBeneficiaryTokenCount should match controller.previewMintOf"
+            "minimumBeneficiaryTokenCount should match controller.previewMintOf"
         );
         assertEq(
-            estimatedReservedTokenCount,
+            minimumReservedTokenCount,
             expectedReservedTokenCount,
-            "estimatedReservedTokenCount should match controller.previewMintOf"
+            "minimumReservedTokenCount should match controller.previewMintOf"
         );
     }
 
