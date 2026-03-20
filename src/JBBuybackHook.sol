@@ -630,24 +630,27 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Read any user-specified minimum reclaimed amount from metadata.
         uint256 minimumSwapAmountOut;
+        bool hasUserSpecifiedMinimumSwapAmountOut;
         {
             (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
                 id: JBMetadataResolver.getId("cashOutMinReclaimed"),
                 metadata: context.metadata
             });
-            if (exists) minimumSwapAmountOut = abi.decode(minData, (uint256));
+            if (exists) {
+                hasUserSpecifiedMinimumSwapAmountOut = true;
+                minimumSwapAmountOut = abi.decode(minData, (uint256));
+            }
         }
 
-        // Get the sell-side TWAP minimum for swapping the project tokens into the terminal token.
-        (uint256 twapMinimum,,,) = _getQuote({
-            projectId: context.projectId,
-            amountIn: context.cashOutCount,
-            baseToken: projectToken,
-            quoteToken: terminalToken
-        });
-
-        // Honor the stricter of the user-specified floor and the internally derived TWAP floor.
-        if (twapMinimum > minimumSwapAmountOut) minimumSwapAmountOut = twapMinimum;
+        // If the user did not provide a minimum reclaimed amount, derive one from the sell-side TWAP quote.
+        if (!hasUserSpecifiedMinimumSwapAmountOut) {
+            (minimumSwapAmountOut,,,) = _getQuote({
+                projectId: context.projectId,
+                amountIn: context.cashOutCount,
+                baseToken: projectToken,
+                quoteToken: terminalToken
+            });
+        }
 
         // Keep the protocol cash-out path if the pool cannot beat it.
         if (minimumSwapAmountOut <= directCashOutAmount) {
@@ -691,6 +694,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Keep a reference to the minimum number of tokens expected from the swap.
         uint256 minimumSwapAmountOut;
+        bool hasUserSpecifiedQuote;
 
         // Keep a reference to the amount to be used to swap (out of `totalPaid`).
         uint256 amountToSwapWith;
@@ -701,7 +705,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             bytes4 metadataId = JBMetadataResolver.getId("quote");
             (bool quoteExists, bytes memory metadata) =
                 JBMetadataResolver.getDataFor({id: metadataId, metadata: context.metadata});
-            if (quoteExists) (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
+            if (quoteExists) {
+                hasUserSpecifiedQuote = true;
+                (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
+            }
         }
 
         // If the amount to swap with is greater than the actual amount paid in, revert.
@@ -736,23 +743,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Keep a reference to the token being used by the terminal. Use address(0) for native ETH.
         address terminalToken = context.amount.token == JBConstants.NATIVE_TOKEN ? address(0) : context.amount.token;
 
-        // Always compute the TWAP-based minimum and pool info.
-        uint256 twapMinimum;
+        // Keep references to pool diagnostics. If the user provided a quote, honor it directly and skip the TWAP.
         int24 twapTick;
         uint128 twapLiquidity;
-        PoolId poolId;
-        {
-            (twapMinimum, twapTick, twapLiquidity, poolId) = _getQuote({
+        PoolId poolId = _poolKeyOf[context.projectId][terminalToken].toId();
+        if (!hasUserSpecifiedQuote) {
+            (minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
                 projectId: context.projectId,
                 amountIn: amountToSwapWith,
                 baseToken: terminalToken,
                 quoteToken: projectToken
             });
         }
-
-        // Use the higher of the payer's quote and the TWAP quote.
-        // This prevents a stale/malicious payer quote from getting a worse deal than the oracle suggests.
-        if (twapMinimum > minimumSwapAmountOut) minimumSwapAmountOut = twapMinimum;
 
         uint256 estimatedBeneficiaryTokenCount;
         uint256 estimatedReservedTokenCount;

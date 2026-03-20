@@ -38,6 +38,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 // Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
+import {SwapCallbackData} from "src/structs/SwapCallbackData.sol";
 import {JBSwapLib} from "src/libraries/JBSwapLib.sol";
 
 // Test mocks
@@ -260,6 +261,9 @@ contract V4BuybackHookTest is Test {
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
             abi.encode(0) // return value doesn't matter for our tests
         );
+        vm.mockCall(
+            address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0)
+        );
     }
 
     /// @notice Mock controller.burnTokensOf to succeed.
@@ -382,7 +386,7 @@ contract V4BuybackHookTest is Test {
     ///      with JBBuybackHook_CallerNotPoolManager.
     function test_unlockCallbackAuth() public {
         bytes memory fakeData = abi.encode(
-            JBBuybackHook.SwapCallbackData({
+            SwapCallbackData({
                 key: poolKey,
                 zeroForOne: !(address(projectToken) < address(0)),
                 amountIn: 1 ether,
@@ -881,10 +885,9 @@ contract V4BuybackHookTest is Test {
         assertTrue(mockPm.swapCalled(), "swap() should have been called for partial fill");
     }
 
-    /// @notice Test that a payer's bad quote is overridden by a higher TWAP minimum.
-    /// @dev Sets up the oracle to return a higher quote than the payer specified, then verifies
-    ///      the hook uses the TWAP quote (higher of the two) in the swap decision.
-    function test_payerQuoteCrossValidation() public {
+    /// @notice Test that an explicit payer quote is honored without consulting the TWAP.
+    /// @dev The oracle is configured to revert, proving the hook does not depend on TWAP when quote metadata exists.
+    function test_payerQuoteIsHonored() public {
         // Set up a project with _poolIsSet = true via setPoolFor.
         uint256 cvProjectId = 300;
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (cvProjectId)), abi.encode(owner));
@@ -900,9 +903,8 @@ contract V4BuybackHookTest is Test {
         vm.prank(owner);
         hook.setPoolFor(cvProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
 
-        // Configure oracle: tick=0 means price=1, so 1 ETH -> ~1 token.
-        // With slippage applied, the TWAP-based quote will be somewhat less than 1e18 but still substantial.
-        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+        // The oracle should not be consulted when the payer provides an explicit quote.
+        mockOracle.setShouldRevert(true);
 
         // Mock currentRulesetOf for this project.
         JBRulesetMetadata memory meta = JBRulesetMetadata({
@@ -945,13 +947,13 @@ contract V4BuybackHookTest is Test {
             abi.encode(ruleset, meta)
         );
 
-        // Payer provides a very low quote (1 token), meaning they'd accept terrible execution.
+        // Payer provides an explicit quote that should be used as-is.
         uint256 badPayerQuote = 1;
         uint256 amountToSwapWith = 1 ether;
 
         // Encode the payer's bad quote as metadata.
         bytes memory quoteMetadata = abi.encode(amountToSwapWith, badPayerQuote);
-        bytes4 metadataId = JBMetadataResolver.getId("quote");
+        bytes4 metadataId = JBMetadataResolver.getId("quote", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
 
         JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
@@ -971,19 +973,11 @@ contract V4BuybackHookTest is Test {
             metadata: fullMetadata
         });
 
-        // Call beforePayRecordedWith. If the TWAP quote > payer's bad quote,
-        // the hook should use the TWAP quote (the higher one).
         (, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
-        // The hook should still choose the swap path (specs.length == 1) because the TWAP quote
-        // should exceed the mint count. The minimumSwapAmountOut in the hook spec metadata
-        // should be the TWAP-based value (> 1).
-        if (specs.length == 1) {
-            (,, uint256 minOut,) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController));
-            assertGt(minOut, badPayerQuote, "TWAP minimum should override bad payer quote");
-        }
-        // If specs.length == 0, the mint path was chosen (TWAP returned 0) — still valid,
-        // the cross-validation didn't make things worse.
+        assertEq(specs.length, 1, "explicit payer quote should still produce a hook spec");
+        (,, uint256 minOut,) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController));
+        assertEq(minOut, badPayerQuote, "explicit payer quote should be honored");
     }
 
     /// @notice Test that setPoolFor rejects TWAP windows shorter than the new 5-minute minimum.
@@ -1263,21 +1257,19 @@ contract V4BuybackHookTest is Test {
         // Verify fields 1-4.
         assertEq(address(decodedController), address(controller), "controller should match");
         assertEq(mintFromExcess, 0, "mintFromExcess should be 0 when amountToSwapWith == totalPaid");
-        assertGt(minimumSwapAmountOut, 0, "minimumSwapAmountOut should be non-zero");
+        assertEq(minimumSwapAmountOut, highPayerQuote, "minimumSwapAmountOut should honor the explicit payer quote");
         assertEq(projectTokenIs0, address(projectToken) < address(0), "projectTokenIs0 should match address comparison");
 
-        // Verify field 6: twapTick (oracle configured with tick=0).
-        assertEq(twapTick, int24(0), "twapTick should match oracle tick");
-
-        // Verify field 7: twapLiquidity (should be > 0 when oracle is available).
-        assertGt(twapLiquidity, 0, "twapLiquidity should be > 0");
+        // Verify fields 6-7: explicit payer quotes skip TWAP lookup, so diagnostics remain zeroed.
+        assertEq(twapTick, int24(0), "twapTick should be zero when TWAP is skipped");
+        assertEq(twapLiquidity, 0, "twapLiquidity should be zero when TWAP is skipped");
 
         // Verify field 8: poolId (should match the configured pool).
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
 
         // Verify fields 9-10: estimated beneficiary/reserved split for the swap path.
         (uint256 expectedBeneficiaryTokenCount, uint256 expectedReservedTokenCount) =
-            controller.previewMintOf({projectId: projectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true});
+            controller.previewMintOf({projectId: tcProjectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true});
 
         assertEq(
             estimatedBeneficiaryTokenCount,
@@ -1340,6 +1332,9 @@ contract V4BuybackHookTest is Test {
         mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
 
         uint256 cashOutCount = 10 ether;
+        uint256 explicitMinimumReclaimed = 0.5 ether + 1;
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimumReclaimed));
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
             terminal: address(terminal),
             holder: payer,
@@ -1356,7 +1351,7 @@ contract V4BuybackHookTest is Test {
             useTotalSurplus: false,
             cashOutTaxRate: 0,
             beneficiaryIsFeeless: false,
-            metadata: ""
+            metadata: fullMetadata
         });
 
         (uint256 cashOutTaxRate,,,
@@ -1366,6 +1361,7 @@ contract V4BuybackHookTest is Test {
         assertEq(specs.length, 1, "cash out hook spec should be returned");
         assertEq(address(specs[0].hook), address(hook), "hook should execute the sell-side swap");
         assertEq(specs[0].amount, 0, "sell-side hook should not consume protocol reclaim funds");
+        assertEq(abi.decode(specs[0].metadata, (uint256)), explicitMinimumReclaimed, "explicit cash-out minimum should be honored");
     }
 
     function test_beforeCashOutRecordedWith_passesThroughWhenProtocolCashOutBeatsSellQuote() public {

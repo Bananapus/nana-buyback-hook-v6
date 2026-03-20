@@ -516,6 +516,9 @@ contract BuybackHookInvariantTest is StdInvariant, Test {
             abi.encode(true)
         );
         vm.mockCall(
+            address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0)
+        );
+        vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (PROJECT_ID)), abi.encode(IJBToken(address(projectToken)))
         );
         vm.mockCall(

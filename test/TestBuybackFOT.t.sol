@@ -255,6 +255,10 @@ contract TestBuybackFOT is Test {
 
     function _mockControllerMint() internal {
         vm.mockCall(
+            address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0)
+        );
+
+        vm.mockCall(
             address(controller),
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
             abi.encode(0)
