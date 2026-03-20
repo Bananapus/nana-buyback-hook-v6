@@ -32,7 +32,7 @@ sequenceDiagram
 1. A payment is made to a project's terminal.
 2. The terminal calls `beforePayRecordedWith(context)` on the data hook (this contract).
 3. The hook calculates how many tokens the payer would get by minting directly (`weight * amount / weightRatio`).
-4. It compares that against a Uniswap V4 quote. The TWAP-based quote uses the pool's oracle hook (if available) or forces the mint path when unavailable, then applies sigmoid-based slippage tolerance. The payer/frontend can also supply their own quote in metadata -- the hook uses whichever is higher (more protective).
+4. It compares that against a Uniswap V4 quote. By default, the quote comes from the pool's geomean/TWAP oracle hook, then applies sigmoid-based slippage tolerance. If the oracle is unavailable, the hook forces the mint path. The payer/frontend can also supply their own quote in metadata. On the buy side, that explicit minimum is honored directly and skips the TWAP lookup.
 5. If the swap yields more tokens, the hook returns `weight = 0` and specifies itself as a pay hook with the swap amount.
 6. If minting yields more tokens and a pool is configured, the hook returns the original `weight` plus a noop pay hook specification carrying routing diagnostics. The terminal skips `afterPayRecordedWith` for noop specs.
 7. When swap is selected, the terminal calls `afterPayRecordedWith(context)` on the pay hook.
@@ -40,7 +40,9 @@ sequenceDiagram
 
 If the swap fails (slippage, insufficient liquidity, etc.), `_swap` catches the revert and returns `(0, swapFailed = true)`. `afterPayRecordedWith` then skips the slippage check, returns the unspent payment amount to the terminal balance, and mints via the normal fallback path.
 
-Cash outs follow the same best-execution philosophy. `beforeCashOutRecordedWith` compares protocol cash-out value against a pool sell quote. If the pool route is better, it returns a cash-out hook spec so `afterCashOutRecordedWith` remints the burned project tokens to the hook, sells them into the pool, and forwards the proceeds to the beneficiary.
+Cash outs follow the same best-execution philosophy. `beforeCashOutRecordedWith` compares protocol cash-out value against a pool sell quote. By default, the sell quote comes from the same geomean/TWAP oracle path used on buys, with the same slippage adjustment. Callers can also supply an explicit minimum reclaimed amount in `"cashOutMinReclaimed"` metadata; when present, that explicit minimum is honored directly and the TWAP lookup is skipped. If the pool route is better, it returns a cash-out hook spec so `afterCashOutRecordedWith` remints the burned project tokens to the hook, sells them into the pool, and forwards the proceeds to the beneficiary.
+
+When a pool is configured on the sell side, `beforeCashOutRecordedWith` always returns a `JBCashOutHookSpecification` with routing metadata. If the pool wins, the spec is active (`noop = false`) and `afterCashOutRecordedWith` executes the sell. If the protocol cash out wins, the spec is informational (`noop = true`, `amount = 0`) so preview clients can still inspect the pool-vs-protocol comparison without triggering the hook callback.
 
 ## Registry
 
@@ -185,7 +187,7 @@ The buyback hook uses a continuous sigmoid formula (`JBSwapLib.getSlippageTolera
 The hook provides two layers of MEV protection:
 
 1. **sqrtPriceLimitX96**: The V4 swap is executed with a price limit computed from the minimum acceptable output (`JBSwapLib.sqrtPriceLimitFromAmounts`). This stops the swap early if the price moves unfavorably, rather than executing at a bad rate.
-2. **Quote floor**: The hook always takes the higher of the payer's quote and the TWAP-based quote. A stale or manipulated payer quote cannot produce a worse deal than what the oracle suggests.
+2. **Quote floor**: By default, both buy-side and sell-side minimums come from the geomean/TWAP oracle path. Callers can also provide explicit minimums in metadata (`"quote"` on buys, `"cashOutMinReclaimed"` on sells). When explicit minimums are present, the hook honors them directly and skips the TWAP lookup for that side.
 
 Payers/frontends should provide a reasonable minimum quote in metadata for additional protection. You can also use the [Flashbots Protect RPC](https://protect.flashbots.net/) for transactions that trigger the buyback hook.
 
@@ -196,7 +198,7 @@ The hook reads metadata with key `"quote"` (resolved via `JBMetadataResolver`), 
 - If `amountToSwapWith == 0`, the full payment amount is used for the swap.
 - If `amountToSwapWith > 0`, only that portion is swapped and the remainder is minted directly.
 - If `amountToSwapWith > totalPaid`, the transaction reverts with `JBBuybackHook_InsufficientPayAmount`.
-- The `minimumSwapAmountOut` is compared against the TWAP-derived minimum -- the higher value is used.
+- The `minimumSwapAmountOut` is the explicit minimum the caller wants enforced on the buy-side swap. When this metadata is present, the hook honors it directly and skips the TWAP lookup.
 
 ### Hook Specification Metadata
 

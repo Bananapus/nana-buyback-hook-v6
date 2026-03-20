@@ -12,6 +12,8 @@ This document describes all changes between `nana-buyback-hook` (v5) and `nana-b
 ### Sell-side Cash-out Optimization
 `JBBuybackHook` now also implements the sell side through `beforeCashOutRecordedWith` and `afterCashOutRecordedWith`. If selling reminted project tokens into the configured Uniswap V4 pool yields more terminal tokens than the protocol cash-out path, the hook routes the cash out through the pool and forwards proceeds to the beneficiary.
 
+When a pool is configured, sell-side previews now always return a `JBCashOutHookSpecification` with routing metadata. The execution path uses `noop = false`; the protocol-winning informational path uses `noop = true` and still surfaces the sell-side minimum, direct protocol minimum, and pool diagnostics for preview clients.
+
 ### Hook Spec Metadata: `tokenCountWithoutHook` (5th field)
 `beforePayRecordedWith` now encodes a 5th field in the `JBPayHookSpecification.metadata` when the swap path is chosen:
 ```

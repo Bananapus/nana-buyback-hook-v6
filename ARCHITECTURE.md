@@ -24,8 +24,8 @@ src/
 Payment → JBTerminalStore calls data hook
   → JBBuybackHook.beforePayRecordedWith()
     → Calculate mintable tokens from weight
-    → Read TWAP price from Uniswap V4 pool
-    → If TWAP gives more tokens:
+    → Read minimum from explicit quote metadata or, by default, from the TWAP/geomean oracle path
+    → If swap minimum gives more tokens:
       → Return active pay specification as pay hook
       → Hook spec metadata includes routing diagnostics for preview clients
     → Else:
@@ -42,13 +42,16 @@ If swap selected:
 Cash out → JBTerminalStore calls data hook
   → JBBuybackHook.beforeCashOutRecordedWith()
     → Calculate direct protocol cash-out value
-    → Read TWAP sell quote from Uniswap V4 pool
+    → Read minimum from explicit cash-out metadata or, by default, from the TWAP/geomean oracle path
+    → Always return cash-out hook specification with routing diagnostics when pool is configured
     → If pool sale is better:
-      → Return cash-out hook specification
-  → JBBuybackHook.afterCashOutRecordedWith()
-    → Remint burned tokens to the hook
-    → Execute swap on Uniswap V4
-    → Forward proceeds to beneficiary
+      → Spec is active (`noop = false`)
+      → JBBuybackHook.afterCashOutRecordedWith()
+        → Remint burned tokens to the hook
+        → Execute swap on Uniswap V4
+        → Forward proceeds to beneficiary
+    → Else:
+      → Spec is informational (`noop = true`)
 ```
 ```
 

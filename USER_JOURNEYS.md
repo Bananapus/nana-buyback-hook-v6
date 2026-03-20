@@ -19,8 +19,8 @@ A payer sends ETH to a project whose ruleset has the buyback hook as its data ho
 
 4. `JBBuybackHook.beforePayRecordedWith(context)` runs the swap-vs-mint decision:
    - Computes `tokenCountWithoutHook = amountToSwapWith * weight / weightRatio` (what direct minting would yield).
-   - Queries the oracle for a TWAP-based minimum: `_getQuote(projectId, projectToken, amountIn, terminalToken)`.
-   - Takes the higher of the payer quote and the TWAP quote: `minimumSwapAmountOut = max(payerQuote, twapMinimum)`.
+   - If no explicit quote metadata was provided, queries the oracle for a TWAP/geomean-based minimum: `_getQuote(projectId, projectToken, amountIn, terminalToken)`.
+   - If explicit quote metadata was provided, honors that minimum directly and skips the TWAP lookup.
    - Since `minimumSwapAmountOut > tokenCountWithoutHook`, returns `weight = 0` and a `JBPayHookSpecification` pointing to itself with `noop = false`, `amount = amountToSwapWith`, and `metadata` encoding 10 fields: `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId, minimumBeneficiaryTokenCount, minimumReservedTokenCount)`. Fields 1-4 are consumed by `afterPayRecordedWith`; fields 5-10 are informational for preview clients.
 
    **Interpreting the informational fields (5-10) for preview UIs:**
@@ -83,10 +83,14 @@ A holder cashes out project tokens, and selling reminted tokens into the configu
 
 1. Holder calls `cashOutTokensOf(...)`.
 2. Terminal/store calls `beforeCashOutRecordedWith(...)`.
-3. The hook compares the direct protocol reclaim amount against the TWAP-protected pool sell quote.
-4. If the pool sale is better, it returns a cash-out hook spec and suppresses the direct protocol reclaim path.
-5. After the terminal burns the holder's tokens, it calls `afterCashOutRecordedWith(...)`.
-6. The hook remints `cashOutCount` to itself, executes the swap, and forwards the received ETH/ERC20 terminal tokens to the beneficiary.
+3. If no explicit `"cashOutMinReclaimed"` metadata was provided, the hook derives a TWAP/geomean-based sell minimum with `_getQuote(...)`.
+4. If explicit `"cashOutMinReclaimed"` metadata was provided, the hook honors that minimum directly and skips the TWAP lookup.
+5. The hook compares the direct protocol reclaim amount against that sell-side minimum.
+6. It always returns a cash-out hook specification with routing metadata when a pool is configured.
+7. If the pool sale is better, the spec is active (`noop = false`) and suppresses the direct protocol reclaim path.
+8. If the protocol cash out is better, the spec is informational (`noop = true`) and the terminal skips the cash-out hook callback.
+9. After the terminal burns the holder's tokens on the active path, it calls `afterCashOutRecordedWith(...)`.
+10. The hook remints `cashOutCount` to itself, executes the swap, and forwards the received ETH/ERC20 terminal tokens to the beneficiary.
 
 **Result:** The cash-out beneficiary receives the better sell-side execution route.
 
