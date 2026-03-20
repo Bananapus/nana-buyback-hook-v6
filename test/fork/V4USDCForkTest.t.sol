@@ -437,10 +437,7 @@ contract V4USDCForkTest is Test {
             cashOutCount: 1e6,
             totalSupply: 2e6,
             surplus: JBTokenAmount({
-                token: address(usdc),
-                value: 100e6,
-                decimals: 6,
-                currency: uint32(uint160(address(usdc)))
+                token: address(usdc), value: 100e6, decimals: 6, currency: uint32(uint160(address(usdc)))
             }),
             useTotalSurplus: false,
             cashOutTaxRate: 0,
@@ -448,8 +445,8 @@ contract V4USDCForkTest is Test {
             metadata: fullMetadata
         });
 
-        (uint256 cashOutTaxRate,,,
-            JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(beforeCtx);
+        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(beforeCtx);
 
         assertEq(cashOutTaxRate, 0, "protocol path should be preserved when USDC reclaim is better");
         assertEq(specs.length, 1, "sell-side noop path should still return metadata");
@@ -572,9 +569,7 @@ contract V4USDCForkTest is Test {
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
             abi.encode(0)
         );
-        vm.mockCall(
-            address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0)
-        );
+        vm.mockCall(address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0));
         vm.mockCall(
             address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );
@@ -891,10 +886,7 @@ contract V4USDCForkTest is Test {
                 cashOutCount: cashOutCount,
                 totalSupply: 100e6,
                 surplus: JBTokenAmount({
-                    token: address(usdc),
-                    value: 1,
-                    decimals: 6,
-                    currency: uint32(uint160(address(usdc)))
+                    token: address(usdc), value: 1, decimals: 6, currency: uint32(uint160(address(usdc)))
                 }),
                 useTotalSurplus: false,
                 cashOutTaxRate: 0,
@@ -902,10 +894,12 @@ contract V4USDCForkTest is Test {
                 metadata: fullMetadata
             });
 
-            (uint256 cashOutTaxRate,,,
-                JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(beforeCtx);
+            (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+                hook.beforeCashOutRecordedWith(beforeCtx);
 
-            assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "USDC sell-side E2E should choose the pool route");
+            assertEq(
+                cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "USDC sell-side E2E should choose the pool route"
+            );
             assertEq(specs.length, 1, "USDC sell-side E2E should return one hook specification");
             assertFalse(specs[0].noop, "USDC sell-side E2E should return an active hook spec");
             specMetadata = specs[0].metadata;
@@ -919,16 +913,10 @@ contract V4USDCForkTest is Test {
             rulesetId: 1,
             cashOutCount: cashOutCount,
             reclaimedAmount: JBTokenAmount({
-                token: address(usdc),
-                value: 0,
-                decimals: 6,
-                currency: uint32(uint160(address(usdc)))
+                token: address(usdc), value: 0, decimals: 6, currency: uint32(uint160(address(usdc)))
             }),
             forwardedAmount: JBTokenAmount({
-                token: address(usdc),
-                value: 0,
-                decimals: 6,
-                currency: uint32(uint160(address(usdc)))
+                token: address(usdc), value: 0, decimals: 6, currency: uint32(uint160(address(usdc)))
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: payable(beneficiary),

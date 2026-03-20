@@ -437,12 +437,7 @@ contract V4RealOracleForkTest is Test {
         uint160 secPerLiqDelta = uint160((uint256(twapWindow) << 128) / poolLiquidity);
 
         MockOracleHook(ORACLE_ADDR)
-            .setObserveData({
-                _tickCumulative0: 0,
-                _tickCumulative1: 0,
-                _secPerLiq0: 0,
-                _secPerLiq1: secPerLiqDelta
-            });
+            .setObserveData({_tickCumulative0: 0, _tickCumulative1: 0, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta});
 
         JBBeforeCashOutRecordedContext memory ctx = JBBeforeCashOutRecordedContext({
             terminal: address(terminal),
@@ -464,8 +459,7 @@ contract V4RealOracleForkTest is Test {
         });
 
         vm.prank(address(terminal));
-        (uint256 cashOutTaxRate,,,
-            JBCashOutHookSpecification[] memory hookSpecs) = hook.beforeCashOutRecordedWith(ctx);
+        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory hookSpecs) = hook.beforeCashOutRecordedWith(ctx);
 
         assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "oracle sell quote should beat protocol reclaim");
         assertEq(hookSpecs.length, 1, "sell-side oracle path should return one hook specification");
@@ -810,9 +804,7 @@ contract V4RealOracleForkTest is Test {
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
             abi.encode(0)
         );
-        vm.mockCall(
-            address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0)
-        );
+        vm.mockCall(address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0));
         vm.mockCall(
             address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );

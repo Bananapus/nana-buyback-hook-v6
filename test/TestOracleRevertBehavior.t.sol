@@ -625,8 +625,7 @@ contract TestOracleRevertBehavior is Test {
         // The oracle returns a valid quote (non-zero), but the swap/mint decision depends on comparison.
         // The key assertion: the call did NOT revert, proving uint160 values flow through correctly.
         assertTrue(
-            (specs.length == 0 && weight > 0)
-                || (specs.length == 1 && weight == 0 && !specs[0].noop)
+            (specs.length == 0 && weight > 0) || (specs.length == 1 && weight == 0 && !specs[0].noop)
                 || (specs.length == 1 && weight > 0 && specs[0].noop),
             "Oracle with uint160 values exceeding uint136 max should produce a valid swap/mint decision"
         );

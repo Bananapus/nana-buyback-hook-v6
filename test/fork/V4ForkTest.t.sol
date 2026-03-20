@@ -465,8 +465,8 @@ contract V4ForkTest is Test {
             metadata: fullMetadata
         });
 
-        (uint256 cashOutTaxRate,,,
-            JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(beforeCtx);
+        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(beforeCtx);
 
         assertEq(cashOutTaxRate, 0, "protocol path should be preserved when reclaim is better");
         assertEq(specs.length, 1, "sell-side noop path should still return metadata");
@@ -660,9 +660,7 @@ contract V4ForkTest is Test {
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
             abi.encode(0)
         );
-        vm.mockCall(
-            address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0)
-        );
+        vm.mockCall(address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0));
         vm.mockCall(
             address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );
@@ -1127,8 +1125,8 @@ contract V4ForkTest is Test {
                 metadata: fullMetadata
             });
 
-            (uint256 cashOutTaxRate,,,
-                JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(beforeCtx);
+            (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+                hook.beforeCashOutRecordedWith(beforeCtx);
 
             assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "sell-side E2E should choose the pool route");
             assertEq(specs.length, 1, "sell-side E2E should return one hook specification");

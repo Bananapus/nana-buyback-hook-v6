@@ -499,12 +499,7 @@ contract TestAuditGaps is Test {
         mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
 
         vm.prank(owner);
-        hook.setPoolFor({
-            projectId: projectId,
-            poolKey: poolKey,
-            twapWindow: twapWindow,
-            terminalToken: address(usdc)
-        });
+        hook.setPoolFor({projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: address(usdc)});
 
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
             terminal: address(terminal),
@@ -514,10 +509,7 @@ contract TestAuditGaps is Test {
             cashOutCount: 10e6,
             totalSupply: 100e6,
             surplus: JBTokenAmount({
-                token: address(usdc),
-                value: 5e6,
-                decimals: 6,
-                currency: uint32(uint160(address(usdc)))
+                token: address(usdc), value: 5e6, decimals: 6, currency: uint32(uint160(address(usdc)))
             }),
             useTotalSurplus: false,
             cashOutTaxRate: 0,
@@ -525,8 +517,7 @@ contract TestAuditGaps is Test {
             metadata: ""
         });
 
-        (uint256 cashOutTaxRate,,,
-            JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "USDC sell-side should reroute through swap");
         assertEq(specs.length, 1, "USDC sell-side should return a hook spec");
@@ -555,12 +546,7 @@ contract TestAuditGaps is Test {
         mockPm.setLiquidity(poolId, 1_000_000 ether);
 
         vm.prank(owner);
-        hook.setPoolFor({
-            projectId: projectId,
-            poolKey: poolKey,
-            twapWindow: twapWindow,
-            terminalToken: address(usdc)
-        });
+        hook.setPoolFor({projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: address(usdc)});
 
         uint256 cashOutCount = 10e6;
         uint256 amountOut = 15e6;
@@ -582,16 +568,10 @@ contract TestAuditGaps is Test {
             rulesetId: 1,
             cashOutCount: cashOutCount,
             reclaimedAmount: JBTokenAmount({
-                token: address(usdc),
-                value: 0,
-                decimals: 6,
-                currency: uint32(uint160(address(usdc)))
+                token: address(usdc), value: 0, decimals: 6, currency: uint32(uint160(address(usdc)))
             }),
             forwardedAmount: JBTokenAmount({
-                token: address(usdc),
-                value: 0,
-                decimals: 6,
-                currency: uint32(uint160(address(usdc)))
+                token: address(usdc), value: 0, decimals: 6, currency: uint32(uint160(address(usdc)))
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: payable(beneficiary),

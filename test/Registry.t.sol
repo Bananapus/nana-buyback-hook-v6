@@ -292,8 +292,12 @@ contract Test_BuybackHookRegistry_Unit is Test {
             abi.encode(uint256(123), uint256(456), uint256(789), specs)
         );
 
-        (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, JBCashOutHookSpecification[] memory returnedSpecs) =
-            registry.beforeCashOutRecordedWith(context);
+        (
+            uint256 cashOutTaxRate,
+            uint256 cashOutCount,
+            uint256 totalSupply,
+            JBCashOutHookSpecification[] memory returnedSpecs
+        ) = registry.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, 123, "should forward cashOutTaxRate");
         assertEq(cashOutCount, 456, "should forward cashOutCount");

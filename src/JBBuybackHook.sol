@@ -634,8 +634,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool hasUserSpecifiedMinimumSwapAmountOut;
         {
             (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
-                id: JBMetadataResolver.getId("cashOutMinReclaimed"),
-                metadata: context.metadata
+                id: JBMetadataResolver.getId("cashOutMinReclaimed"), metadata: context.metadata
             });
             if (exists) {
                 hasUserSpecifiedMinimumSwapAmountOut = true;
@@ -766,9 +765,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Use the controller's preview path so the metadata mirrors the actual beneficiary/reserved split logic.
         if (minimumSwapAmountOut != 0) {
             (minimumBeneficiaryTokenCount, minimumReservedTokenCount) = controller.previewMintOf({
-                projectId: context.projectId,
-                tokenCount: minimumSwapAmountOut,
-                useReservedPercent: true
+                projectId: context.projectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true
             });
         }
 
@@ -977,10 +974,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Encode the swap parameters so `unlockCallback(...)` can execute the swap after the PoolManager unlocks.
         bytes memory callbackData = abi.encode(
             SwapCallbackData({
-                key: key,
-                zeroForOne: zeroForOne,
-                amountIn: amountIn,
-                minimumSwapAmountOut: minimumSwapAmountOut
+                key: key, zeroForOne: zeroForOne, amountIn: amountIn, minimumSwapAmountOut: minimumSwapAmountOut
             })
         );
 

@@ -20,11 +20,7 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     /// @param amountReceived The amount of terminal tokens received from the swap.
     /// @param caller The address that triggered the cash out.
     event CashOutSwap(
-        uint256 indexed projectId,
-        uint256 cashOutCount,
-        PoolId indexed poolId,
-        uint256 amountReceived,
-        address caller
+        uint256 indexed projectId, uint256 cashOutCount, PoolId indexed poolId, uint256 amountReceived, address caller
     );
 
     /// @notice Emitted when leftover terminal tokens are minted as project tokens.
