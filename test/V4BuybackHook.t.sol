@@ -1276,15 +1276,18 @@ contract V4BuybackHookTest is Test {
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
 
         // Verify fields 9-10: estimated beneficiary/reserved split for the swap path.
+        (uint256 expectedBeneficiaryTokenCount, uint256 expectedReservedTokenCount) =
+            controller.previewMintOf({projectId: projectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true});
+
         assertEq(
             estimatedBeneficiaryTokenCount,
-            1.5e18,
-            "estimatedBeneficiaryTokenCount should match the reserved-percent split"
+            expectedBeneficiaryTokenCount,
+            "estimatedBeneficiaryTokenCount should match controller.previewMintOf"
         );
         assertEq(
             estimatedReservedTokenCount,
-            0.5e18,
-            "estimatedReservedTokenCount should match the reserved-percent split"
+            expectedReservedTokenCount,
+            "estimatedReservedTokenCount should match controller.previewMintOf"
         );
     }
 

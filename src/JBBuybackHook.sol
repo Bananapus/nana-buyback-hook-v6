@@ -46,6 +46,7 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 import {IJBBuybackHook} from "./interfaces/IJBBuybackHook.sol";
 import {JBSwapLib} from "./libraries/JBSwapLib.sol";
+import {SwapCallbackData} from "./structs/SwapCallbackData.sol";
 
 /// @custom:benediction DEVS BENEDICAT ET PROTEGAT CONTRACTVS MEAM
 /// @notice The buyback hook allows beneficiaries of a payment to a project to either:
@@ -141,18 +142,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     mapping(uint256 projectId => mapping(address terminalToken => bool)) private _poolIsSet;
 
     //*********************************************************************//
-    // ----------------------------- structs ----------------------------- //
-    //*********************************************************************//
-
-    /// @notice Data passed through to the unlock callback.
-    struct SwapCallbackData {
-        PoolKey key;
-        bool zeroForOne;
-        uint256 amountIn;
-        uint256 minimumSwapAmountOut;
-    }
-
-    //*********************************************************************//
     // ---------------------------- constructor -------------------------- //
     //*********************************************************************//
 
@@ -189,22 +178,35 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
-    /// @notice Remint burned project tokens to this hook and sell them into the configured pool for the beneficiary.
+    /// @notice Remint the burned project tokens to this hook and sell them into the configured pool for the
+    /// beneficiary.
+    /// @dev This is called by the terminal after the buyback hook's data-hook path has chosen pool execution over the
+    /// protocol cash out path.
+    /// @dev The terminal has already burned the holder's project tokens by the time this callback runs, so this hook
+    /// remints the same amount to itself before executing the sell.
+    /// @param context Standard Juicebox cash-out hook context. `hookMetadata` optionally encodes a
+    /// `minimumSwapAmountOut` floor chosen during `beforeCashOutRecordedWith`.
     function afterCashOutRecordedWith(JBAfterCashOutRecordedContext calldata context) external payable override {
+        // Make sure only payment terminals of the project can trigger the sell-side hook.
         if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
             revert JBBuybackHook_CallerNotTerminal(msg.sender);
         }
 
+        // Normalize the native token address so it matches how pool keys are stored.
         address terminalToken =
             context.reclaimedAmount.token == JBConstants.NATIVE_TOKEN ? address(0) : context.reclaimedAmount.token;
+
+        // Load the configured pool and project token for this project's cash-out token pair.
         PoolKey memory key = _poolKeyOf[context.projectId][terminalToken];
         address projectToken = projectTokenOf[context.projectId];
 
+        // Decode the sell-side slippage floor chosen during route selection, if one was provided.
         uint256 minimumSwapAmountOut;
         if (context.hookMetadata.length != 0) {
             minimumSwapAmountOut = abi.decode(context.hookMetadata, (uint256));
         }
 
+        // Remint the previously burned project tokens to this hook so they can be sold into the pool.
         IJBController controller = IJBController(address(DIRECTORY.controllerOf(context.projectId)));
         controller.mintTokensOf({
             projectId: context.projectId,
@@ -214,6 +216,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             useReservedPercent: false
         });
 
+        // Sell the reminted project tokens for the terminal token using the configured pool direction.
         uint256 amountReceived = _swapExactInput({
             key: key,
             amountIn: context.cashOutCount,
@@ -221,16 +224,19 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             zeroForOne: projectToken < terminalToken
         });
 
+        // Re-check the minimum to fail closed if the pool returned less than expected.
         if (amountReceived < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded(amountReceived, minimumSwapAmountOut);
         }
 
+        // Forward the swap proceeds to the beneficiary in the same token they would have reclaimed natively.
         if (context.reclaimedAmount.token == JBConstants.NATIVE_TOKEN) {
             Address.sendValue(context.beneficiary, amountReceived);
         } else {
             IERC20(context.reclaimedAmount.token).safeTransfer(context.beneficiary, amountReceived);
         }
 
+        // Emit the executed sell-side cash-out details for offchain indexers and analytics.
         emit CashOutSwap({
             projectId: context.projectId,
             cashOutCount: context.cashOutCount,
@@ -580,19 +586,41 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
+    /// @notice Determine whether a cash out should use the protocol reclaim path or the configured pool sell path.
+    /// @dev Returns the protocol cash-out values unchanged unless selling the burned project tokens into the
+    /// configured pool is expected to return more of the terminal token than the direct reclaim path.
+    /// @dev If the sell path wins, the hook returns an active cash-out hook specification (`noop = false`) and
+    /// maxes the tax rate so the terminal does not reclaim surplus itself. The actual sell is executed in
+    /// `afterCashOutRecordedWith`.
+    /// @param context Standard Juicebox cash-out data-hook context.
+    /// @return cashOutTaxRate The tax rate the terminal should use for the cash out.
+    /// @return cashOutCount The number of project tokens to cash out.
+    /// @return totalSupply The total project token supply to use in reclaim math.
+    /// @return hookSpecifications Any cash-out hook specifications to fulfill after the terminal records the cash out.
     function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
         external
         view
         override
-        returns (uint256, uint256, uint256, JBCashOutHookSpecification[] memory hookSpecifications)
+        returns (
+            uint256 cashOutTaxRate,
+            uint256 cashOutCount,
+            uint256 totalSupply,
+            JBCashOutHookSpecification[] memory hookSpecifications
+        )
     {
+        // Normalize the native token address so it matches the pool-key storage convention.
         address terminalToken = context.surplus.token == JBConstants.NATIVE_TOKEN ? address(0) : context.surplus.token;
+
+        // Load the project token that would be sold if the pool route is chosen.
         address projectToken = projectTokenOf[context.projectId];
 
+        // Fall back to the protocol cash-out path if no pool is configured, no project token is known,
+        // or no project tokens are being cashed out.
         if (!_poolIsSet[context.projectId][terminalToken] || projectToken == address(0) || context.cashOutCount == 0) {
             return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
         }
 
+        // Compute the direct protocol reclaim amount for this cash-out request.
         uint256 directCashOutAmount = JBCashOuts.cashOutFrom({
             surplus: context.surplus.value,
             cashOutCount: context.cashOutCount,
@@ -600,6 +628,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             cashOutTaxRate: context.cashOutTaxRate
         });
 
+        // Read any user-specified minimum reclaimed amount from metadata.
         uint256 minimumSwapAmountOut;
         {
             (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
@@ -609,6 +638,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             if (exists) minimumSwapAmountOut = abi.decode(minData, (uint256));
         }
 
+        // Get the sell-side TWAP minimum for swapping the project tokens into the terminal token.
         (uint256 twapMinimum,,,) = _getQuote({
             projectId: context.projectId,
             amountIn: context.cashOutCount,
@@ -616,12 +646,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             quoteToken: terminalToken
         });
 
+        // Honor the stricter of the user-specified floor and the internally derived TWAP floor.
         if (twapMinimum > minimumSwapAmountOut) minimumSwapAmountOut = twapMinimum;
 
+        // Keep the protocol cash-out path if the pool cannot beat it.
         if (minimumSwapAmountOut <= directCashOutAmount) {
             return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
         }
 
+        // Route into the post-record cash-out hook so the burned project tokens can be reminted and sold.
         hookSpecifications = new JBCashOutHookSpecification[](1);
         hookSpecifications[0] = JBCashOutHookSpecification({
             hook: IJBCashOutHook(address(this)),
@@ -630,6 +663,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             metadata: abi.encode(minimumSwapAmountOut)
         });
 
+        // Max the tax rate so the terminal does not reclaim surplus directly before the hook executes the sell.
         return (JBConstants.MAX_CASH_OUT_TAX_RATE, context.cashOutCount, context.totalSupply, hookSpecifications);
     }
 
@@ -723,15 +757,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 estimatedBeneficiaryTokenCount;
         uint256 estimatedReservedTokenCount;
 
-        if (minimumSwapAmountOut != 0 && context.reservedPercent != JBConstants.MAX_RESERVED_PERCENT) {
-            estimatedBeneficiaryTokenCount = mulDiv({
-                x: minimumSwapAmountOut,
-                y: JBConstants.MAX_RESERVED_PERCENT - context.reservedPercent,
-                denominator: JBConstants.MAX_RESERVED_PERCENT
+        // Use the controller's preview path so the metadata mirrors the actual beneficiary/reserved split logic.
+        if (minimumSwapAmountOut != 0) {
+            (estimatedBeneficiaryTokenCount, estimatedReservedTokenCount) = controller.previewMintOf({
+                projectId: context.projectId,
+                tokenCount: minimumSwapAmountOut,
+                useReservedPercent: true
             });
         }
-
-        estimatedReservedTokenCount = minimumSwapAmountOut - estimatedBeneficiaryTokenCount;
 
         if (PoolId.unwrap(poolId) != bytes32(0)) {
             bool projectTokenIs0 = address(projectToken) < terminalToken;
@@ -917,6 +950,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
     }
 
+    /// @notice Swap an exact amount of the input token through the configured V4 pool.
+    /// @dev Encodes the swap parameters into callback data, hands control to the PoolManager through `unlock(...)`,
+    /// and decodes the amount received from the callback result.
+    /// @param key The V4 pool key to swap against.
+    /// @param amountIn The exact amount of input tokens to sell.
+    /// @param minimumSwapAmountOut The minimum acceptable amount of output tokens.
+    /// @param zeroForOne Whether the swap should move from `currency0` to `currency1`.
+    /// @return amountReceived The amount of output tokens received from the swap.
     function _swapExactInput(
         PoolKey memory key,
         uint256 amountIn,
@@ -926,6 +967,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         internal
         returns (uint256 amountReceived)
     {
+        // Encode the swap parameters so `unlockCallback(...)` can execute the swap after the PoolManager unlocks.
         bytes memory callbackData = abi.encode(
             SwapCallbackData({
                 key: key,
@@ -935,6 +977,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             })
         );
 
+        // Enter the PoolManager unlock flow and decode the output amount returned by the callback.
         amountReceived = abi.decode(POOL_MANAGER.unlock(callbackData), (uint256));
     }
 

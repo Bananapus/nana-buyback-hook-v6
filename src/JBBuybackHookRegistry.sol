@@ -265,19 +265,37 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
+    /// @notice Forward the cash-out data-hook call to the resolved buyback hook for the project.
+    /// @dev Uses the project-specific hook when configured, otherwise falls back to the default hook.
+    /// If neither exists, the cash-out values are passed through unchanged.
+    /// @param context Standard Juicebox cash-out data-hook context.
+    /// @return cashOutTaxRate The tax rate returned by the resolved hook, or the original context value.
+    /// @return cashOutCount The cash-out count returned by the resolved hook, or the original context value.
+    /// @return totalSupply The total supply returned by the resolved hook, or the original context value.
+    /// @return hookSpecifications Any cash-out hook specifications returned by the resolved hook.
     function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
         external
         view
         override
-        returns (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, JBCashOutHookSpecification[] memory hookSpecifications)
+        returns (
+            uint256 cashOutTaxRate,
+            uint256 cashOutCount,
+            uint256 totalSupply,
+            JBCashOutHookSpecification[] memory hookSpecifications
+        )
     {
+        // Resolve the project-specific hook first.
         IJBRulesetDataHook hook = _hookOf[context.projectId];
+
+        // Fall back to the default hook when the project has not pinned a specific one.
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
 
+        // If no hook is configured at all, leave the terminal's cash-out values untouched.
         if (address(hook) == address(0)) {
             return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
         }
 
+        // Forward the full cash-out context to the resolved hook.
         return hook.beforeCashOutRecordedWith(context);
     }
 
