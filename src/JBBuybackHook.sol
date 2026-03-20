@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {JBPermissioned} from "@bananapus/core-v6/src/abstract/JBPermissioned.sol";
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {IJBCashOutHook} from "@bananapus/core-v6/src/interfaces/IJBCashOutHook.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
 import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
@@ -13,9 +14,11 @@ import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
+import {JBCashOuts} from "@bananapus/core-v6/src/libraries/JBCashOuts.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
 import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
@@ -26,6 +29,7 @@ import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {mulDiv} from "@prb/math/src/Common.sol";
@@ -66,6 +70,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     //*********************************************************************//
 
     error JBBuybackHook_CallerNotPoolManager(address caller);
+    error JBBuybackHook_CallerNotTerminal(address caller);
     error JBBuybackHook_InsufficientPayAmount(uint256 swapAmount, uint256 totalPaid);
     error JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max);
     error JBBuybackHook_PoolAlreadySet(PoolId poolId);
@@ -142,10 +147,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Data passed through to the unlock callback.
     struct SwapCallbackData {
         PoolKey key;
-        bool projectTokenIs0;
+        bool zeroForOne;
         uint256 amountIn;
         uint256 minimumSwapAmountOut;
-        address terminalToken;
     }
 
     //*********************************************************************//
@@ -184,6 +188,57 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     //*********************************************************************//
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
+
+    /// @notice Remint burned project tokens to this hook and sell them into the configured pool for the beneficiary.
+    function afterCashOutRecordedWith(JBAfterCashOutRecordedContext calldata context) external payable override {
+        if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
+            revert JBBuybackHook_CallerNotTerminal(msg.sender);
+        }
+
+        address terminalToken =
+            context.reclaimedAmount.token == JBConstants.NATIVE_TOKEN ? address(0) : context.reclaimedAmount.token;
+        PoolKey memory key = _poolKeyOf[context.projectId][terminalToken];
+        address projectToken = projectTokenOf[context.projectId];
+
+        uint256 minimumSwapAmountOut;
+        if (context.hookMetadata.length != 0) {
+            minimumSwapAmountOut = abi.decode(context.hookMetadata, (uint256));
+        }
+
+        IJBController controller = IJBController(address(DIRECTORY.controllerOf(context.projectId)));
+        controller.mintTokensOf({
+            projectId: context.projectId,
+            tokenCount: context.cashOutCount,
+            beneficiary: address(this),
+            memo: "",
+            useReservedPercent: false
+        });
+
+        uint256 amountReceived = _swapExactInput({
+            key: key,
+            amountIn: context.cashOutCount,
+            minimumSwapAmountOut: minimumSwapAmountOut,
+            zeroForOne: projectToken < terminalToken
+        });
+
+        if (amountReceived < minimumSwapAmountOut) {
+            revert JBBuybackHook_SpecifiedSlippageExceeded(amountReceived, minimumSwapAmountOut);
+        }
+
+        if (context.reclaimedAmount.token == JBConstants.NATIVE_TOKEN) {
+            Address.sendValue(context.beneficiary, amountReceived);
+        } else {
+            IERC20(context.reclaimedAmount.token).safeTransfer(context.beneficiary, amountReceived);
+        }
+
+        emit CashOutSwap({
+            projectId: context.projectId,
+            cashOutCount: context.cashOutCount,
+            poolId: key.toId(),
+            amountReceived: amountReceived,
+            caller: msg.sender
+        });
+    }
 
     /// @notice Swap the specified amount of terminal tokens for project tokens, using any leftover terminal tokens to
     /// mint from the project.
@@ -458,17 +513,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         SwapCallbackData memory params = abi.decode(data, (SwapCallbackData));
 
         // Compute a price limit that stops the swap if the rate is worse than the minimum acceptable output.
-        bool zeroForOne = !params.projectTokenIs0;
         uint160 sqrtPriceLimit = JBSwapLib.sqrtPriceLimitFromAmounts({
-            amountIn: params.amountIn, minimumAmountOut: params.minimumSwapAmountOut, zeroForOne: zeroForOne
+            amountIn: params.amountIn, minimumAmountOut: params.minimumSwapAmountOut, zeroForOne: params.zeroForOne
         });
 
-        // Execute the swap: we're buying project tokens (the output) with terminal tokens (the input).
-        // zeroForOne = !projectTokenIs0 (we swap terminal→project, terminal is the "other" token).
         BalanceDelta delta = POOL_MANAGER.swap({
             key: params.key,
             params: SwapParams({
-                zeroForOne: zeroForOne,
+                zeroForOne: params.zeroForOne,
                 amountSpecified: -int256(params.amountIn), // Negative = exact input
                 sqrtPriceLimitX96: sqrtPriceLimit
             }),
@@ -486,28 +538,20 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 inputAmount;
         uint256 outputAmount;
 
-        if (params.projectTokenIs0) {
-            // project token is currency0, terminal token is currency1
-            // zeroForOne = false: swap currency1 (terminal) → currency0 (project)
-            inputCurrency = params.key.currency1; // terminal token (we pay)
-            outputCurrency = params.key.currency0; // project token (we receive)
-            // Safe: int128 delta values from V4 BalanceDelta fit in uint128 after negation; uint256 wraps without loss.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            inputAmount = uint256(uint128(-delta1)); // negative = we spent, negate to get positive
-            // Safe: int128 delta values from V4 BalanceDelta fit in uint128; uint256 wraps without loss.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            outputAmount = uint256(uint128(delta0)); // positive = we received
-        } else {
-            // project token is currency1, terminal token is currency0
-            // zeroForOne = true: swap currency0 (terminal) → currency1 (project)
+        if (params.zeroForOne) {
             inputCurrency = params.key.currency0;
             outputCurrency = params.key.currency1;
-            // Safe: int128 delta values from V4 BalanceDelta fit in uint128 after negation; uint256 wraps without loss.
             // forge-lint: disable-next-line(unsafe-typecast)
-            inputAmount = uint256(uint128(-delta0)); // negative = we spent, negate to get positive
-            // Safe: int128 delta values from V4 BalanceDelta fit in uint128; uint256 wraps without loss.
+            inputAmount = uint256(uint128(-delta0));
             // forge-lint: disable-next-line(unsafe-typecast)
-            outputAmount = uint256(uint128(delta1)); // positive = we received
+            outputAmount = uint256(uint128(delta1));
+        } else {
+            inputCurrency = params.key.currency1;
+            outputCurrency = params.key.currency0;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            inputAmount = uint256(uint128(-delta1));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            outputAmount = uint256(uint128(delta0));
         }
 
         // Settle the input (we owe the PoolManager).
@@ -536,15 +580,57 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
-    /// @notice To fulfill the `IJBRulesetDataHook` interface.
-    /// @dev Pass cash out context back to the terminal without changes.
     function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
         external
-        pure
+        view
         override
         returns (uint256, uint256, uint256, JBCashOutHookSpecification[] memory hookSpecifications)
     {
-        return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+        address terminalToken = context.surplus.token == JBConstants.NATIVE_TOKEN ? address(0) : context.surplus.token;
+        address projectToken = projectTokenOf[context.projectId];
+
+        if (!_poolIsSet[context.projectId][terminalToken] || projectToken == address(0) || context.cashOutCount == 0) {
+            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+        }
+
+        uint256 directCashOutAmount = JBCashOuts.cashOutFrom({
+            surplus: context.surplus.value,
+            cashOutCount: context.cashOutCount,
+            totalSupply: context.totalSupply,
+            cashOutTaxRate: context.cashOutTaxRate
+        });
+
+        uint256 minimumSwapAmountOut;
+        {
+            (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
+                id: JBMetadataResolver.getId("cashOutMinReclaimed"),
+                metadata: context.metadata
+            });
+            if (exists) minimumSwapAmountOut = abi.decode(minData, (uint256));
+        }
+
+        (uint256 twapMinimum,,,) = _getQuote({
+            projectId: context.projectId,
+            amountIn: context.cashOutCount,
+            baseToken: projectToken,
+            quoteToken: terminalToken
+        });
+
+        if (twapMinimum > minimumSwapAmountOut) minimumSwapAmountOut = twapMinimum;
+
+        if (minimumSwapAmountOut <= directCashOutAmount) {
+            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+        }
+
+        hookSpecifications = new JBCashOutHookSpecification[](1);
+        hookSpecifications[0] = JBCashOutHookSpecification({
+            hook: IJBCashOutHook(address(this)),
+            noop: false,
+            amount: 0,
+            metadata: abi.encode(minimumSwapAmountOut)
+        });
+
+        return (JBConstants.MAX_CASH_OUT_TAX_RATE, context.cashOutCount, context.totalSupply, hookSpecifications);
     }
 
     /// @notice The `IJBRulesetDataHook` implementation which determines whether tokens should be minted from the
@@ -624,9 +710,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         {
             (twapMinimum, twapTick, twapLiquidity, poolId) = _getQuote({
                 projectId: context.projectId,
-                projectToken: projectToken,
                 amountIn: amountToSwapWith,
-                terminalToken: terminalToken
+                baseToken: terminalToken,
+                quoteToken: projectToken
             });
         }
 
@@ -634,29 +720,44 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // This prevents a stale/malicious payer quote from getting a worse deal than the oracle suggests.
         if (twapMinimum > minimumSwapAmountOut) minimumSwapAmountOut = twapMinimum;
 
-        // If the minimum amount from the swap exceeds what minting directly would yield, swap.
-        if (tokenCountWithoutHook < minimumSwapAmountOut) {
-            bool projectTokenIs0 = address(projectToken) < terminalToken;
+        uint256 estimatedBeneficiaryTokenCount;
+        uint256 estimatedReservedTokenCount;
 
-            // Specify this hook as the one to use.
+        if (minimumSwapAmountOut != 0 && context.reservedPercent != JBConstants.MAX_RESERVED_PERCENT) {
+            estimatedBeneficiaryTokenCount = mulDiv({
+                x: minimumSwapAmountOut,
+                y: JBConstants.MAX_RESERVED_PERCENT - context.reservedPercent,
+                denominator: JBConstants.MAX_RESERVED_PERCENT
+            });
+        }
+
+        estimatedReservedTokenCount = minimumSwapAmountOut - estimatedBeneficiaryTokenCount;
+
+        if (PoolId.unwrap(poolId) != bytes32(0)) {
+            bool projectTokenIs0 = address(projectToken) < terminalToken;
+            uint256 amountToMintWith = totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith;
+
             hookSpecifications = new JBPayHookSpecification[](1);
             hookSpecifications[0] = JBPayHookSpecification({
                 hook: IJBPayHook(this),
-                amount: amountToSwapWith,
+                noop: tokenCountWithoutHook >= minimumSwapAmountOut,
+                amount: tokenCountWithoutHook < minimumSwapAmountOut ? amountToSwapWith : 0,
                 metadata: abi.encode(
                     projectTokenIs0,
-                    totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith,
+                    amountToMintWith,
                     minimumSwapAmountOut,
                     controller,
                     tokenCountWithoutHook,
                     twapTick,
                     twapLiquidity,
-                    poolId
+                    poolId,
+                    estimatedBeneficiaryTokenCount,
+                    estimatedReservedTokenCount
                 )
             });
 
             // All the minting will be done in `afterPayRecordedWith`. Return a weight of 0.
-            return (0, hookSpecifications);
+            if (tokenCountWithoutHook < minimumSwapAmountOut) return (0, hookSpecifications);
         }
     }
 
@@ -679,8 +780,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
         return interfaceId == type(IJBRulesetDataHook).interfaceId || interfaceId == type(IJBPayHook).interfaceId
-            || interfaceId == type(IJBBuybackHook).interfaceId || interfaceId == type(IJBPermissioned).interfaceId
-            || interfaceId == type(IERC165).interfaceId;
+            || interfaceId == type(IJBCashOutHook).interfaceId || interfaceId == type(IJBBuybackHook).interfaceId
+            || interfaceId == type(IJBPermissioned).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 
     //*********************************************************************//
@@ -786,10 +887,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bytes memory callbackData = abi.encode(
             SwapCallbackData({
                 key: key,
-                projectTokenIs0: projectTokenIs0,
+                zeroForOne: !projectTokenIs0,
                 amountIn: amountToSwapWith,
-                minimumSwapAmountOut: minimumSwapAmountOut,
-                terminalToken: context.forwardedAmount.token
+                minimumSwapAmountOut: minimumSwapAmountOut
             })
         );
 
@@ -815,6 +915,27 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 holder: address(this), projectId: context.projectId, tokenCount: amountReceived, memo: ""
             });
         }
+    }
+
+    function _swapExactInput(
+        PoolKey memory key,
+        uint256 amountIn,
+        uint256 minimumSwapAmountOut,
+        bool zeroForOne
+    )
+        internal
+        returns (uint256 amountReceived)
+    {
+        bytes memory callbackData = abi.encode(
+            SwapCallbackData({
+                key: key,
+                zeroForOne: zeroForOne,
+                amountIn: amountIn,
+                minimumSwapAmountOut: minimumSwapAmountOut
+            })
+        );
+
+        amountReceived = abi.decode(POOL_MANAGER.unlock(callbackData), (uint256));
     }
 
     //*********************************************************************//
@@ -863,23 +984,25 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice Get a quote based on the oracle hook TWAP or spot price.
     /// @param projectId The ID of the project.
-    /// @param projectToken The project token being swapped for.
-    /// @param amountIn The number of terminal tokens being used to swap.
-    /// @param terminalToken The terminal token being paid in (normalized to address(0) for native).
+    /// @param amountIn The number of input tokens being used to swap.
+    /// @param baseToken The token being swapped in.
+    /// @param quoteToken The token being swapped out.
     /// @return amountOut The minimum number of tokens to receive based on the TWAP and slippage.
     /// @return twapTick The arithmetic mean tick from the TWAP oracle.
     /// @return twapLiquidity The harmonic mean liquidity from the TWAP oracle.
     /// @return poolId The V4 pool identifier used for the quote.
     function _getQuote(
         uint256 projectId,
-        address projectToken,
         uint256 amountIn,
-        address terminalToken
+        address baseToken,
+        address quoteToken
     )
         internal
         view
         returns (uint256 amountOut, int24 twapTick, uint128 twapLiquidity, PoolId poolId)
     {
+        address terminalToken = baseToken == projectTokenOf[projectId] ? quoteToken : baseToken;
+
         // Get the pool key for this project/terminal token pair.
         PoolKey memory key = _poolKeyOf[projectId][terminalToken];
 
@@ -902,8 +1025,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // Safe: amountIn is a token payment amount, bounded by realistic token supplies well within uint128.
             // forge-lint: disable-next-line(unsafe-typecast)
             amountIn: uint128(amountIn),
-            baseToken: terminalToken,
-            quoteToken: projectToken
+            baseToken: baseToken,
+            quoteToken: quoteToken
         });
 
         // If oracle returned 0, no quote available — trigger mint fallback.
@@ -913,7 +1036,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (twapLiquidity == 0) return (0, twapTick, twapLiquidity, poolId);
 
         // Calculate price impact.
-        bool zeroForOne = terminalToken < projectToken;
+        bool zeroForOne = baseToken < quoteToken;
         uint160 sqrtP = TickMath.getSqrtPriceAtTick(twapTick);
         uint256 impact = JBSwapLib.calculateImpact({
             amountIn: amountIn, liquidity: twapLiquidity, sqrtP: sqrtP, zeroForOne: zeroForOne

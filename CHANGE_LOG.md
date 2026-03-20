@@ -6,12 +6,35 @@ This document describes all changes between `nana-buyback-hook` (v5) and `nana-b
 
 ## 0.1. Post-v6 Changes
 
+### Noop Informational Pay Hook Specifications
+`beforePayRecordedWith` now returns a noop `JBPayHookSpecification` when a pool is configured but direct minting is still better than swapping. The spec has `noop = true`, `amount = 0`, and carries the same routing metadata as the active swap-path spec. This lets preview/simulation clients inspect pool diagnostics without causing the terminal to call `afterPayRecordedWith`.
+
+### Sell-side Cash-out Optimization
+`JBBuybackHook` now also implements the sell side through `beforeCashOutRecordedWith` and `afterCashOutRecordedWith`. If selling reminted project tokens into the configured Uniswap V4 pool yields more terminal tokens than the protocol cash-out path, the hook routes the cash out through the pool and forwards proceeds to the beneficiary.
+
 ### Hook Spec Metadata: `tokenCountWithoutHook` (5th field)
 `beforePayRecordedWith` now encodes a 5th field in the `JBPayHookSpecification.metadata` when the swap path is chosen:
 ```
 (bool projectTokenIs0, uint256 mintFromExcess, uint256 minimumSwapAmountOut, IJBController controller, uint256 tokenCountWithoutHook)
 ```
 `tokenCountWithoutHook` is the number of tokens that direct minting (without the buyback hook) would have yielded. This is informational for preview clients (e.g., `JBTerminalStore.previewPayFrom`) -- `afterPayRecordedWith` only decodes the first 4 fields. The 5th field is ABI-compatible: `abi.decode` ignores trailing data.
+
+### Expanded Pay Spec Metadata
+The pay hook metadata has since expanded beyond the original 5 fields. It now includes pool/oracle diagnostics and estimated beneficiary/reserved split values:
+```
+(
+    bool projectTokenIs0,
+    uint256 mintFromExcess,
+    uint256 minimumSwapAmountOut,
+    IJBController controller,
+    uint256 tokenCountWithoutHook,
+    int24 twapTick,
+    uint128 twapLiquidity,
+    PoolId poolId,
+    uint256 estimatedBeneficiaryTokenCount,
+    uint256 estimatedReservedTokenCount
+)
+```
 
 ---
 

@@ -1,6 +1,6 @@
 # Juicebox Buyback Hook
 
-A Juicebox data hook and pay hook that automatically routes payments through the better of two paths: minting new project tokens from the terminal, or buying them from a Uniswap V4 pool -- whichever yields more tokens for the beneficiary. The project's reserved rate applies to either route.
+A Juicebox data hook, pay hook, and cash-out hook that automatically routes both buy-side payments and sell-side cash outs through the better of the protocol path or a Uniswap V4 pool. On the buy side it compares direct minting against buying from the pool. On the sell side it compares protocol cash out value against selling reminted tokens into the pool. The project's reserved rate applies uniformly on the buy side.
 
 _If you're having trouble understanding this contract, take a look at the [core protocol contracts](https://github.com/Bananapus/nana-core-v6) and the [documentation](https://docs.juicebox.money/) first. If you have questions, reach out on [Discord](https://discord.com/invite/ErQYmth4dS)._
 
@@ -8,7 +8,7 @@ _If you're having trouble understanding this contract, take a look at the [core 
 
 | Contract | Description |
 |----------|-------------|
-| `JBBuybackHook` | Core hook. Implements `IJBRulesetDataHook` (checked before recording payment), `IJBPayHook` (executed after), and `IUnlockCallback` (Uniswap V4 swap settlement). Compares the terminal's mint rate against a Uniswap V4 swap quote and takes the better route. Swapped tokens are burned, then re-minted through the controller to apply the reserved rate uniformly. Stores an immutable `ORACLE_HOOK` -- all pools created via `setPoolFor` or `initializePoolFor` use this oracle hook in their `PoolKey` for TWAP price protection. |
+| `JBBuybackHook` | Core hook. Implements `IJBRulesetDataHook` (checked before recording payment/cash out), `IJBPayHook`, `IJBCashOutHook`, and `IUnlockCallback` (Uniswap V4 swap settlement). Compares protocol mint/cash-out value against Uniswap V4 pool execution and takes the better route. Buy-side swapped tokens are burned, then re-minted through the controller to apply the reserved rate uniformly. Sell-side cash outs can burn, remint to the hook, and sell into the pool when that route is better. Stores an immutable `ORACLE_HOOK` -- all pools created via `setPoolFor` or `initializePoolFor` use this oracle hook in their `PoolKey` for TWAP price protection. |
 | `JBBuybackHookRegistry` | A proxy data hook that delegates `beforePayRecordedWith` to a per-project or default `JBBuybackHook` instance. The registry owner manages an allowlist of hook implementations. Project owners choose (and can permanently lock) which buyback hook their project uses. |
 | `JBSwapLib` | Shared library for oracle queries, slippage tolerance, price impact estimation, and `sqrtPriceLimitX96` calculations. Uses a continuous sigmoid formula for smooth dynamic slippage across all swap sizes. |
 
@@ -22,7 +22,8 @@ sequenceDiagram
     participant Controller
     Note right of Terminal: User calls pay(...) to pay the project
     Terminal->>Buyback hook: Calls beforePayRecordedWith(...) with payment data
-    Buyback hook->>Terminal: If swap is better: weight=0, pay hook specification
+    Buyback hook->>Terminal: If swap is better: weight=0, active pay hook specification
+    Buyback hook->>Terminal: If mint is better: weight=normal, noop pay hook specification with diagnostics
     Terminal->>Buyback hook: Calls afterPayRecordedWith(...) with specification
     Buyback hook->>V4 PoolManager: unlock() -> unlockCallback() executes swap
     Buyback hook->>Controller: Burns swapped tokens, re-mints with reserved rate
@@ -33,10 +34,13 @@ sequenceDiagram
 3. The hook calculates how many tokens the payer would get by minting directly (`weight * amount / weightRatio`).
 4. It compares that against a Uniswap V4 quote. The TWAP-based quote uses the pool's oracle hook (if available) or forces the mint path when unavailable, then applies sigmoid-based slippage tolerance. The payer/frontend can also supply their own quote in metadata -- the hook uses whichever is higher (more protective).
 5. If the swap yields more tokens, the hook returns `weight = 0` and specifies itself as a pay hook with the swap amount.
-6. The terminal calls `afterPayRecordedWith(context)` on the pay hook.
-7. The hook executes the swap via `POOL_MANAGER.unlock()`, burns the received project tokens, adds any leftover terminal tokens back to the project's balance, and mints the total (swapped + leftover mint) through the controller with `useReservedPercent: true`.
+6. If minting yields more tokens and a pool is configured, the hook returns the original `weight` plus a noop pay hook specification carrying routing diagnostics. The terminal skips `afterPayRecordedWith` for noop specs.
+7. When swap is selected, the terminal calls `afterPayRecordedWith(context)` on the pay hook.
+8. The hook executes the swap via `POOL_MANAGER.unlock()`, burns the received project tokens, adds any leftover terminal tokens back to the project's balance, and mints the total (swapped + leftover mint) through the controller with `useReservedPercent: true`.
 
-If the swap fails (slippage, insufficient liquidity, etc.), `_swap` catches the revert and returns 0, which causes `afterPayRecordedWith` to revert with `JBBuybackHook_SpecifiedSlippageExceeded`. The terminal then falls back to its default minting behavior.
+If the swap fails (slippage, insufficient liquidity, etc.), `_swap` catches the revert and returns `(0, swapFailed = true)`. `afterPayRecordedWith` then skips the slippage check, returns the unspent payment amount to the terminal balance, and mints via the normal fallback path.
+
+Cash outs follow the same best-execution philosophy. `beforeCashOutRecordedWith` compares protocol cash-out value against a pool sell quote. If the pool route is better, it returns a cash-out hook spec so `afterCashOutRecordedWith` remints the burned project tokens to the hook, sells them into the pool, and forwards the proceeds to the beneficiary.
 
 ## Registry
 
@@ -196,7 +200,7 @@ The hook reads metadata with key `"quote"` (resolved via `JBMetadataResolver`), 
 
 ### Hook Specification Metadata
 
-When the swap path is chosen, the `JBPayHookSpecification.metadata` returned by `beforePayRecordedWith` encodes 8 fields:
+When a pool is configured, the `JBPayHookSpecification.metadata` returned by `beforePayRecordedWith` always encodes 10 fields. If swap wins, the spec is active (`noop = false`, `amount = amountToSwapWith`). If mint wins, the spec is informational (`noop = true`, `amount = 0`).
 
 | # | Field | Type | Purpose |
 |---|-------|------|---------|
@@ -208,8 +212,10 @@ When the swap path is chosen, the `JBPayHookSpecification.metadata` returned by 
 | 6 | `twapTick` | `int24` | TWAP oracle tick used for the price quote (informational) |
 | 7 | `twapLiquidity` | `uint128` | Harmonic mean liquidity from the TWAP oracle (informational) |
 | 8 | `poolId` | `PoolId` | V4 pool identifier used for the swap (informational) |
+| 9 | `estimatedBeneficiaryTokenCount` | `uint256` | Estimated beneficiary portion of `minimumSwapAmountOut` after the reserved rate |
+| 10 | `estimatedReservedTokenCount` | `uint256` | Estimated reserved portion of `minimumSwapAmountOut` after the reserved rate |
 
-`afterPayRecordedWith` only decodes fields 1-4 to execute the swap. Fields 5-8 are informational -- they allow preview/simulation clients to inspect the swap decision context (what minting would have yielded, the TWAP oracle state, and which pool was selected) without replaying the computation.
+`afterPayRecordedWith` only decodes fields 1-4 to execute the swap. Fields 5-10 are informational -- they allow preview/simulation clients to inspect the routing decision context without replaying the computation. On mint-path noop specs, all 10 fields are still present even though no pay-hook callback will be executed.
 
 ### Interpreting the Informational Fields
 

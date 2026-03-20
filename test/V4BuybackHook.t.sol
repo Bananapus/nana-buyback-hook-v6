@@ -17,8 +17,11 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
 import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
@@ -381,10 +384,9 @@ contract V4BuybackHookTest is Test {
         bytes memory fakeData = abi.encode(
             JBBuybackHook.SwapCallbackData({
                 key: poolKey,
-                projectTokenIs0: address(projectToken) < address(0),
+                zeroForOne: !(address(projectToken) < address(0)),
                 amountIn: 1 ether,
-                minimumSwapAmountOut: 0,
-                terminalToken: JBConstants.NATIVE_TOKEN
+                minimumSwapAmountOut: 0
             })
         );
 
@@ -557,12 +559,15 @@ contract V4BuybackHookTest is Test {
         });
 
         // When oracle reverts, _getQuote returns 0, meaning minimumSwapAmountOut = 0.
-        // Since tokenCountWithoutHook > 0, mint path is chosen (no hook specifications returned).
+        // Since tokenCountWithoutHook > 0, mint path is chosen. A noop spec is returned so pool metadata can still
+        // be surfaced without triggering afterPay.
         (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
         // Weight should be returned unchanged (mint path).
         assertEq(weight, 1e18, "Weight should be unchanged when oracle is unavailable (mint path)");
-        assertEq(specs.length, 0, "No hook specifications when falling back to mint");
+        assertEq(specs.length, 1, "A noop hook specification should carry mint-path pool diagnostics");
+        assertTrue(specs[0].noop, "Mint path specification should be marked noop");
+        assertEq(specs[0].amount, 0, "Mint path noop specification should not forward funds");
     }
 
     /// @notice Deterministic formula regression test at known fee tiers and key points.
@@ -1223,7 +1228,7 @@ contract V4BuybackHookTest is Test {
             rulesetId: 1,
             beneficiary: beneficiary,
             weight: 1e18,
-            reservedPercent: 0,
+            reservedPercent: 2500,
             metadata: fullMetadata
         });
 
@@ -1232,7 +1237,7 @@ contract V4BuybackHookTest is Test {
         // The swap path must have been chosen.
         assertEq(specs.length, 1, "Swap path should be chosen");
 
-        // Decode all 8 fields from the hook spec metadata.
+        // Decode all 10 fields from the hook spec metadata.
         (
             bool projectTokenIs0,
             uint256 mintFromExcess,
@@ -1241,8 +1246,13 @@ contract V4BuybackHookTest is Test {
             uint256 tokenCountWithoutHook,
             int24 twapTick,
             uint128 twapLiquidity,
-            PoolId decodedPoolId
-        ) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController, uint256, int24, uint128, PoolId));
+            PoolId decodedPoolId,
+            uint256 estimatedBeneficiaryTokenCount,
+            uint256 estimatedReservedTokenCount
+        ) = abi.decode(
+            specs[0].metadata,
+            (bool, uint256, uint256, IJBController, uint256, int24, uint128, PoolId, uint256, uint256)
+        );
 
         // Verify field 5: with weight=1e18, baseCurrency=NATIVE_TOKEN, paying 1 ETH in native,
         // weightRatio = 10^18, so tokenCountWithoutHook = mulDiv(1e18, 1e18, 1e18) = 1e18.
@@ -1264,6 +1274,18 @@ contract V4BuybackHookTest is Test {
 
         // Verify field 8: poolId (should match the configured pool).
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
+
+        // Verify fields 9-10: estimated beneficiary/reserved split for the swap path.
+        assertEq(
+            estimatedBeneficiaryTokenCount,
+            1.5e18,
+            "estimatedBeneficiaryTokenCount should match the reserved-percent split"
+        );
+        assertEq(
+            estimatedReservedTokenCount,
+            0.5e18,
+            "estimatedReservedTokenCount should match the reserved-percent split"
+        );
     }
 
     /// @notice initializePoolFor reverts if caller is not authorized.
@@ -1302,5 +1324,175 @@ contract V4BuybackHookTest is Test {
         assertEq(hookData.length, 32, "hookData must be exactly 32 bytes for JBUniswapV4Hook compatibility");
         uint256 amountOutMin = abi.decode(hookData, (uint256));
         assertEq(amountOutMin, 0, "hookData should encode amountOutMin = 0 (oracle-delegated slippage)");
+    }
+
+    function test_beforeCashOutRecordedWith_routesWhenSellQuoteBeatsProtocolCashOut() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId,
+            poolKey: poolKey,
+            twapWindow: twapWindow,
+            terminalToken: JBConstants.NATIVE_TOKEN
+        });
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+
+        uint256 cashOutCount = 10 ether;
+        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            totalSupply: 100 ether,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 5 ether,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: ""
+        });
+
+        (uint256 cashOutTaxRate,,,
+            JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "cash out should be rerouted through the pool");
+        assertEq(specs.length, 1, "cash out hook spec should be returned");
+        assertEq(address(specs[0].hook), address(hook), "hook should execute the sell-side swap");
+        assertEq(specs[0].amount, 0, "sell-side hook should not consume protocol reclaim funds");
+    }
+
+    function test_beforeCashOutRecordedWith_passesThroughWhenProtocolCashOutBeatsSellQuote() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId,
+            poolKey: poolKey,
+            twapWindow: twapWindow,
+            terminalToken: JBConstants.NATIVE_TOKEN
+        });
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+
+        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: 1 ether,
+            totalSupply: 2 ether,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 100 ether,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: ""
+        });
+
+        (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, context.cashOutTaxRate, "cash out tax rate should pass through");
+        assertEq(cashOutCount, context.cashOutCount, "cash out count should pass through");
+        assertEq(totalSupply, context.totalSupply, "total supply should pass through");
+        assertEq(specs.length, 0, "hook should not reroute when protocol cash out is better");
+    }
+
+    function test_afterCashOutRecordedWith_remintsAndSwapsForBeneficiary() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId,
+            poolKey: poolKey,
+            twapWindow: twapWindow,
+            terminalToken: JBConstants.NATIVE_TOKEN
+        });
+
+        uint256 cashOutCount = 10 ether;
+        uint256 amountOut = 5 ether;
+
+        projectToken.mint(address(hook), cashOutCount);
+        vm.deal(address(mockPm), amountOut);
+
+        // project token is currency1, native ETH is currency0, so selling project token is oneForZero.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(int128(uint128(amountOut)), -int128(uint128(cashOutCount)));
+
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: abi.encode(amountOut),
+            cashOutMetadata: ""
+        });
+
+        uint256 balanceBefore = beneficiary.balance;
+
+        vm.expectCall(
+            address(controller),
+            abi.encodeWithSignature(
+                "mintTokensOf(uint256,uint256,address,string,bool)", projectId, cashOutCount, address(hook), "", false
+            )
+        );
+
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(context);
+
+        assertTrue(mockPm.swapCalled(), "sell-side swap should hit the pool manager");
+        assertEq(beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive swap proceeds");
+    }
+
+    function test_afterCashOutRecordedWith_revertsIfCallerIsNotProjectTerminal() public {
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: 1 ether,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: "",
+            cashOutMetadata: ""
+        });
+
+        address attacker = makeAddr("attacker");
+        vm.mockCall(
+            address(directory),
+            abi.encodeCall(directory.isTerminalOf, (projectId, IJBTerminal(attacker))),
+            abi.encode(false)
+        );
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_CallerNotTerminal.selector, attacker));
+        hook.afterCashOutRecordedWith(context);
     }
 }

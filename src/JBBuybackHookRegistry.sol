@@ -265,16 +265,20 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
-    /// @notice To fulfill the `IJBRulesetDataHook` interface.
-    /// @dev Pass cash out context back to the terminal without changes.
-    /// @param context The cash out context passed in by the terminal.
     function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
         external
-        pure
+        view
         override
-        returns (uint256, uint256, uint256, JBCashOutHookSpecification[] memory hookSpecifications)
+        returns (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, JBCashOutHookSpecification[] memory hookSpecifications)
     {
-        return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+        IJBRulesetDataHook hook = _hookOf[context.projectId];
+        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+
+        if (address(hook) == address(0)) {
+            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+        }
+
+        return hook.beforeCashOutRecordedWith(context);
     }
 
     /// @notice Forward the call to the hook for the project.
