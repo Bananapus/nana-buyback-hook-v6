@@ -209,6 +209,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Remint the previously burned project tokens to this hook so they can be sold into the pool.
         IJBController controller = IJBController(address(DIRECTORY.controllerOf(context.projectId)));
+        // slither-disable-next-line unused-return
         controller.mintTokensOf({
             projectId: context.projectId,
             tokenCount: context.cashOutCount,
@@ -218,6 +219,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
 
         // Sell the reminted project tokens for the terminal token using the configured pool direction.
+        // slither-disable-next-line reentrancy-events
         uint256 amountReceived = _swapExactInput({
             key: key,
             amountIn: context.cashOutCount,

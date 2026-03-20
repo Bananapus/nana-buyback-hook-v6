@@ -786,6 +786,9 @@ contract V4SandwichForkTest is Test {
         vm.mockCall(
             address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()
         );
+        vm.mockCall(
+            address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0)
+        );
 
         _mockRuleset(projectId, 0.5e18);
     }

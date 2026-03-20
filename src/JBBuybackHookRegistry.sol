@@ -296,6 +296,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         }
 
         // Forward the full cash-out context to the resolved hook.
+        // slither-disable-next-line unused-return
         return hook.beforeCashOutRecordedWith(context);
     }
 
