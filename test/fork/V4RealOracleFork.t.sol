@@ -16,7 +16,9 @@ import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
 import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
@@ -421,6 +423,62 @@ contract V4RealOracleForkTest is Test {
         console.log("  -> Hook correctly chose SWAP path over mint (oracle TWAP active).");
     }
 
+    function test_fork_OracleSellDecisionUsesTwapPath() public {
+        console.log("");
+        console.log("====== TEST 2B: ORACLE SELL DECISION ======");
+        console.log("");
+
+        uint256 projectId = _nextProjectId();
+        _setupProjectWithOraclePool(projectId, 10_000 ether);
+
+        uint256 poolLiquidity = 10_000 ether / 2;
+        uint32 twapWindow = 300;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint160 secPerLiqDelta = uint160((uint256(twapWindow) << 128) / poolLiquidity);
+
+        MockOracleHook(ORACLE_ADDR)
+            .setObserveData({
+                _tickCumulative0: 0,
+                _tickCumulative1: 0,
+                _secPerLiq0: 0,
+                _secPerLiq1: secPerLiqDelta
+            });
+
+        JBBeforeCashOutRecordedContext memory ctx = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: 1 ether,
+            totalSupply: 100 ether,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 1,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: ""
+        });
+
+        vm.prank(address(terminal));
+        (uint256 cashOutTaxRate,,,
+            JBCashOutHookSpecification[] memory hookSpecs) = hook.beforeCashOutRecordedWith(ctx);
+
+        assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "oracle sell quote should beat protocol reclaim");
+        assertEq(hookSpecs.length, 1, "sell-side oracle path should return one hook specification");
+        assertFalse(hookSpecs[0].noop, "oracle sell path should be active");
+
+        (uint256 minimumSwapAmountOut, uint256 minimumProtocolAmountOut, int24 twapTick, uint128 twapLiquidity,) =
+            abi.decode(hookSpecs[0].metadata, (uint256, uint256, int24, uint128, bytes32));
+        assertGt(minimumSwapAmountOut, 0, "oracle sell path should surface a non-zero sell minimum");
+        assertEq(minimumProtocolAmountOut, 0, "tiny surplus should produce zero direct reclaim");
+        assertEq(twapTick, 0, "oracle tick should match the mocked 1:1 price");
+        assertGt(twapLiquidity, 0, "oracle sell path should surface non-zero TWAP liquidity");
+    }
+
     //*********************************************************************//
     // ----- Test 3: Oracle Harmonic Mean Liquidity Zero -> Mint --------- //
     //*********************************************************************//
@@ -492,7 +550,8 @@ contract V4RealOracleForkTest is Test {
         // With no TWAP minimum (harmonicMeanLiquidity = 0 triggers _getQuote returning 0),
         // and no payer quote, the hook falls through to minting.
         assertGt(weight, 0, "Weight must be > 0 (mint path) when oracle liquidity is zero");
-        assertEq(hookSpecs.length, 0, "No hook specs - mint fallback when liquidity is zero");
+        assertEq(hookSpecs.length, 1, "Mint fallback should still surface noop diagnostics when a pool is configured");
+        assertTrue(hookSpecs[0].noop, "Mint fallback spec should be marked noop");
         console.log("  -> Hook correctly fell back to MINT path (zero liquidity oracle).");
     }
 
@@ -750,6 +809,9 @@ contract V4RealOracleForkTest is Test {
             address(controller),
             abi.encodeWithSignature("mintTokensOf(uint256,uint256,address,string,bool)"),
             abi.encode(0)
+        );
+        vm.mockCall(
+            address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0)
         );
         vm.mockCall(
             address(controller), abi.encodeWithSignature("burnTokensOf(address,uint256,uint256,string)"), abi.encode()

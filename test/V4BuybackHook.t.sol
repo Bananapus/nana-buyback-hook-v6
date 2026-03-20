@@ -15,6 +15,7 @@ import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBCashOuts} from "@bananapus/core-v6/src/libraries/JBCashOuts.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
@@ -1427,6 +1428,126 @@ contract V4BuybackHookTest is Test {
         assertEq(twapTick, 0, "TWAP tick should be surfaced in informational metadata");
         assertGt(twapLiquidity, 0, "TWAP liquidity should be surfaced in informational metadata");
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
+    }
+
+    function testFuzz_beforeCashOutRecordedWith_explicitMinimumAboveProtocolRoutes(
+        uint96 cashOutCountSeed,
+        uint96 totalSupplySeed,
+        uint96 surplusSeed,
+        uint96 deltaSeed
+    )
+        public
+    {
+        vm.prank(owner);
+        hook.setPoolFor({projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN});
+
+        uint256 cashOutCount = bound(uint256(cashOutCountSeed), 1, 1_000_000 ether);
+        uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
+        uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
+        uint256 protocolMinimum = JBCashOuts.cashOutFrom({
+            surplus: surplus,
+            cashOutCount: cashOutCount,
+            totalSupply: totalSupply,
+            cashOutTaxRate: 0
+        });
+        uint256 explicitMinimum = protocolMinimum + bound(uint256(deltaSeed), 1, 1_000_000 ether);
+
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum));
+
+        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            totalSupply: totalSupply,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: surplus,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: metadata
+        });
+
+        (uint256 cashOutTaxRate, uint256 returnedCashOutCount, uint256 returnedTotalSupply, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "sell-side route should be activated");
+        assertEq(returnedCashOutCount, cashOutCount, "cashOutCount should pass through");
+        assertEq(returnedTotalSupply, totalSupply, "totalSupply should pass through");
+        assertEq(specs.length, 1, "sell-side route should surface one hook spec");
+        assertFalse(specs[0].noop, "sell-side route should not be noop");
+
+        (uint256 minimumSwapAmountOut, uint256 minimumProtocolAmountOut,,,
+        ) = abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
+        assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface protocol minimum");
+    }
+
+    function testFuzz_beforeCashOutRecordedWith_explicitMinimumAtOrBelowProtocolNoops(
+        uint96 cashOutCountSeed,
+        uint96 totalSupplySeed,
+        uint96 surplusSeed,
+        uint96 deltaSeed
+    )
+        public
+    {
+        vm.prank(owner);
+        hook.setPoolFor({projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN});
+
+        uint256 cashOutCount = bound(uint256(cashOutCountSeed), 1, 1_000_000 ether);
+        uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
+        uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
+        uint256 protocolMinimum = JBCashOuts.cashOutFrom({
+            surplus: surplus,
+            cashOutCount: cashOutCount,
+            totalSupply: totalSupply,
+            cashOutTaxRate: 0
+        });
+        uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
+        uint256 explicitMinimum = protocolMinimum - delta;
+
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum));
+
+        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            totalSupply: totalSupply,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: surplus,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            useTotalSurplus: false,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: metadata
+        });
+
+        (uint256 cashOutTaxRate, uint256 returnedCashOutCount, uint256 returnedTotalSupply, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, 0, "protocol path should keep the original tax rate");
+        assertEq(returnedCashOutCount, cashOutCount, "cashOutCount should pass through");
+        assertEq(returnedTotalSupply, totalSupply, "totalSupply should pass through");
+        assertEq(specs.length, 1, "noop sell-side metadata should still be returned");
+        assertTrue(specs[0].noop, "protocol-winning path should be noop");
+
+        (uint256 minimumSwapAmountOut, uint256 minimumProtocolAmountOut,,,
+        ) = abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
+        assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface protocol minimum");
+        assertLe(minimumSwapAmountOut, minimumProtocolAmountOut, "noop path should only happen at or below protocol minimum");
     }
 
     function test_afterCashOutRecordedWith_remintsAndSwapsForBeneficiary() public {
