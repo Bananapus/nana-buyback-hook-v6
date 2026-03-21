@@ -1,6 +1,6 @@
 {
   "name": "@bananapus/buyback-hook-v6",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -19,9 +19,9 @@
   },
   "dependencies": {
     "@bananapus/address-registry-v6": "^0.0.10",
-    "@bananapus/core-v6": "^0.0.20",
+    "@bananapus/core-v6": "^0.0.23",
     "@bananapus/permission-ids-v6": "^0.0.10",
-    "@bananapus/univ4-router-v6": "^0.0.8",
+    "@bananapus/univ4-router-v6": "^0.0.9",
     "@openzeppelin/contracts": "^5.6.1",
     "@uniswap/v4-core": "^1.0.2",
     "@uniswap/v4-periphery": "^1.0.3"
