@@ -29,7 +29,7 @@ Route project payments and cash outs through the better of the protocol path or 
 | `beforeCashOutRecordedWith(context)` | Data hook (view): compares direct protocol cash-out value against a TWAP-protected pool sell quote. Returns a cash-out hook spec when the pool sell is better. |
 | `afterCashOutRecordedWith(context)` | Cash-out hook: remints burned project tokens to the hook, sells them through the configured V4 pool, and forwards proceeds to the beneficiary. |
 | `hasMintPermissionFor(projectId, ruleset, addr)` | Returns `false` (the hook itself does not claim mint permission -- the registry handles this). |
-| `supportsInterface(interfaceId)` | Returns `true` for `IJBRulesetDataHook`, `IJBPayHook`, `IJBBuybackHook`, `IJBPermissioned`, `IERC165`. |
+| `supportsInterface(interfaceId)` | Returns `true` for `IJBRulesetDataHook`, `IJBPayHook`, `IJBCashOutHook`, `IJBBuybackHook`, `IJBPermissioned`, `IERC165`. |
 
 ### JBBuybackHookRegistry
 
@@ -65,7 +65,7 @@ Route project payments and cash outs through the better of the protocol path or 
 
 | Struct/Type | Fields | Used In |
 |-------------|--------|---------|
-| `SwapCallbackData` (internal to `JBBuybackHook`) | `key` (PoolKey), `projectTokenIs0` (bool), `amountIn` (uint256), `minimumSwapAmountOut` (uint256), `terminalToken` (address) | Encoded as `bytes` for `POOL_MANAGER.unlock()`, decoded in `unlockCallback` |
+| `SwapCallbackData` (`src/structs/SwapCallbackData.sol`) | `key` (PoolKey), `zeroForOne` (bool), `amountIn` (uint256), `minimumSwapAmountOut` (uint256) | Encoded as `bytes` for `POOL_MANAGER.unlock()`, decoded in `unlockCallback` |
 | `PoolKey` (Uniswap V4) | `currency0` (Currency), `currency1` (Currency), `fee` (uint24), `tickSpacing` (int24), `hooks` (IHooks) | Stored per project+terminalToken in `_poolKeyOf`. Passed to `setPoolFor`. |
 | `JBBeforePayRecordedContext` | `projectId`, `amount` (token, value, decimals, currency), `weight`, `metadata` | Input to `beforePayRecordedWith` |
 | `JBAfterPayRecordedContext` | `projectId`, `forwardedAmount`, `weight`, `beneficiary`, `hookMetadata` | Input to `afterPayRecordedWith` |
@@ -108,10 +108,11 @@ Route project payments and cash outs through the better of the protocol path or 
 
 | Event | Fields |
 |-------|--------|
+| `CashOutSwap` | `projectId` (indexed), `cashOutCount`, `poolId` (indexed), `amountReceived`, `caller` |
 | `Swap` | `projectId` (indexed), `amountToSwapWith`, `poolId` (indexed), `amountReceived`, `caller` |
 | `Mint` | `projectId` (indexed), `leftoverAmount`, `tokenCount`, `caller` |
 | `PoolAdded` | `projectId` (indexed), `terminalToken` (indexed), `poolId`, `caller` |
-| `TwapWindowChanged` | `projectId` (indexed), `oldWindow`, `newWindow`, `caller` |
+| `TwapWindowChanged` | `projectId` (indexed), `terminalToken` (indexed), `oldWindow`, `newWindow`, `caller` |
 
 ### JBBuybackHookRegistry
 
@@ -130,6 +131,7 @@ Route project payments and cash outs through the better of the protocol path or 
 | Error | When |
 |-------|------|
 | `JBBuybackHook_CallerNotPoolManager(address caller)` | `unlockCallback` called by someone other than the PoolManager |
+| `JBBuybackHook_CallerNotTerminal(address caller)` | `afterCashOutRecordedWith` called by non-terminal |
 | `JBBuybackHook_InsufficientPayAmount(uint256 swapAmount, uint256 totalPaid)` | Metadata specifies `amountToSwapWith > totalPaid` |
 | `JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max)` | TWAP window outside [5 minutes, 2 days] |
 | `JBBuybackHook_PoolAlreadySet(PoolId poolId)` | `setPoolFor` called again for same project+token pair |
@@ -162,7 +164,7 @@ Route project payments and cash outs through the better of the protocol path or 
 - **TWAP oracle fallback**: When the oracle hook is absent or `observe()` reverts, `JBSwapLib.getQuoteFromOracle` returns `(0, 0, 0)`, forcing the mint path. Spot-price fallback was removed because it is trivially sandwich-attackable. Swaps activate once the oracle warms up (~30 min after pool creation).
 - **Zero liquidity protection**: If the oracle returns zero liquidity (`harmonicMeanLiquidity == 0`), `_getQuote` returns 0, which ensures the hook falls back to minting rather than attempting a swap in an empty pool.
 - **Sigmoid slippage ceiling**: If `getSlippageTolerance` returns `>= TWAP_SLIPPAGE_DENOMINATOR` (10,000 bps = 100%), `_getQuote` returns 0 to trigger mint fallback.
-- **Quote floor**: `beforePayRecordedWith` uses the **higher** of the payer's supplied `minimumSwapAmountOut` and the TWAP-derived minimum. A stale or manipulated payer quote cannot produce a worse deal than the oracle suggests.
+- **Quote floor**: When the payer provides an explicit `minimumSwapAmountOut` via `"quote"` metadata, it is honored directly and the TWAP lookup is skipped. When no explicit quote is provided, the TWAP oracle supplies the slippage floor via `_getQuote`. The sell side follows the same pattern with `"cashOutMinReclaimed"` metadata.
 - **sqrtPriceLimitX96 protection**: The `unlockCallback` computes a `sqrtPriceLimitX96` from `amountIn` and `minimumSwapAmountOut`. The V4 swap stops early if the price moves beyond this limit, providing on-chain MEV protection.
 - **`beforePayRecordedWith` is a `view` function**: It cannot modify state. All swap execution happens in `afterPayRecordedWith`. Mint-path diagnostics are returned using noop pay-hook specifications.
 - **Terminal validation**: `afterPayRecordedWith` validates that `msg.sender` is a registered terminal of the project via `DIRECTORY.isTerminalOf(projectId, IJBTerminal(msg.sender))`.
