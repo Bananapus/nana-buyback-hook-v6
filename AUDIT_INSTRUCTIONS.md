@@ -96,16 +96,18 @@ Terminal calls beforePayRecordedWith(context)
   +--> If minimumSwapAmountOut > tokenCountWithoutHook:
   |      Return weight=0 + JBPayHookSpecification(this, amountToSwapWith, metadata)
   |      metadata = abi.encode(
-  |        projectTokenIs0,          // 1 — bool
-  |        mintFromExcess,           // 2 — uint256
-  |        minimumSwapAmountOut,     // 3 — uint256
-  |        controller,               // 4 — IJBController
-  |        tokenCountWithoutHook,    // 5 — uint256 (informational)
-  |        twapTick,                 // 6 — int24 (informational)
-  |        twapLiquidity,            // 7 — uint128 (informational)
-  |        poolId                    // 8 — PoolId (informational)
+  |        projectTokenIs0,              // 1 — bool
+  |        mintFromExcess,               // 2 — uint256
+  |        minimumSwapAmountOut,         // 3 — uint256
+  |        controller,                   // 4 — IJBController
+  |        tokenCountWithoutHook,        // 5 — uint256 (informational)
+  |        twapTick,                     // 6 — int24 (informational)
+  |        twapLiquidity,               // 7 — uint128 (informational)
+  |        poolId,                       // 8 — PoolId (informational)
+  |        minimumBeneficiaryTokenCount, // 9 — uint256 (informational)
+  |        minimumReservedTokenCount     // 10 — uint256 (informational)
   |      )
-  |      NOTE: afterPayRecordedWith only decodes fields 1-4. Fields 5-8 are for preview clients.
+  |      NOTE: afterPayRecordedWith only decodes fields 1-4. Fields 5-10 are for preview clients.
   |    Else:
   |      Return original weight (mint path)
 ```
@@ -142,7 +144,7 @@ Terminal calls afterPayRecordedWith(context) with payment tokens
 
 ### Three-Layer MEV Protection
 
-1. **TWAP Cross-Validation**: `minimumSwapAmountOut = max(payerQuote, twapQuote)`. Neither a stale payer quote nor a manipulated oracle can reduce the minimum below what the other source suggests.
+1. **TWAP or Explicit Quote Floor**: When the payer provides an explicit `minimumSwapAmountOut` via metadata, it is honored directly and the TWAP lookup is skipped. When no explicit quote is provided, the TWAP oracle supplies the slippage floor. The sell side follows the same pattern with `cashOutMinReclaimed` metadata.
 
 2. **Sigmoid Slippage**: The TWAP-derived quote is reduced by a continuous sigmoid function of estimated price impact. Small swaps in deep pools get tight tolerance (~2%); large swaps in thin pools get wide tolerance (up to 88%). The sigmoid parameters (`SIGMOID_K = 5e16`, `IMPACT_PRECISION = 1e18`) are hardcoded.
 
@@ -159,7 +161,7 @@ Terminal calls afterPayRecordedWith(context) with payment tokens
 
 | Priority | Target | Why |
 |----------|--------|-----|
-| 1 | **Swap-vs-mint decision** (`beforePayRecordedWith`) | The core economic decision. If an attacker can force swaps when minting is better (or vice versa), they extract value. Verify the `max(payerQuote, twapQuote)` cross-validation, sigmoid slippage bounds, and the `tokenCountWithoutHook` comparison. |
+| 1 | **Swap-vs-mint decision** (`beforePayRecordedWith`) | The core economic decision. If an attacker can force swaps when minting is better (or vice versa), they extract value. When the payer provides an explicit quote, it is honored directly (TWAP is skipped). When no quote is provided, the TWAP oracle supplies the floor. Verify the sigmoid slippage bounds, `tokenCountWithoutHook` comparison, and that explicit quotes cannot be used maliciously. |
 | 2 | **unlockCallback + swap settlement** | All fund movement happens here. Verify: caller auth (only PoolManager), delta interpretation (positive = received, negative = spent), settle/take ordering, sqrtPriceLimit enforcement. |
 | 3 | **Leftover handling** (`afterPayRecordedWith`) | Balance delta approach: `leftover = balanceAfter - balanceBefore`. Verify: native ETH msg.value subtraction, ERC-20 pull timing, addToBalanceOf failure path, mint arithmetic. |
 | 4 | **Oracle unavailable behavior** | When `observe()` reverts, the hook returns `(0, 0, 0)` forcing the mint path. Verify: no swap occurs during oracle warmup, payer-provided quotes still work, no path bypasses this fallback. |
@@ -171,7 +173,7 @@ Terminal calls afterPayRecordedWith(context) with payment tokens
 ## Invariants to Verify
 
 1. **No flash-loan profit**: Pay + cash out in the same block should never yield more tokens than a direct payment would mint (minus fees).
-2. **Slippage floor**: `minimumSwapAmountOut >= max(payerQuote, twapQuote * (1 - sigmoidSlippage))` always holds.
+2. **Slippage floor**: When no explicit payer quote is provided, `minimumSwapAmountOut >= twapQuote * (1 - sigmoidSlippage)`. When an explicit payer quote is provided, it is honored directly.
 3. **Token conservation**: `swappedTokens + mintedFromLeftover == totalTokensMintedForBeneficiary` (before reserved percent).
 4. **Pool immutability**: Once `_poolIsSet[pid][token] = true`, no code path can change the pool key.
 5. **Leftover non-negative**: `balanceAfter >= balanceBefore` always holds after swap (no underflow in leftover calculation).

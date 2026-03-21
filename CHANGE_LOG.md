@@ -138,7 +138,7 @@ A new shared library at `src/libraries/JBSwapLib.sol` extracts and improves swap
 `_setPoolFor` validates that the `PoolKey`'s `currency0` and `currency1` match the project token and terminal token (in either order). Reverts with a require message if they don't match.
 
 ### Improved TWAP Quote Logic
-In `beforePayRecordedWith`, v6 always computes the TWAP-based minimum and uses the higher of the payer's quote and the TWAP quote. This prevents stale or malicious payer quotes from getting a worse deal than the oracle suggests. In v5, the TWAP was only computed when no payer quote was provided.
+In `beforePayRecordedWith`, v6 computes the TWAP-based minimum by default. When the payer provides an explicit quote via metadata, that minimum is honored directly and the TWAP lookup is skipped. When no payer quote is provided, the TWAP oracle provides the slippage floor. In v5, the TWAP was only computed when no payer quote was provided.
 
 ### Improved Leftover Balance Tracking
 In `afterPayRecordedWith`, v6 records the terminal token balance BEFORE pulling payment tokens and computes leftover as a delta (`balanceAfter - balanceBefore`). This prevents pre-existing balances from inflating leftovers. v5 simply read the contract's balance after the swap.
@@ -162,14 +162,13 @@ IHooks public immutable ORACLE_HOOK;
 The oracle hook used for all JB V4 pools (provides TWAP via `observe()`). Set at construction time.
 
 ### `SwapCallbackData` Struct
-New internal struct used to pass data through the V4 unlock callback:
+New struct (in `src/structs/SwapCallbackData.sol`) used to pass data through the V4 unlock callback:
 ```solidity
 struct SwapCallbackData {
     PoolKey key;
-    bool projectTokenIs0;
+    bool zeroForOne;
     uint256 amountIn;
     uint256 minimumSwapAmountOut;
-    address terminalToken;
 }
 ```
 
@@ -230,7 +229,7 @@ Unchanged in signature.
 ### Added Structs
 | Struct | Location | Description |
 |---|---|---|
-| `SwapCallbackData` | `JBBuybackHook` (internal) | Carries swap parameters through V4's `unlock`/`unlockCallback` pattern. Fields: `key`, `projectTokenIs0`, `amountIn`, `minimumSwapAmountOut`, `terminalToken`. |
+| `SwapCallbackData` | `src/structs/SwapCallbackData.sol` | Carries swap parameters through V4's `unlock`/`unlockCallback` pattern. Fields: `key` (PoolKey), `zeroForOne` (bool), `amountIn` (uint256), `minimumSwapAmountOut` (uint256). |
 
 ---
 

@@ -53,7 +53,6 @@ Cash out → JBTerminalStore calls data hook
     → Else:
       → Spec is informational (`noop = true`)
 ```
-```
 
 ## Extension Points
 
