@@ -634,14 +634,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Read any user-specified minimum reclaimed amount from metadata.
         uint256 minimumSwapAmountOut;
         bool hasUserSpecifiedMinimumSwapAmountOut;
-        {
-            (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
-                id: JBMetadataResolver.getId("cashOutMinReclaimed"), metadata: context.metadata
-            });
-            if (exists) {
-                hasUserSpecifiedMinimumSwapAmountOut = true;
-                minimumSwapAmountOut = abi.decode(minData, (uint256));
-            }
+        (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
+            id: JBMetadataResolver.getId("cashOutMinReclaimed"), metadata: context.metadata
+        });
+        if (exists) {
+            hasUserSpecifiedMinimumSwapAmountOut = true;
+            minimumSwapAmountOut = abi.decode(minData, (uint256));
         }
 
         // Keep references to pool diagnostics. Explicit minimums skip the TWAP lookup, so diagnostics remain zeroed.
@@ -704,16 +702,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Keep a reference to the amount to be used to swap (out of `totalPaid`).
         uint256 amountToSwapWith;
 
-        // Scoped section to prevent stack too deep.
-        {
-            // Unpack the quote specified by the payer/client (typically from the pool).
-            bytes4 metadataId = JBMetadataResolver.getId("quote");
-            (bool quoteExists, bytes memory metadata) =
-                JBMetadataResolver.getDataFor({id: metadataId, metadata: context.metadata});
-            if (quoteExists) {
-                hasUserSpecifiedQuote = true;
-                (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
-            }
+        // Unpack the quote specified by the payer/client (typically from the pool).
+        bytes4 metadataId = JBMetadataResolver.getId("quote");
+        (bool quoteExists, bytes memory metadata) =
+            JBMetadataResolver.getDataFor({id: metadataId, metadata: context.metadata});
+        if (quoteExists) {
+            hasUserSpecifiedQuote = true;
+            (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
         }
 
         // If the amount to swap with is greater than the actual amount paid in, revert.
