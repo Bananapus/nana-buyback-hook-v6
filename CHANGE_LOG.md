@@ -2,6 +2,16 @@
 
 This document describes all changes between `nana-buyback-hook` (v5) and `nana-buyback-hook-v6` (v6).
 
+## Summary
+
+This is a **V3 → V4 Uniswap migration** — the buyback hook was completely rearchitected to swap through Uniswap V4's singleton `PoolManager` instead of individual V3 pool contracts.
+
+- **Uniswap V3 → V4**: All swap logic migrated from V3 pool callbacks to V4's `unlock`/`unlockCallback` pattern. WETH wrapping removed (V4 handles native ETH natively).
+- **New `JBSwapLib` library**: Shared swap math extracted for reuse across buyback hook and router terminal — includes continuous sigmoid slippage (replaces V3's stepped function) and TWAP via V4 oracle hooks.
+- **Registry pattern**: `JBBuybackHookRegistry` manages per-project hook resolution with a default fallback, race-condition-safe locking, and zero-address protection.
+- **Pool initialization**: New `initializePoolFor` atomically creates and configures V4 pools — eliminates the separate pool deployment step.
+- **Sell-side optimization** (post-release): Hook now also routes cashouts through the pool when it yields more than the bonding curve.
+
 ---
 
 ## 0.1. Post-v6 Changes
@@ -97,6 +107,8 @@ The pay hook metadata has since expanded beyond the original 5 fields. It now in
 ### Solidity Version
 - **v5:** `pragma solidity 0.8.23`
 - **v6:** `pragma solidity 0.8.26`
+
+> **Why V3 → V4**: Uniswap V4's singleton architecture reduces gas costs for multi-hop swaps, enables custom oracle hooks (replacing V3's fixed TWAP), and handles native ETH without WETH wrapping. The migration aligns the buyback hook with the broader V4 ecosystem that `nana-router-terminal-v6` also targets.
 
 ---
 
@@ -301,3 +313,5 @@ Unchanged in signature.
 | N/A | `JBSwapLib` library | New: shared swap math library |
 | `JBPermissionIds.SET_BUYBACK_POOL` (for registry lock/set) | `JBPermissionIds.SET_BUYBACK_HOOK` (for registry lock/set) | Distinct permission for hook vs pool config |
 | `MIN_TWAP_WINDOW = 2 minutes` | `MIN_TWAP_WINDOW = 5 minutes` | Increased minimum |
+
+> **Cross-repo impact**: `revnet-core-v6` auto-initializes buyback pools for every revnet via the `BUYBACK_HOOK` registry immutable. `nana-fee-project-deployer-v6` removed its buyback hook configuration entirely — pools are now auto-configured. `nana-permission-ids-v6` added `SET_BUYBACK_HOOK` (28) for the registry's `setHookFor`/`lockHookFor`.
