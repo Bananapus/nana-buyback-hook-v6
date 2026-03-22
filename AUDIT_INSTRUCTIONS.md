@@ -8,9 +8,9 @@ Read [RISKS.md](./RISKS.md) for known risks and trust assumptions. Then come bac
 
 **In scope -- all Solidity in `src/`:**
 ```
-src/JBBuybackHook.sol           # Data hook + pay hook (~800 lines)
-src/JBBuybackHookRegistry.sol   # Registry/router for hook implementations (~355 lines)
-src/libraries/JBSwapLib.sol     # Oracle queries, sigmoid slippage, price limits (~332 lines)
+src/JBBuybackHook.sol           # Data hook + pay hook (~1,115 lines)
+src/JBBuybackHookRegistry.sol   # Registry/router for hook implementations (~382 lines)
+src/libraries/JBSwapLib.sol     # Oracle queries, sigmoid slippage, price limits (~325 lines)
 src/interfaces/                 # IJBBuybackHook, IJBBuybackHookRegistry, IGeomeanOracle
 ```
 
