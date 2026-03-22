@@ -18,7 +18,18 @@ Route project payments and cash outs through the better of the protocol path or 
 
 | Function | What it does |
 |----------|--------------|
-| `beforePayRecordedWith(context)` | Data hook (view): compares mint count vs swap quote. Reads `"quote"` metadata for payer-supplied `(amountToSwapWith, minimumSwapAmountOut)`. Computes TWAP-based minimum and uses the higher of the two. If swap yields more tokens, returns `weight=0` and an active `JBPayHookSpecification`. If mint is better and a pool is configured, returns the original weight plus a noop `JBPayHookSpecification` carrying the same 10 metadata fields: `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId, minimumBeneficiaryTokenCount, minimumReservedTokenCount)`. Fields 1-4 are consumed by `afterPayRecordedWith`; fields 5-10 are informational for preview clients. |
+| `beforePayRecordedWith(context)` | Data hook (view): compares mint count vs swap quote and selects the better route. See sub-bullets below. |
+
+**`beforePayRecordedWith` detailed flow:**
+
+1. **Parse metadata**: Reads `"quote"` metadata key for payer-supplied `(amountToSwapWith, minimumSwapAmountOut)`. If `amountToSwapWith == 0` or absent, the full payment amount is used.
+2. **Resolve pool**: Loads the `PoolKey` and TWAP window for the project's terminal token pair. If no pool is configured, falls through to pure mint.
+3. **Get TWAP quote**: Calls `JBSwapLib.getQuoteFromOracle` for the TWAP-based swap output estimate. If the oracle is unavailable, returns `(0, 0, 0)` to force the mint path.
+4. **Compute slippage floor**: Uses `JBSwapLib.getSlippageTolerance` (sigmoid) and `JBSwapLib.calculateImpact` to derive a TWAP-adjusted minimum. Takes the higher of the TWAP minimum and the payer-supplied `minimumSwapAmountOut`.
+5. **Compare routes**: Compares the TWAP-quoted swap output against the terminal's mint output (based on `weight`).
+6. **Swap path** (swap yields more tokens): Returns `weight=0` and an active `JBPayHookSpecification` with metadata encoding `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId, minimumBeneficiaryTokenCount, minimumReservedTokenCount)`.
+7. **Mint path** (mint is better or equal): Returns the original weight plus a noop `JBPayHookSpecification` carrying the same 10 metadata fields for preview/simulation clients.
+8. **On-chain vs informational fields**: `afterPayRecordedWith` only decodes the first 4 fields; fields 5-10 are informational for off-chain preview clients.
 | `afterPayRecordedWith(context)` | Pay hook: pulls tokens from terminal, executes V4 swap via `POOL_MANAGER.unlock()`, burns swapped tokens, returns leftover to project balance via `addToBalanceOf`, mints total (swapped + leftover mint) via `controller.mintTokensOf` with `useReservedPercent: true`. If the swap fails entirely, the hook falls back to minting instead of reverting. |
 | `setPoolFor(projectId, poolKey, twapWindow, terminalToken)` | Set the V4 pool for a project+terminal token pair using an explicit `PoolKey`. Validates: pool is initialized in PoolManager, currencies match project token and terminal token, TWAP window in bounds. Stores pool key, TWAP window, and project token. **Immutable once set.** Permission: `SET_BUYBACK_POOL` (ID 26). |
 | `setPoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken)` | Simplified overload. Constructs the `PoolKey` internally using the project token, terminal token, and the immutable `ORACLE_HOOK` as the pool's hooks address. The pool must already be initialized. Permission: `SET_BUYBACK_POOL` (ID 26). |
@@ -82,6 +93,24 @@ Route project payments and cash outs through the better of the protocol path or 
 | `getQuoteAtTick(tick, baseAmount, baseToken, quoteToken)` | Converts a tick to a price and returns the equivalent quote amount. Ported from Uniswap V3 `OracleLibrary.getQuoteAtTick` -- pure math, no V3 dependency. |
 | `sqrtPriceLimitFromAmounts(amountIn, minimumAmountOut, zeroForOne)` | Computes a `sqrtPriceLimitX96` from the minimum acceptable swap rate. Provides MEV protection by stopping the swap if the execution price would be worse than the minimum. Handles extreme ratios gracefully with fallback to no limit. |
 
+### JBSwapLib Error & Edge Cases
+
+| Function | Input / Condition | Behavior |
+|----------|-------------------|----------|
+| `getQuoteFromOracle` | `twapWindow == 0` | Uses spot price from `poolManager.getSlot0` instead of TWAP. Sandwich-attackable — only suitable for testing. |
+| `getQuoteFromOracle` | `sqrtPriceX96 == 0` (pool not initialized, spot path) | Returns `(0, 0, 0)` — forces the mint path. |
+| `getQuoteFromOracle` | Oracle hook reverts (not deployed, not warmed up) | Catches the revert and returns `(0, 0, 0)` — forces the mint path. No spot fallback. |
+| `getQuoteFromOracle` | `amountIn == 0` | Returns `amountOut == 0` from `getQuoteAtTick` (pure math: `0 * price = 0`). |
+| `getSlippageTolerance` | `impact == 0` (negligible swap in deep pool) | Returns `minSlippage` (pool fee + 1%, floor 2%). |
+| `getSlippageTolerance` | `poolFeeBps >= MAX_SLIPPAGE` (8,800) | Returns `MAX_SLIPPAGE` (88%) immediately. |
+| `getSlippageTolerance` | `impact > type(uint256).max - SIGMOID_K` | Returns `MAX_SLIPPAGE` to prevent overflow in `(impact + K)`. |
+| `calculateImpact` | `liquidity == 0` or `sqrtP == 0` | Returns `0` — signals no data, caller should fall back to mint. |
+| `getQuoteAtTick` | `baseAmount == 0` | Returns `0` (pure math). |
+| `getQuoteAtTick` | Extreme ticks near `MIN_TICK` / `MAX_TICK` | `TickMath.getSqrtPriceAtTick` reverts if tick is out of range `[-887272, 887272]`. |
+| `sqrtPriceLimitFromAmounts` | `minimumAmountOut == 0` or `amountIn == 0` | Returns extreme value (no limit): `MIN_SQRT_PRICE + 1` for zeroForOne, `MAX_SQRT_PRICE - 1` otherwise. |
+| `sqrtPriceLimitFromAmounts` | Ratio `num/den >= 2^128` (extreme price imbalance) | Falls back to no limit to avoid overflow. |
+| `sqrtPriceLimitFromAmounts` | Ratio `num/den >= 2^64` but `< 2^128` | Uses reduced-precision `ratioX128` path with a shift to avoid mulDiv overflow. |
+
 ## Constants
 
 | Constant | Value | Purpose |
@@ -93,6 +122,33 @@ Route project payments and cash outs through the better of the protocol path or 
 | `JBSwapLib.MAX_SLIPPAGE` | `8,800` | 88% sigmoid ceiling |
 | `JBSwapLib.IMPACT_PRECISION` | `1e18` | Impact calculation precision |
 | `JBSwapLib.SIGMOID_K` | `5e16` | Sigmoid curve inflection point |
+
+## Storage
+
+### JBBuybackHook
+
+| Variable | Type | Visibility | Purpose |
+|----------|------|------------|---------|
+| `DIRECTORY` | `IJBDirectory` | `public immutable` | Directory of terminals and controllers |
+| `PRICES` | `IJBPrices` | `public immutable` | Price feed contract for cross-currency weight conversion |
+| `PROJECTS` | `IJBProjects` | `public immutable` | Project registry (ERC-721) |
+| `TOKENS` | `IJBTokens` | `public immutable` | Token registry for looking up project ERC-20 addresses |
+| `POOL_MANAGER` | `IPoolManager` | `public immutable` | Uniswap V4 PoolManager singleton |
+| `ORACLE_HOOK` | `IHooks` | `public immutable` | Oracle hook embedded in all pool keys constructed by simplified overloads |
+| `projectTokenOf` | `mapping(uint256 => address)` | `public` | ERC-20 address of each project's token (set on first `setPoolFor`) |
+| `twapWindowOf` | `mapping(uint256 => mapping(address => uint256))` | `public` | TWAP window in seconds per project + terminal token pair |
+| `_poolKeyOf` | `mapping(uint256 => mapping(address => PoolKey))` | `internal` | V4 `PoolKey` per project + terminal token pair (exposed via `poolKeyOf()` getter) |
+| `_poolIsSet` | `mapping(uint256 => mapping(address => bool))` | `private` | Tracks whether a pool has been configured (prevents re-setting) |
+
+### JBBuybackHookRegistry
+
+| Variable | Type | Visibility | Purpose |
+|----------|------|------------|---------|
+| `PROJECTS` | `IJBProjects` | `public immutable` | Project registry for ownership checks |
+| `defaultHook` | `IJBRulesetDataHook` | `public` | Fallback hook used when a project has no explicit hook set |
+| `hasLockedHook` | `mapping(uint256 => bool)` | `public` | Whether a project's hook choice is permanently locked |
+| `isHookAllowed` | `mapping(IJBRulesetDataHook => bool)` | `public` | Allowlist of hooks that can be assigned to projects |
+| `_hookOf` | `mapping(uint256 => IJBRulesetDataHook)` | `internal` | Project-specific hook override (exposed via `hookOf()` getter) |
 
 ## Permission IDs
 
