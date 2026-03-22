@@ -208,3 +208,78 @@ forge test --gas-report
 ```
 
 The test suite covers: V4 swap flow, swap fallback to mint, sigmoid slippage bounds and monotonicity, sqrtPriceLimit precision, TWAP cross-validation, balance delta leftover accounting, registry hook resolution and locking, sandwich attack simulation, and 30+ fuzz tests. See RISKS.md for the full "What IS Tested" / "What is NOT Tested" breakdown.
+
+## Previous Audit Findings
+
+No prior formal audit with finding IDs has been conducted on this codebase. All risk analysis is internal. See [RISKS.md](./RISKS.md) for the full trust model and known risks.
+
+## Anti-Patterns to Hunt
+
+| Pattern | Where to Look | Why It's Dangerous |
+|---------|--------------|-------------------|
+| TWAP manipulation | `JBSwapLib.getQuoteFromOracle()` | Attacker can move the TWAP by trading in the pool over the observation window. Short TWAP windows (5 min minimum) are more vulnerable. |
+| Sigmoid edge cases | `JBSwapLib.getSlippageTolerance()` | At extreme `impact` values, sigmoid saturates at `MAX_SLIPPAGE` (88%). Verify the function is monotonically increasing and bounded. |
+| `try-catch` swallowing swap failures | `_swap()` in JBBuybackHook | A failed swap silently falls back to minting. If the swap failure is due to manipulation (not just liquidity), the mint path may give worse terms. |
+| Oracle warmup period | `getQuoteFromOracle()` returns `(0,0,0)` on revert | During oracle warmup, all payments go through mint path. An attacker could time large payments during warmup to avoid price-aware routing. |
+| `balanceAfter - balanceBefore` accounting | `afterPayRecordedWith` leftover calculation | Fee-on-transfer tokens or tokens with callbacks could make `balanceAfter` unexpected. The hook uses `safeTransferFrom` but doesn't validate the received amount. |
+| Immutable pool key | `_poolIsSet` flag | Once set, a pool cannot be changed. If the pool is set to a low-liquidity or manipulable pool, the project is permanently vulnerable. |
+| `hookData: abi.encode(uint256(0))` | Swap call in `unlockCallback` | This hookData is passed to the V4 pool hook (JBUniswapV4Hook). Verify this doesn't bypass slippage or routing protections in the pool hook. |
+| Metadata decoding | `beforePayRecordedWith` payer quote parsing | Malformed metadata could cause `abi.decode` to revert or return unexpected values. Verify graceful handling of missing/malformed data. |
+
+## Coverage Gaps
+
+The test suite is comprehensive but these areas have limited coverage:
+
+- **Multi-pool routing**: No tests where a single payment is split across multiple pools or where pool selection is contested.
+- **Oracle manipulation over time**: Fuzz tests cover static oracle states but not dynamic TWAP manipulation across multiple blocks.
+- **Fee-on-transfer tokens**: No tests with tokens that charge fees on transfer (affects balance delta calculations).
+- **Concurrent buyback + cashout**: No tests where a buyback swap and a cash out from the same project execute in the same block.
+- **Registry lock race conditions**: Limited testing of `lockHookFor` timing relative to `setHookFor` and `setDefaultHook`.
+- **V4 pool hook interaction**: The interaction between buyback hook's `hookData` and the V4 pool hook (JBUniswapV4Hook) is tested in isolation but not under adversarial conditions.
+
+## Error Reference
+
+| Error | Contract | Trigger |
+|-------|----------|---------|
+| `JBBuybackHook_CallerNotPoolManager(address)` | JBBuybackHook | `unlockCallback` called by an address other than `POOL_MANAGER`. |
+| `JBBuybackHook_CallerNotTerminal(address)` | JBBuybackHook | `afterPayRecordedWith` called by an address that is not a terminal of the project. |
+| `JBBuybackHook_InsufficientPayAmount(uint256, uint256)` | JBBuybackHook | Payer-specified `amountToSwapWith` exceeds `totalPaid` in payment metadata. |
+| `JBBuybackHook_InvalidTwapWindow(uint256, uint256, uint256)` | JBBuybackHook | TWAP window set outside the allowed range (`MIN_TWAP_WINDOW` to `MAX_TWAP_WINDOW`). Checked in `setTwapWindowOf` and `_setPoolFor`. |
+| `JBBuybackHook_PoolAlreadySet(PoolId)` | JBBuybackHook | `_setPoolFor` called for a project/token pair that already has an immutable pool configured. |
+| `JBBuybackHook_PoolNotInitialized(PoolId)` | JBBuybackHook | `_setPoolFor` called with a pool key whose pool has not been initialized in the V4 PoolManager (`sqrtPriceX96 == 0`). |
+| `JBBuybackHook_SpecifiedSlippageExceeded(uint256, uint256)` | JBBuybackHook | Swap output is less than `minimumSwapAmountOut`. Checked in `afterPayRecordedWith` (pay path) and `afterCashOutRecordedWith` (cash-out path). |
+| `JBBuybackHook_TerminalTokenIsProjectToken(address, address)` | JBBuybackHook | `_setPoolFor` called where `terminalToken` equals the project's token (cannot swap a token for itself). |
+| `JBBuybackHook_Unauthorized(address)` | JBBuybackHook | `afterCashOutRecordedWith` called by an address that is not a terminal of the project. |
+| `JBBuybackHook_ZeroProjectToken()` | JBBuybackHook | `_setPoolFor` called for a project that has no token deployed yet. |
+| `JBBuybackHookRegistry_CannotDisallowDefaultHook()` | JBBuybackHookRegistry | `disallowHook` called with the current `defaultHook` (would break payments for projects using the default). |
+| `JBBuybackHookRegistry_HookLocked(uint256)` | JBBuybackHookRegistry | `setHookFor` called for a project whose hook has been permanently locked. |
+| `JBBuybackHookRegistry_HookMismatch(IJBRulesetDataHook, IJBRulesetDataHook)` | JBBuybackHookRegistry | `lockHookFor` called with an `expectedHook` that doesn't match the project's resolved hook (race condition guard). |
+| `JBBuybackHookRegistry_HookNotAllowed(IJBRulesetDataHook)` | JBBuybackHookRegistry | `setHookFor` called with a hook that is not on the allowlist. |
+| `JBBuybackHookRegistry_HookNotSet(uint256)` | JBBuybackHookRegistry | `lockHookFor` called for a project with no project-specific hook and no default hook configured. |
+| `JBBuybackHookRegistry_ZeroHook()` | JBBuybackHookRegistry | `setDefaultHook` called with `address(0)` (would break payment delegation). |
+
+## Compiler and Version Info
+
+- **Solidity**: 0.8.26
+- **EVM target**: Cancun
+- **Optimizer**: via-IR, 200 runs
+- **Dependencies**: OpenZeppelin 5.x, Uniswap V4 core/periphery, Solady, forge-std
+- **Build**: `forge build` (Foundry)
+
+## How to Report Findings
+
+For each finding:
+
+1. **Title** -- one line, starts with severity (CRITICAL/HIGH/MEDIUM/LOW)
+2. **Affected contract(s)** -- exact file path and line numbers
+3. **Description** -- what is wrong, in plain language
+4. **Trigger sequence** -- step-by-step, minimal steps to reproduce
+5. **Impact** -- what an attacker gains, what a user loses (with numbers if possible)
+6. **Proof** -- code trace showing the exact execution path, or a Foundry test
+7. **Fix** -- minimal code change that resolves the issue
+
+**Severity guide:**
+- **CRITICAL**: Direct fund loss or permanent swap manipulation. Exploitable with no preconditions.
+- **HIGH**: Conditional fund loss, MEV extraction beyond normal slippage, or broken invariant.
+- **MEDIUM**: Value leakage, suboptimal routing under specific conditions, griefing.
+- **LOW**: Informational, edge-case-only with no material impact.
