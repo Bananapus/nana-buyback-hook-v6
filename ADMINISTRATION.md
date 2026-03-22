@@ -53,6 +53,20 @@ The owner cannot force a hook onto a project that has already set or locked its 
 
 Ownership is transferable via `transferOwnership()` and can be permanently renounced via `renounceOwnership()`, both inherited from OpenZeppelin's `Ownable`.
 
+## Hook Resolution
+
+When the Juicebox controller queries for a project's buyback hook, the resolution follows this order:
+
+1. If the project has called `setHookFor(projectId, hook)`, that explicit hook is used.
+2. If no explicit hook is set, the registry's `defaultHook` is used.
+3. If neither exists (default is `address(0)` and no explicit hook), no buyback hook is active.
+
+**Lock semantics:** When `lockHookFor()` is called on a project that has no explicit hook, the current default is snapshot into `_hookOf[projectId]` before locking. This means the project becomes independent of future default changes.
+
+**Disallow vs. lock interaction:** If the registry owner disallows a hook via `disallowHook()`, projects that have already set or locked that hook are unaffected -- they continue using it. However, projects relying on the default (without locking) could be affected if the default is changed before they lock. The registry owner must first change the default (via `setDefaultHook`) before disallowing the previous default, since `disallowHook` reverts if the target is the current default.
+
+**No-hook edge case:** If a project has not set an explicit hook and the registry owner sets `defaultHook` to a new address, the project's resolved hook changes immediately and without notification. Projects should lock their hook to avoid unexpected changes.
+
 ## Immutable Configuration
 
 The following are set at deploy time and cannot be changed:
@@ -97,4 +111,5 @@ Things that admins **cannot** do:
 - **Project owner cannot set a hook that is not allowlisted.** `setHookFor` reverts with `JBBuybackHookRegistry_HookNotAllowed` if the hook is not on the allowlist.
 - **No one can withdraw or redirect swap proceeds.** The hook's `afterPayRecordedWith` is only callable by the project's payment terminals (verified via `DIRECTORY.isTerminalOf`). Swap outputs are burned and re-minted through the controller with reserves applied.
 - **No one can bypass the TWAP bounds.** The TWAP window is always clamped between 5 minutes and 2 days, regardless of who calls `setPoolFor` or `setTwapWindowOf`.
+- **Registry owner cannot silently change a locked project's hook.** Once locked, the hook is stored in `_hookOf[projectId]` and is no longer affected by default changes or allowlist changes. The lock is the definitive guarantee of hook immutability.
 - **No one can call `unlockCallback` except the PoolManager.** The V4 swap callback is gated to `msg.sender == POOL_MANAGER`.
