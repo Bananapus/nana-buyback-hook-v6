@@ -31,10 +31,10 @@ Route project payments and cash outs through the better of the protocol path or 
 7. **Mint path** (mint is better or equal): Returns the original weight plus a noop `JBPayHookSpecification` carrying the same 10 metadata fields for preview/simulation clients.
 8. **On-chain vs informational fields**: `afterPayRecordedWith` only decodes the first 4 fields; fields 5-10 are informational for off-chain preview clients.
 | `afterPayRecordedWith(context)` | Pay hook: pulls tokens from terminal, executes V4 swap via `POOL_MANAGER.unlock()`, burns swapped tokens, returns leftover to project balance via `addToBalanceOf`, mints total (swapped + leftover mint) via `controller.mintTokensOf` with `useReservedPercent: true`. If the swap fails entirely, the hook falls back to minting instead of reverting. |
-| `setPoolFor(projectId, poolKey, twapWindow, terminalToken)` | Set the V4 pool for a project+terminal token pair using an explicit `PoolKey`. Validates: pool is initialized in PoolManager, currencies match project token and terminal token, TWAP window in bounds. Stores pool key, TWAP window, and project token. **Immutable once set.** Permission: `SET_BUYBACK_POOL` (ID 26). |
-| `setPoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken)` | Simplified overload. Constructs the `PoolKey` internally using the project token, terminal token, and the immutable `ORACLE_HOOK` as the pool's hooks address. The pool must already be initialized. Permission: `SET_BUYBACK_POOL` (ID 26). |
-| `initializePoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96)` | Atomically initializes a V4 pool (if not already initialized) and configures it as the buyback pool. Constructs the `PoolKey` using `ORACLE_HOOK`. Permission: `SET_BUYBACK_POOL` (ID 26). |
-| `setTwapWindowOf(projectId, terminalToken, newWindow)` | Change the TWAP window for a project's terminal token (5 minutes to 2 days). Permission: `SET_BUYBACK_TWAP` (ID 25). |
+| `setPoolFor(projectId, poolKey, twapWindow, terminalToken)` | Set the V4 pool for a project+terminal token pair using an explicit `PoolKey`. Validates: pool is initialized in PoolManager, currencies match project token and terminal token, TWAP window in bounds. Stores pool key, TWAP window, and project token. **Immutable once set.** Permission: `SET_BUYBACK_POOL` (ID 27). |
+| `setPoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken)` | Simplified overload. Constructs the `PoolKey` internally using the project token, terminal token, and the immutable `ORACLE_HOOK` as the pool's hooks address. The pool must already be initialized. Permission: `SET_BUYBACK_POOL` (ID 27). |
+| `initializePoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96)` | Atomically initializes a V4 pool (if not already initialized) and configures it as the buyback pool. Constructs the `PoolKey` using `ORACLE_HOOK`. Permission: `SET_BUYBACK_POOL` (ID 27). |
+| `setTwapWindowOf(projectId, terminalToken, newWindow)` | Change the TWAP window for a project's terminal token (5 minutes to 2 days). Permission: `SET_BUYBACK_TWAP` (ID 26). |
 | `unlockCallback(data)` | V4 PoolManager callback. Decodes `SwapCallbackData`, computes `sqrtPriceLimitX96`, executes swap, settles input tokens, takes output tokens. Only callable by PoolManager. |
 | `poolKeyOf(projectId, terminalToken)` | Returns the V4 `PoolKey` for a project+terminal token pair. |
 | `beforeCashOutRecordedWith(context)` | Data hook (view): compares direct protocol cash-out value against a TWAP-protected pool sell quote. Returns a cash-out hook spec when the pool sell is better. |
@@ -50,8 +50,8 @@ Route project payments and cash outs through the better of the protocol path or 
 | `beforePayRecordedWith(context)` | Resolves the project's hook (or default) and delegates the call. |
 | `beforeCashOutRecordedWith(context)` | Resolves the project's hook (or default) and delegates the call. |
 | `hasMintPermissionFor(projectId, ruleset, addr)` | Returns `true` only if `addr` is the hook registered (or defaulted) for the project. |
-| `setHookFor(projectId, hook)` | Route a project to a specific allowed buyback hook. Reverts if hook is locked or not on the allowlist. Permission: `SET_BUYBACK_HOOK` (ID 27). |
-| `lockHookFor(projectId, expectedHook)` | Lock the hook choice for a project (irreversible). If using default, snapshots it into storage first. Requires a non-zero hook. Reverts with `JBBuybackHookRegistry_HookMismatch` if the resolved hook differs from `expectedHook` (prevents race conditions). Permission: `SET_BUYBACK_HOOK` (ID 27). |
+| `setHookFor(projectId, hook)` | Route a project to a specific allowed buyback hook. Reverts if hook is locked or not on the allowlist. Permission: `SET_BUYBACK_HOOK` (ID 28). |
+| `lockHookFor(projectId, expectedHook)` | Lock the hook choice for a project (irreversible). If using default, snapshots it into storage first. Requires a non-zero hook. Reverts with `JBBuybackHookRegistry_HookMismatch` if the resolved hook differs from `expectedHook` (prevents race conditions). Permission: `SET_BUYBACK_HOOK` (ID 28). |
 | `allowHook(hook)` | Add a hook to the allowlist. Owner only. |
 | `disallowHook(hook)` | Remove a hook from the allowlist. Reverts with `JBBuybackHookRegistry_CannotDisallowDefaultHook` if the hook is the current default -- the owner must call `setDefaultHook` to change the default first. Owner only. |
 | `setDefaultHook(hook)` | Set the default hook (also adds to allowlist). Owner only. |
@@ -66,7 +66,7 @@ Route project payments and cash outs through the better of the protocol path or 
 | `nana-core-v6` | `IJBTokens`, `IJBProjects`, `IJBPermissions` | Token lookups (`tokenOf`), project ownership (`ownerOf`), permission checks |
 | `nana-core-v6` | `JBMetadataResolver` | Parsing `"quote"` metadata key from payment calldata (contains `amountToSwapWith` and `minimumSwapAmountOut`) |
 | `nana-core-v6` | `JBRulesetMetadataResolver` | Extracting `baseCurrency()` from packed ruleset metadata |
-| `nana-permission-ids-v6` | `JBPermissionIds` | Permission ID constants (`SET_BUYBACK_TWAP` = 25, `SET_BUYBACK_POOL` = 26, `SET_BUYBACK_HOOK` = 27) |
+| `nana-permission-ids-v6` | `JBPermissionIds` | Permission ID constants (`SET_BUYBACK_TWAP` = 26, `SET_BUYBACK_POOL` = 27, `SET_BUYBACK_HOOK` = 28) |
 | `@bananapus/univ4-router-v6` | `Univ4RouterDeploymentLib` | Oracle hook deployment address resolution (used in deployment script) |
 | `@uniswap/v4-core` | `IPoolManager`, `IUnlockCallback`, `IHooks`, `PoolKey`, `PoolId`, `Currency`, `BalanceDelta`, `SwapParams`, `TickMath`, `StateLibrary` | V4 pool swaps (`unlock`, `swap`, `settle`, `take`), pool state queries (`getSlot0`, `getLiquidity`), tick math, `IHooks` for `ORACLE_HOOK` typing |
 | `@prb/math` | `mulDiv` | Safe fixed-point multiplication |
@@ -154,9 +154,9 @@ Route project payments and cash outs through the better of the protocol path or 
 
 | ID | Constant | Used By | Grants |
 |----|----------|---------|--------|
-| 25 | `SET_BUYBACK_TWAP` | `JBBuybackHook.setTwapWindowOf` | Change the TWAP window for a project |
-| 26 | `SET_BUYBACK_POOL` | `JBBuybackHook.setPoolFor`, `initializePoolFor` | Set the V4 pool for a project+terminal token pair |
-| 27 | `SET_BUYBACK_HOOK` | `JBBuybackHookRegistry.setHookFor`, `lockHookFor` | Choose and lock the hook implementation for a project |
+| 26 | `SET_BUYBACK_TWAP` | `JBBuybackHook.setTwapWindowOf` | Change the TWAP window for a project |
+| 27 | `SET_BUYBACK_POOL` | `JBBuybackHook.setPoolFor`, `initializePoolFor` | Set the V4 pool for a project+terminal token pair |
+| 28 | `SET_BUYBACK_HOOK` | `JBBuybackHookRegistry.setHookFor`, `lockHookFor` | Choose and lock the hook implementation for a project |
 
 ## Events
 
