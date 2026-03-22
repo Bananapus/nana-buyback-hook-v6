@@ -2,16 +2,30 @@
 
 Step-by-step flows for every major user interaction with the buyback hook system.
 
+---
+
 ## 1. Pay with Buyback -- Swap Wins
 
 A payer sends ETH to a project whose ruleset has the buyback hook as its data hook. The Uniswap V4 pool offers more tokens per ETH than direct minting.
 
+**Entry point**: `JBMultiTerminal.pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)`
+
+**Who can call**: Anyone. The terminal is the entry point; the buyback hook is invoked automatically as the ruleset's data hook.
+
 **Actors:** Payer, JBMultiTerminal, JBTerminalStore, JBBuybackHookRegistry, JBBuybackHook, V4 PoolManager
 
-**Steps:**
+**Parameters**:
+- `projectId` -- The project to pay
+- `token` -- Token address (`JBConstants.NATIVE_TOKEN` for ETH)
+- `amount` -- Amount of tokens (ignored for native token; uses `msg.value`)
+- `beneficiary` -- Address to receive minted project tokens
+- `minReturnedTokens` -- Slippage protection; reverts if fewer tokens returned
+- `memo` -- Arbitrary string
+- `metadata` -- Optionally contains a payer quote: `(amountToSwapWith, minimumSwapAmountOut)` encoded under the `"quote"` metadata ID
+
+**State changes**:
 
 1. Payer calls `JBMultiTerminal.pay{value: 1 ether}(projectId, ..., metadata)`.
-   - `metadata` optionally contains a payer quote: `(amountToSwapWith, minimumSwapAmountOut)` encoded under the `"quote"` metadata ID.
 
 2. Terminal calls `JBTerminalStore.recordPaymentFrom(...)`, which calls the data hook (the registry).
 
@@ -58,15 +72,27 @@ A payer sends ETH to a project whose ruleset has the buyback hook as its data ho
 
 14. Mints `500` project tokens for the beneficiary via `controller.mintTokensOf(projectId, 500, beneficiary, ...)` with `useReservedPercent = true`.
 
+**Events**:
+- `Swap(projectId, amountToSwapWith, poolId, amountReceived, caller)` -- Emitted by `JBBuybackHook._swap()` after a successful V4 swap.
+- `Mint(projectId, leftoverAmount, tokenCount, caller)` -- Emitted by `JBBuybackHook.afterPayRecordedWith()` if there are leftover terminal tokens minted via `addToBalanceOf`. Only emitted when `leftoverAmountInThisContract != 0`.
+
 **Result:** Payer receives 500 project tokens (more than the ~400 that direct minting would have yielded). Reserved tokens are distributed according to the ruleset's reserved percent.
+
+---
 
 ## 2. Pay with Buyback -- Mint Wins
 
 Same setup, but the pool price is worse than the mint rate.
 
-**Steps:**
+**Entry point**: `JBMultiTerminal.pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)`
 
-1-3. Same as above.
+**Who can call**: Anyone.
+
+**Parameters**: Same as Journey 1.
+
+**State changes**:
+
+1-3. Same as Journey 1.
 
 4. `JBBuybackHook.beforePayRecordedWith(context)`:
    - Computes `tokenCountWithoutHook = 400` (what minting yields).
@@ -75,11 +101,30 @@ Same setup, but the pool price is worse than the mint rate.
 
 5. `JBTerminalStore` records the payment with the original weight. The terminal mints 400 tokens for the payer directly. Because the spec is marked noop, no pay hook callback is made.
 
+**Events**: No buyback-hook-specific events emitted. Standard `JBMultiTerminal.Pay(...)` event from the core protocol only.
+
 **Result:** Payer receives 400 tokens via direct minting. The buyback hook is not involved in execution, but preview/simulation callers still receive pool diagnostics from the noop spec metadata.
+
+---
 
 ## 2b. Cash Out -- Pool Sell Wins
 
 A holder cashes out project tokens, and selling reminted tokens into the configured V4 pool yields more terminal tokens than the protocol cash-out path.
+
+**Entry point**: `JBMultiTerminal.cashOutTokensOf(holder, projectId, cashOutCount, tokenToReclaim, minTokensReclaimed, beneficiary, metadata)`
+
+**Who can call**: The token holder, or an address with the holder's `CASH_OUT_TOKENS` permission.
+
+**Parameters**:
+- `holder` -- Address whose tokens are being cashed out
+- `projectId` -- The project to cash out from
+- `cashOutCount` -- Number of project tokens to burn (18 decimals)
+- `tokenToReclaim` -- Terminal token to receive back
+- `minTokensReclaimed` -- Slippage protection
+- `beneficiary` -- Address to receive reclaimed tokens
+- `metadata` -- Optionally contains `"cashOutMinReclaimed"` for an explicit sell-side minimum
+
+**State changes**:
 
 1. Holder calls `cashOutTokensOf(...)`.
 2. Terminal/store calls `beforeCashOutRecordedWith(...)`.
@@ -92,15 +137,32 @@ A holder cashes out project tokens, and selling reminted tokens into the configu
 9. After the terminal burns the holder's tokens on the active path, it calls `afterCashOutRecordedWith(...)`.
 10. The hook remints `cashOutCount` to itself, executes the swap, and forwards the received ETH/ERC20 terminal tokens to the beneficiary.
 
+**Events**:
+- `CashOutSwap(projectId, cashOutCount, poolId, amountReceived, caller)` -- Emitted by `JBBuybackHook.afterCashOutRecordedWith()` after selling reminted tokens through the V4 pool. Only emitted on the active (non-noop) path.
+
 **Result:** The cash-out beneficiary receives the better sell-side execution route.
+
+---
 
 ## 3. Configure Pool for Project
 
 A project owner sets up a Uniswap V4 pool for buyback routing.
 
-**Actors:** Project owner, JBBuybackHookRegistry, JBBuybackHook
+**Entry point**: `JBBuybackHookRegistry.initializePoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96)` or `JBBuybackHookRegistry.setPoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken)` (for already-initialized pools)
 
-**Steps:**
+**Who can call**: The project owner, or an address with the owner's `SET_BUYBACK_POOL` permission.
+
+**Actors:** Project owner, JBBuybackHookRegistry, JBBuybackHook, V4 PoolManager
+
+**Parameters**:
+- `projectId` -- The ID of the project to configure
+- `fee` -- The Uniswap V4 pool fee tier
+- `tickSpacing` -- The Uniswap V4 pool tick spacing
+- `twapWindow` -- The period (in seconds) over which the TWAP is computed (min 300, max 172800)
+- `terminalToken` -- The terminal token address (`JBConstants.NATIVE_TOKEN` for ETH)
+- `sqrtPriceX96` -- The initial sqrt price for the pool (only for `initializePoolFor`)
+
+**State changes**:
 
 1. Project owner calls `JBBuybackHookRegistry.initializePoolFor(projectId, fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96)`.
 
@@ -123,17 +185,32 @@ A project owner sets up a Uniswap V4 pool for buyback routing.
    - Caches the project token address in `projectTokenOf[projectId]`.
    - Stores the TWAP window.
 
+**Events**:
+- `TwapWindowChanged(projectId, terminalToken, oldWindow, newWindow, caller)` -- Emitted by `JBBuybackHook._setPoolFor()` when storing the initial TWAP window.
+- `PoolAdded(projectId, terminalToken, poolId, caller)` -- Emitted by `JBBuybackHook._setPoolFor()` after the pool key is stored.
+
 **Result:** The pool is permanently configured. Future payments to this project with this terminal token will use this pool for buyback decisions.
 
 **Important:** If the project calls `setPoolFor(...)` (without initialize) instead, the pool must already be initialized in the V4 PoolManager. This is the overload for pools that already exist.
+
+---
 
 ## 4. Set TWAP Window
 
 A project owner adjusts the TWAP window for a specific terminal token.
 
+**Entry point**: `JBBuybackHook.setTwapWindowOf(projectId, terminalToken, newWindow)`
+
+**Who can call**: The project owner, or an address with the owner's `SET_BUYBACK_TWAP` permission.
+
 **Actors:** Project owner, JBBuybackHook
 
-**Steps:**
+**Parameters**:
+- `projectId` -- The ID of the project to update
+- `terminalToken` -- The terminal token address (`JBConstants.NATIVE_TOKEN` for native ETH)
+- `newWindow` -- The new TWAP window in seconds (min `MIN_TWAP_WINDOW` = 300, max `MAX_TWAP_WINDOW` = 172800)
+
+**State changes**:
 
 1. Project owner calls `JBBuybackHook.setTwapWindowOf(projectId, terminalToken, 600)` (10 minutes).
 
@@ -145,17 +222,28 @@ A project owner adjusts the TWAP window for a specific terminal token.
 
 5. Updates `twapWindowOf[projectId][normalizedTerminalToken] = 600`.
 
-6. Emits `TwapWindowChanged(projectId, normalizedTerminalToken, oldWindow, 600, caller)`.
+**Events**:
+- `TwapWindowChanged(projectId, normalizedTerminalToken, oldWindow, 600, caller)` -- Emitted by `JBBuybackHook.setTwapWindowOf()` with both old and new values.
 
 **Result:** Future oracle queries for this project/token pair use a 10-minute TWAP window. This can be called multiple times (not immutable like the pool itself).
+
+---
 
 ## 5. Register Hook via Registry
 
 A project owner assigns a specific buyback hook implementation via the registry.
 
+**Entry point**: `JBBuybackHookRegistry.setHookFor(projectId, hook)`
+
+**Who can call**: The project owner, or an address with the owner's `SET_BUYBACK_HOOK` permission. The hook must first be allowlisted by the registry owner via `allowHook`.
+
 **Actors:** Project owner, Registry owner, JBBuybackHookRegistry
 
-**Steps:**
+**Parameters**:
+- `projectId` -- The ID of the project to configure
+- `hook` -- The `IJBRulesetDataHook` implementation address to assign
+
+**State changes**:
 
 1. Registry owner calls `JBBuybackHookRegistry.allowHook(hookAddress)` to add the implementation to the allowlist.
 
@@ -168,15 +256,29 @@ A project owner assigns a specific buyback hook implementation via the registry.
 
 4. Stores `_hookOf[projectId] = hookAddress`.
 
+**Events**:
+- `JBBuybackHookRegistry_AllowHook(hook)` -- Emitted by `allowHook()` when the registry owner adds a hook to the allowlist.
+- `JBBuybackHookRegistry_SetHook(projectId, hook)` -- Emitted by `setHookFor()` when the project's hook is assigned.
+
 **Result:** This project now uses the specified hook implementation instead of the default. The registry's `beforePayRecordedWith` will delegate to this hook for all future payments.
+
+---
 
 ## 6. Lock Hook
 
 A project owner permanently locks their buyback hook, preventing future changes.
 
+**Entry point**: `JBBuybackHookRegistry.lockHookFor(projectId, expectedHook)`
+
+**Who can call**: The project owner, or an address with the owner's `SET_BUYBACK_HOOK` permission.
+
 **Actors:** Project owner, JBBuybackHookRegistry
 
-**Steps:**
+**Parameters**:
+- `projectId` -- The ID of the project to lock the hook for
+- `expectedHook` -- The hook the caller expects to lock; prevents race conditions where the hook changes between transaction submission and execution
+
+**State changes**:
 
 1. Project owner calls `JBBuybackHookRegistry.lockHookFor(projectId, expectedHook)`.
 
@@ -192,15 +294,26 @@ A project owner permanently locks their buyback hook, preventing future changes.
 
 7. Sets `hasLockedHook[projectId] = true`.
 
+**Events**:
+- `JBBuybackHookRegistry_LockHook(projectId)` -- Emitted by `lockHookFor()` after the hook is permanently locked.
+
 **Result:** The project's hook cannot be changed. Even if the registry owner disallows the hook or changes the default, this project continues using the locked implementation. Future calls to `setHookFor` for this project will revert.
+
+---
 
 ## 7. Swap Fallback to Mint
 
 A payment triggers the swap path, but the V4 swap reverts (e.g., insufficient liquidity, pool issue).
 
+**Entry point**: `JBMultiTerminal.pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)`
+
+**Who can call**: Anyone.
+
 **Actors:** Payer, JBMultiTerminal, JBBuybackHook, V4 PoolManager
 
-**Steps:**
+**Parameters**: Same as Journey 1.
+
+**State changes**:
 
 1-6. Same as Journey 1 (swap wins). The hook enters `afterPayRecordedWith`.
 
@@ -222,15 +335,26 @@ A payment triggers the swap path, but the V4 swap reverts (e.g., insufficient li
 
 14. Mints `partialMintTokenCount` for the beneficiary via the controller.
 
+**Events**:
+- `Mint(projectId, leftoverAmount, tokenCount, caller)` -- Emitted by `JBBuybackHook.afterPayRecordedWith()` when the full amount falls back to minting. No `Swap` event is emitted because the swap reverted.
+
 **Result:** The payer receives tokens at the mint rate as if the buyback hook did not exist. No funds are lost. The swap failure is silently absorbed.
+
+---
 
 ## 8. Partial Fill Handling
 
 The V4 swap executes but only partially fills due to the `sqrtPriceLimit` being hit.
 
+**Entry point**: `JBMultiTerminal.pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)`
+
+**Who can call**: Anyone.
+
 **Actors:** Payer, JBBuybackHook, V4 PoolManager
 
-**Steps:**
+**Parameters**: Same as Journey 1.
+
+**State changes**:
 
 1-8. Same as Journey 1. The hook enters `unlockCallback`.
 
@@ -251,5 +375,9 @@ The V4 swap executes but only partially fills due to the `sqrtPriceLimit` being 
 13. Computes `partialMintTokenCount = 0.3 ether * weight / weightRatio` (e.g., 120 tokens).
 
 14. Mints `350 + 120 = 470` total tokens for the beneficiary.
+
+**Events**:
+- `Swap(projectId, amountToSwapWith, poolId, amountReceived, caller)` -- Emitted by `JBBuybackHook._swap()` after the partial swap succeeds. Note: `amountToSwapWith` is the original full amount, while `amountReceived` reflects only the filled portion.
+- `Mint(projectId, leftoverAmount, tokenCount, caller)` -- Emitted by `JBBuybackHook.afterPayRecordedWith()` for the leftover terminal tokens that are minted instead of swapped.
 
 **Result:** The payer gets 350 tokens from the swap (at the pool rate) plus 120 tokens from minting (at the mint rate). The partial fill is handled seamlessly. Both portions respect the reserved percent during minting.
