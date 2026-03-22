@@ -12,9 +12,12 @@ src/
 ├── JBBuybackHookRegistry.sol — Registry mapping projects to their buyback hooks
 ├── interfaces/
 │   ├── IJBBuybackHook.sol
-│   └── IJBBuybackHookRegistry.sol
-└── libraries/
-    └── JBSwapLib.sol          — Uniswap V4 swap helpers, TWAP calculation
+│   ├── IJBBuybackHookRegistry.sol
+│   └── IGeomeanOracle.sol    — Interface for V4 oracle hooks that implement the observe() pattern
+├── libraries/
+│   └── JBSwapLib.sol          — Uniswap V4 swap helpers, TWAP calculation
+└── structs/
+    └── SwapCallbackData.sol   — Data passed through to the V4 unlock callback
 ```
 
 ## Key Data Flow
@@ -34,7 +37,7 @@ Payment → JBTerminalStore calls data hook
 If swap selected:
   → JBBuybackHook.afterPayRecordedWith()
     → Execute swap on Uniswap V4
-    → If swap succeeds: transfer bought tokens + mint reserved portion
+    → If swap succeeds: burn bought tokens, re-mint total (swap output + leftover) with reserved rate applied
     → If swap fails: fall back to direct minting via controller
 ```
 
