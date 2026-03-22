@@ -18,7 +18,7 @@
   - `SIGMOID_K = 5e16` is hardcoded. Cannot be tuned per-pool or per-project. The inflection point may not suit all liquidity profiles.
   - When `impact == 0` (tiny swap in deep pool), tolerance floors at `max(poolFee + 100bps, 200bps)`. A pool with 0.01% fee still gets 200bps minimum tolerance.
   - When `slippageTolerance >= TWAP_SLIPPAGE_DENOMINATOR` (10,000), `_getQuote` returns 0 -> forced mint fallback.
-- **Non-18-Decimal Token Handling**: `calculateImpact` computes `mulDiv(amountIn, IMPACT_PRECISION, liquidity)`. With 6-decimal tokens (USDC), `amountIn` is 1e12 smaller for equivalent value, producing proportionally smaller impact values. This shifts the sigmoid curve, giving tighter slippage (closer to `minSlippage`) for equivalent economic impact. No tests cover non-18-decimal tokens.
+- **Non-18-Decimal Token Handling (known test gap)**: `calculateImpact` computes `mulDiv(amountIn, IMPACT_PRECISION, liquidity)`. With 6-decimal tokens (USDC), `amountIn` is 1e12 smaller for equivalent value, producing proportionally smaller impact values. This shifts the sigmoid curve, giving tighter slippage (closer to `minSlippage`) for equivalent economic impact. This is a known test coverage gap — no tests exercise non-18-decimal tokens through the sigmoid path. The functional risk is LOW (tighter slippage is conservative, not exploitable), but edge cases around very small 6-decimal amounts producing zero impact (and thus minimum slippage) have not been verified.
 - **Cross-Currency Weight Ratio**: When `amount.currency != ruleset.baseCurrency()`, the hook queries `PRICES.pricePerUnitOf()` for the weight ratio. If the price feed is inaccurate, the mint-vs-swap comparison uses wrong token counts, potentially routing incorrectly. If the price feed reverts, the entire payment reverts.
 - **`amountToSwapWith` Defaults to Full Payment**: When no payer metadata specifies a swap amount, the entire `totalPaid` routes through the swap. Partial minting is only possible via explicit metadata.
 - **Pool Immutability Trade-off**: `_poolIsSet` is one-shot -- once set, the pool for a project/token pair can never be changed. If the pool drains to zero liquidity, the hook falls back to minting forever. The project cannot migrate to a new pool. Only `twapWindowOf` remains adjustable.
@@ -82,3 +82,13 @@
 - **Token supply conservation**: Swapped project tokens are burned via `burnTokensOf`, then the total (swap output + leftover mint count) is re-minted via `mintTokensOf` with `useReservedPercent: true`. Reserved rate applies uniformly regardless of routing path.
 - **TWAP window bounds**: `twapWindow` is validated against `[MIN_TWAP_WINDOW, MAX_TWAP_WINDOW]` in both `_setPoolFor` and `setTwapWindowOf`. The `uint256 -> uint32` cast in `getQuoteFromOracle` is safe because `MAX_TWAP_WINDOW = 172800 < type(uint32).max`.
 - **Registry lock prevents hook changes**: Once `hasLockedHook[projectId] == true`, `setHookFor` reverts with `HookLocked`. The `lockHookFor` function requires `expectedHook` to match the resolved hook, preventing race conditions.
+
+## 9. Accepted Behaviors
+
+### 9.1 Oracle warmup forces mint-only period (~30 minutes)
+
+Newly initialized pools lack observation history. During the warmup period, `observe()` reverts and the catch block returns `(0, 0, 0)`, which forces `minimumSwapAmountOut = 0` and the mint path wins every comparison. This is intentional: the previous design used spot-price fallback during warmup, which was trivially sandwich-attackable. The mint-only period means users receive tokens at the ruleset weight rate (no swap premium) during the first ~30 minutes. This is a conservative degradation — no value is lost, but the swap-vs-mint optimization is temporarily disabled.
+
+### 9.2 Pool immutability prevents migration to better liquidity
+
+`_poolIsSet` is a one-shot flag. Once set, the pool for a `(projectId, terminalToken)` pair can never be changed, even if the pool's liquidity drops to zero. This is accepted because: (1) allowing pool changes would create an attack surface where a compromised operator redirects swaps to a manipulated pool, (2) the mint fallback ensures payments always succeed even with zero pool liquidity, and (3) `twapWindowOf` remains adjustable, so the project can adapt the TWAP window even if the pool cannot be changed. The trade-off is that a permanently drained pool forces the project into mint-only mode for that terminal token.
