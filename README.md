@@ -1,5 +1,7 @@
 # Juicebox Buyback Hook
 
+Payments to a Juicebox project normally mint new tokens. If the project token already trades on a DEX at a better rate, payers lose value. This hook automatically routes to whichever path yields more tokens.
+
 A Juicebox data hook, pay hook, and cash-out hook that automatically routes both buy-side payments and sell-side cash outs through the better of the protocol path or a Uniswap V4 pool. On the buy side it compares direct minting against buying from the pool. On the sell side it compares protocol cash out value against selling reminted tokens into the pool. The project's reserved rate applies uniformly on the buy side.
 
 _If you're having trouble understanding this contract, take a look at the [core protocol contracts](https://github.com/Bananapus/nana-core-v6) and the [documentation](https://docs.juicebox.money/) first. If you have questions, reach out on [Discord](https://discord.com/invite/ErQYmth4dS)._
