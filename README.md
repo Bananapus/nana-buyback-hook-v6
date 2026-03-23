@@ -52,8 +52,8 @@ The `JBBuybackHookRegistry` sits between the terminal and individual hook implem
 
 - **Owner-managed allowlist**: The registry owner calls `allowHook(hook)` / `disallowHook(hook)` to control which implementations projects can use.
 - **Default hook**: The owner calls `setDefaultHook(hook)` to set the fallback for projects that have not explicitly chosen one. Setting a default also adds it to the allowlist.
-- **Per-project override**: Project owners call `setHookFor(projectId, hook)` to select an allowed hook. Permission: `SET_BUYBACK_HOOK` (ID 27).
-- **Locking**: Project owners call `lockHookFor(projectId)` to permanently freeze their hook choice. Once locked, the hook cannot be changed. Same permission: `SET_BUYBACK_HOOK` (ID 27). Locking requires a non-zero hook (either explicitly set or inherited from default). If the project is using the default, locking snapshots that default into the project's storage.
+- **Per-project override**: Project owners call `setHookFor(projectId, hook)` to select an allowed hook. Permission: `SET_BUYBACK_HOOK` (ID 28).
+- **Locking**: Project owners call `lockHookFor(projectId)` to permanently freeze their hook choice. Once locked, the hook cannot be changed. Same permission: `SET_BUYBACK_HOOK` (ID 28). Locking requires a non-zero hook (either explicitly set or inherited from default). If the project is using the default, locking snapshots that default into the project's storage.
 - **Mint permission delegation**: `hasMintPermissionFor` returns `true` only for the address of the hook active for the project, enabling the hook to mint tokens through the controller.
 
 `disallowHook` reverts if the hook being disallowed is the current default. The owner must call `setDefaultHook` to change the default before disallowing the old hook.
@@ -154,7 +154,7 @@ Pool assignments can only be set once per terminal token -- they are immutable o
 - All pools created via the simplified or atomic overloads use the hook's immutable `ORACLE_HOOK` for TWAP price protection.
 - If using ETH, pass `JBConstants.NATIVE_TOKEN` (`0x000000000000000000000000000000000000EEEe`) as `terminalToken`. The hook normalizes this to `address(0)` internally, matching Uniswap V4's native ETH representation.
 - The project must have already issued an ERC-20 token (via `JBTokens`).
-- Permission: `SET_BUYBACK_POOL` (ID 26).
+- Permission: `SET_BUYBACK_POOL` (ID 27).
 
 ### Setting TWAP Parameters
 
@@ -162,7 +162,7 @@ The TWAP window controls the time period over which the time-weighted average pr
 
 - Call `setTwapWindowOf(projectId, terminalToken, newWindow)` to change the TWAP window for a specific terminal token (min: 5 minutes, max: 2 days).
 - A 30-minute window is a good starting point for high-activity pairs.
-- Permission: `SET_BUYBACK_TWAP` (ID 25).
+- Permission: `SET_BUYBACK_TWAP` (ID 26).
 - Each terminal token has its own TWAP window, allowing different parameters for e.g. ETH vs USDC pools.
 
 ### Oracle Behavior
