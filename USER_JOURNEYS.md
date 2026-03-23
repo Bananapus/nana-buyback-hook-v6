@@ -46,36 +46,40 @@ A payer sends ETH to a project whose ruleset has the buyback hook as its data ho
 
 6. Terminal calls `JBBuybackHook.afterPayRecordedWith{value: amountToSwapWith}(context)`.
 
-7. The hook records `balanceBefore = address(this).balance - msg.value` (to compute leftover later).
+7. The hook records `balanceBefore` to compute leftover as a delta later:
+   - **Native ETH:** `balanceBefore = address(this).balance - msg.value` (subtracts the forwarded payment that is already included in the balance).
+   - **ERC-20:** `balanceBefore = IERC20(token).balanceOf(address(this))` (captured BEFORE the hook pulls tokens from the terminal).
 
-8. The hook calls `_swap()`:
+8. If the terminal token is an ERC-20 (not native ETH), the hook pulls the payment from the terminal via `IERC20(token).safeTransferFrom(terminal, address(this), amountToSwapWith)`.
+
+9. The hook calls `_swap()`:
    - Encodes `SwapCallbackData` with the pool key, amounts, and direction.
    - Calls `POOL_MANAGER.unlock(callbackData)`.
 
-9. V4 PoolManager calls `unlockCallback(data)`:
+10. V4 PoolManager calls `unlockCallback(data)`:
    - Computes `sqrtPriceLimit` from `amountIn` and `minimumSwapAmountOut`.
    - Executes `POOL_MANAGER.swap(key, SwapParams{zeroForOne, amountSpecified: -amountIn, sqrtPriceLimitX96})`.
-   - Settles input tokens: `POOL_MANAGER.settle{value: inputAmount}()` for native ETH.
+   - Settles input tokens: `POOL_MANAGER.settle{value: inputAmount}()` for native ETH, or `sync → safeTransfer → settle` for ERC-20.
    - Takes output tokens: `POOL_MANAGER.take(outputCurrency, address(this), outputAmount)`.
    - Returns `abi.encode(outputAmount)`.
 
-10. Back in `afterPayRecordedWith`, the hook receives `exactSwapAmountOut` (e.g., 500 project tokens).
+11. Still inside `_swap()`, the hook receives `exactSwapAmountOut` (e.g., 500 project tokens), emits the `Swap` event, and then burns the tokens via `controller.burnTokensOf(address(this), projectId, 500, "")`. Both happen inside `_swap()` before it returns.
 
-11. Slippage check: `exactSwapAmountOut >= minimumSwapAmountOut` -- passes.
-
-12. The hook burns the swapped project tokens via `controller.burnTokensOf(address(this), projectId, 500, "")`.
+12. Back in `afterPayRecordedWith`, slippage check: `exactSwapAmountOut >= minimumSwapAmountOut` -- passes.
 
 13. Computes `leftover = balanceAfter - balanceBefore`. If the swap consumed all input, leftover = 0.
 
-14. Mints `500` project tokens for the beneficiary via `controller.mintTokensOf(projectId, 500, beneficiary, ...)` with `useReservedPercent = true`.
+14. If `amountToMintWith > 0` (the payer specified a portion of their payment to mint with directly instead of swapping), `partialMintTokenCount` is incremented by `amountToMintWith * weight / weightRatio`. In this example, the payer used the full payment for the swap, so `amountToMintWith = 0`.
+
+15. Mints `totalTokensToMint = exactSwapAmountOut + partialMintTokenCount` (i.e., 500 + 0 = 500) tokens for the beneficiary via `controller.mintTokensOf(projectId, 500, beneficiary, ...)` with `useReservedPercent = true`. The burn-then-mint pattern ensures the reserved percent is applied to swap output tokens that would otherwise bypass it.
 
 **State changes**:
 1. `JBTerminalStore.balanceOf[terminal][projectId][token]` -- incremented by the payment amount
 2. V4 pool state -- swap executed, liquidity positions updated
-3. Project token `balanceOf[buybackHook]` -- temporarily receives swap output, then burned
+3. Project token `balanceOf[buybackHook]` -- temporarily receives swap output, then burned (inside `_swap()`)
 4. `JBController.pendingReservedTokenBalanceOf[projectId]` -- incremented by the reserved portion of minted tokens
-5. `JBTokens` -- mints `exactSwapAmountOut + partialMintTokenCount` tokens to beneficiary (subject to reserved percent)
-6. If leftover exists: `JBTerminalStore.balanceOf[terminal][projectId][token]` -- incremented by leftover amount via `addToBalanceOf`
+5. `JBTokens` -- mints `exactSwapAmountOut + partialMintTokenCount` tokens to beneficiary (subject to reserved percent), where `partialMintTokenCount` includes both leftover-based and `amountToMintWith`-based components
+6. If leftover exists: `JBTerminalStore.balanceOf[terminal][projectId][token]` -- incremented by leftover amount via `addToBalanceOf` (for ERC-20 leftovers, the hook approves the terminal to pull via `forceApprove` before calling `addToBalanceOf`)
 
 **Events**:
 - `Swap(projectId, amountToSwapWith, poolId, amountReceived, caller)` -- emitted on `JBBuybackHook` after successful V4 swap
@@ -433,25 +437,24 @@ A payment triggers the swap path, but the V4 swap reverts (e.g., insufficient li
 
 **Steps:**
 
-1-6. Same as Journey 1 (swap wins). The hook enters `afterPayRecordedWith`.
+1-8. Same as Journey 1 (swap wins), through the hook entering `afterPayRecordedWith` and pulling ERC-20 tokens (if applicable).
 
-7. The hook calls `_swap()`, which calls `POOL_MANAGER.unlock(callbackData)`.
+9. The hook calls `_swap()`, which calls `POOL_MANAGER.unlock(callbackData)`.
 
-8. Inside `unlockCallback`, `POOL_MANAGER.swap()` reverts (insufficient liquidity, pool not initialized, etc.).
+10. Inside `unlockCallback`, `POOL_MANAGER.swap()` reverts (insufficient liquidity, pool not initialized, etc.).
 
-9. The `try POOL_MANAGER.unlock(...)` catch block catches the revert. Returns `(0, swapFailed=true)`.
+11. The `try POOL_MANAGER.unlock(...)` catch block catches the revert. `_swap()` returns `(0, swapFailed=true)`. No tokens were received, so no burn occurs inside `_swap()`.
 
-10. Back in `afterPayRecordedWith`:
+12. Back in `afterPayRecordedWith`:
     - `swapFailed == true`, so the slippage check is skipped (no revert even though `exactSwapAmountOut = 0 < minimumSwapAmountOut`).
-    - No tokens to burn (swap returned 0).
 
-11. Computes `leftover = balanceAfter - balanceBefore`. Since no tokens were consumed by the swap, `leftover == amountToSwapWith`.
+13. Computes `leftover = balanceAfter - balanceBefore`. Since no tokens were consumed by the swap, `leftover == amountToSwapWith`.
 
-12. Returns all tokens to the terminal via `addToBalanceOf`.
+14. Returns all tokens to the terminal via `addToBalanceOf` (for ERC-20, the hook first approves the terminal via `forceApprove`, then calls `addToBalanceOf` with `payValue = 0`).
 
-13. Computes `partialMintTokenCount = leftover * weight / weightRatio`.
+15. Computes `partialMintTokenCount = leftover * weight / weightRatio`, plus `amountToMintWith * weight / weightRatio` if the payer specified a non-swap portion.
 
-14. Mints `partialMintTokenCount` for the beneficiary via the controller.
+16. Mints `totalTokensToMint = exactSwapAmountOut + partialMintTokenCount` (i.e., 0 + partialMintTokenCount) for the beneficiary via the controller.
 
 **State changes**:
 1. `JBTerminalStore.balanceOf[terminal][projectId][token]` -- incremented by the full payment amount (returned via `addToBalanceOf`)
@@ -483,29 +486,30 @@ The V4 swap executes but only partially fills due to the `sqrtPriceLimit` being 
 
 **Steps:**
 
-1-8. Same as Journey 1. The hook enters `unlockCallback`.
+1-10. Same as Journey 1. The hook enters `unlockCallback`.
 
-9. `POOL_MANAGER.swap()` executes but hits the `sqrtPriceLimit` before consuming all input:
+11. `POOL_MANAGER.swap()` executes but hits the `sqrtPriceLimit` before consuming all input:
    - `inputAmount = 0.7 ether` (consumed by swap).
    - `outputAmount = 350` project tokens (received from swap).
    - The remaining `0.3 ether` is not consumed.
 
-10. Settlement: hook settles `0.7 ether` with `POOL_MANAGER.settle{value: 0.7 ether}()` and takes `350` project tokens.
+12. Settlement: hook settles `0.7 ether` with `POOL_MANAGER.settle{value: 0.7 ether}()` and takes `350` project tokens.
 
-11. Back in `afterPayRecordedWith`:
-    - `exactSwapAmountOut = 350` passes slippage check.
-    - Burns 350 project tokens.
+13. Still inside `_swap()`, the hook emits the `Swap` event and then burns the 350 project tokens via `controller.burnTokensOf(address(this), projectId, 350, "")`. Both happen inside `_swap()` before it returns.
+
+14. Back in `afterPayRecordedWith`:
+    - Slippage check: `exactSwapAmountOut = 350` passes `>= minimumSwapAmountOut`.
     - Computes `leftover = balanceAfter - balanceBefore = 0.3 ether` (the unconsumed portion).
 
-12. Returns 0.3 ETH to the terminal via `addToBalanceOf{value: 0.3 ether}(...)`.
+15. Returns 0.3 ETH to the terminal via `addToBalanceOf{value: 0.3 ether}(...)` (for ERC-20, the hook approves the terminal via `forceApprove` before calling `addToBalanceOf`).
 
-13. Computes `partialMintTokenCount = 0.3 ether * weight / weightRatio` (e.g., 120 tokens).
+16. Computes `partialMintTokenCount = 0.3 ether * weight / weightRatio` (e.g., 120 tokens), plus `amountToMintWith * weight / weightRatio` if the payer specified a non-swap portion.
 
-14. Mints `350 + 120 = 470` total tokens for the beneficiary.
+17. Mints `totalTokensToMint = exactSwapAmountOut + partialMintTokenCount` (i.e., 350 + 120 = 470) total tokens for the beneficiary.
 
 **State changes**:
 1. V4 pool state -- partial swap executed
-2. Project token `balanceOf[buybackHook]` -- temporarily receives 350 tokens, then burned
+2. Project token `balanceOf[buybackHook]` -- temporarily receives 350 tokens, then burned (inside `_swap()`)
 3. `JBTerminalStore.balanceOf[terminal][projectId][token]` -- incremented by 0.3 ETH leftover via `addToBalanceOf`
 4. `JBTokens` -- mints 470 tokens to beneficiary (subject to reserved percent)
 5. `JBController.pendingReservedTokenBalanceOf[projectId]` -- incremented by reserved portion
