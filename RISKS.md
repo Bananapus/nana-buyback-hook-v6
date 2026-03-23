@@ -7,7 +7,6 @@
 - **Oracle Failure Behavior**: When the oracle `observe()` reverts (catch block in `JBSwapLib.getQuoteFromOracle`), the library returns `(0, 0, 0)`, forcing the mint path. This prevents sandwich attacks during oracle warmup but means no swaps occur until the oracle accumulates enough observations (~30 min after pool creation).
 - **JB Core Contracts**: The hook trusts `DIRECTORY.isTerminalOf()` for caller authentication, `controller.currentRulesetOf()` for ruleset data, and `controller.mintTokensOf()`/`burnTokensOf()` for token operations. A compromised controller can mint unlimited tokens or refuse to burn swapped tokens.
 - **Registry Owner Centralization**: `JBBuybackHookRegistry` owner (`Ownable`) controls `allowHook()`, `disallowHook()`, `setDefaultHook()`. Changing the default hook silently redirects all unlocked projects. Disallowing a hook does not affect locked projects (by design), but a rug of the default hook implementation affects every project that has not locked.
-- **Token Cache Immutability**: `projectTokenOf[projectId]` is cached on `setPoolFor()`. JBTokens prevents token migration (both `setTokenFor()` and `deployERC20For()` revert with `JBTokens_ProjectAlreadyHasToken`), so the cache can never become stale. Proven by `JBBuybackHook_FalsePositives.t.sol`.
 
 ## 2. Economic Risks
 
@@ -63,8 +62,6 @@
 
 ## 7. DoS Vectors
 
-- **Pool Revert Cascading to Payment Failure**: If `POOL_MANAGER.unlock()` reverts, the try/catch in `_swap` catches it and sets `swapFailed = true`. The payment falls through to the mint path. No DoS -- the mint fallback is always available.
-- **Oracle Observation Gaps**: If the oracle hook has insufficient observation history (newly initialized pool, or observations pruned), `observe()` reverts. The catch block returns `(0, 0, 0)`, forcing the mint path. No DoS — payments succeed via minting until the oracle warms up.
 - **JBPrices Revert**: If `PRICES.pricePerUnitOf()` reverts (stale Chainlink feed, missing feed), both `beforePayRecordedWith` and `afterPayRecordedWith` revert. All buyback-routed payments halt for cross-currency projects. Workaround: change ruleset `baseCurrency` to match terminal currency.
 - **Controller Mint/Burn Revert**: If `controller.mintTokensOf()` or `burnTokensOf()` reverts, the entire payment fails. No fallback.
 - **`addToBalanceOf` Revert**: If the terminal's `addToBalanceOf` reverts when returning leftover funds, the payment fails and tokens remain stuck in the hook. No recovery mechanism. The terminal is trusted (it is `msg.sender`).
@@ -92,3 +89,7 @@ Newly initialized pools lack observation history. During the warmup period, `obs
 ### 9.2 Pool immutability prevents migration to better liquidity
 
 `_poolIsSet` is a one-shot flag. Once set, the pool for a `(projectId, terminalToken)` pair can never be changed, even if the pool's liquidity drops to zero. This is accepted because: (1) allowing pool changes would create an attack surface where a compromised operator redirects swaps to a manipulated pool, (2) the mint fallback ensures payments always succeed even with zero pool liquidity, and (3) `twapWindowOf` remains adjustable, so the project can adapt the TWAP window even if the pool cannot be changed. The trade-off is that a permanently drained pool forces the project into mint-only mode for that terminal token.
+
+### 9.3 Token cache cannot become stale
+
+`projectTokenOf[projectId]` is cached on `setPoolFor()`. JBTokens prevents token migration (both `setTokenFor()` and `deployERC20For()` revert with `JBTokens_ProjectAlreadyHasToken`), so the cache can never become stale. Proven by `JBBuybackHook_FalsePositives.t.sol`.
