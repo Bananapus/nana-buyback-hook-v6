@@ -33,7 +33,7 @@ The core contract. Implements `IJBRulesetDataHook` (called during payment and ca
 - `twapWindowOf[projectId][terminalToken]` -- TWAP window in seconds
 
 **Key functions:**
-- `beforePayRecordedWith(JBBeforePayRecordedContext)` -- Data hook. Computes swap-vs-mint decision. Returns `weight=0` with an active pay hook spec when swapping wins, or the original weight plus a noop pay hook spec when minting wins and a pool is configured. The hook spec metadata encodes 10 fields: `(projectTokenIs0, mintFromExcess, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId, minimumBeneficiaryTokenCount, minimumReservedTokenCount)`. Fields 1-4 are consumed by `afterPayRecordedWith`; fields 5-10 are informational for preview clients.
+- `beforePayRecordedWith(JBBeforePayRecordedContext)` -- Data hook. Computes swap-vs-mint decision. Returns `weight=0` with an active pay hook spec when swapping wins, or the original weight plus a noop pay hook spec when minting wins and a pool is configured. The hook spec metadata encodes 10 fields: `(projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller, tokenCountWithoutHook, twapTick, twapLiquidity, poolId, minimumBeneficiaryTokenCount, minimumReservedTokenCount)`. Fields 1-4 are consumed by `afterPayRecordedWith`; fields 5-10 are informational for preview clients.
 - `afterPayRecordedWith(JBAfterPayRecordedContext)` -- Pay hook. Executes the swap via V4 unlock/callback, burns received project tokens, computes leftover, mints tokens for leftover + swap amount.
 - `beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext)` -- Data hook. Compares direct protocol cash-out value against a TWAP-protected pool sell quote. Returns a cash-out hook spec when selling into the pool is better.
 - `afterCashOutRecordedWith(JBAfterCashOutRecordedContext)` -- Cash-out hook. Remints burned project tokens to the hook, executes the pool sale, and forwards proceeds to the beneficiary.
@@ -97,7 +97,7 @@ Terminal calls beforePayRecordedWith(context)
   |      Return weight=0 + JBPayHookSpecification(this, amountToSwapWith, metadata)
   |      metadata = abi.encode(
   |        projectTokenIs0,              // 1 — bool
-  |        mintFromExcess,               // 2 — uint256
+  |        amountToMintWith,               // 2 — uint256
   |        minimumSwapAmountOut,         // 3 — uint256
   |        controller,                   // 4 — IJBController
   |        tokenCountWithoutHook,        // 5 — uint256 (informational)
