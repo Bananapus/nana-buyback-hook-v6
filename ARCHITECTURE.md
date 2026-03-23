@@ -48,10 +48,12 @@ Cash out → JBTerminalStore calls data hook
     → Calculate direct protocol cash-out value
     → Read minimum from explicit cash-out metadata or, by default, from the TWAP/geomean oracle path
     → Always return cash-out hook specification with routing diagnostics when pool is configured
+    → Always encode `cashOutCount` in spec metadata for the afterCashOut callback
     → If pool sale is better:
       → Spec is active (`noop = false`)
       → JBBuybackHook.afterCashOutRecordedWith()
-        → Remint burned tokens to the hook
+        → Decode cashOutCountToSell from metadata (not context.cashOutCount)
+        → Remint cashOutCountToSell tokens to the hook
         → Execute swap on Uniswap V4
         → Forward proceeds to beneficiary
     → Else:

@@ -151,20 +151,21 @@ A holder cashes out project tokens, and selling reminted tokens into the configu
 7. If the pool sale is better (`minimumSwapAmountOut > directCashOutAmount`), the spec is active (`noop = false`) and the hook returns `cashOutTaxRate = MAX_CASH_OUT_TAX_RATE` to suppress the direct protocol reclaim path.
 8. If the protocol cash out is better, the spec is informational (`noop = true`) and the terminal skips the cash-out hook callback.
 9. After the terminal burns the holder's tokens on the active path, it calls `afterCashOutRecordedWith(...)`.
-10. The hook remints `cashOutCount` project tokens to itself via `controller.mintTokensOf(projectId, cashOutCount, address(this), "", false)`.
-11. The hook executes `_swapExactInput(key, cashOutCount, minimumSwapAmountOut, zeroForOne)` to sell the reminted tokens.
-12. Slippage re-check: `amountReceived >= minimumSwapAmountOut`.
-13. The hook forwards the received ETH/ERC20 terminal tokens to the beneficiary via `Address.sendValue` (native) or `IERC20.safeTransfer` (ERC-20).
+10. The hook decodes `cashOutCountToSell` from `hookMetadata` (set during `beforeCashOutRecordedWith`). This is the count the data hook intended for the swap -- it may differ from `context.cashOutCount` when a wrapper (e.g. REVDeployer) splits tokens into fee and non-fee tranches. If `hookMetadata` is empty, it falls back to `context.cashOutCount`.
+11. The hook remints `cashOutCountToSell` project tokens to itself via `controller.mintTokensOf(projectId, cashOutCountToSell, address(this), "", false)`.
+12. The hook executes `_swapExactInput(key, cashOutCountToSell, minimumSwapAmountOut, zeroForOne)` to sell the reminted tokens.
+13. Slippage re-check: `amountReceived >= minimumSwapAmountOut`.
+14. The hook forwards the received ETH/ERC20 terminal tokens to the beneficiary via `Address.sendValue` (native) or `IERC20.safeTransfer` (ERC-20).
 
 **State changes**:
 1. Project tokens burned by the terminal (holder's tokens)
-2. `JBTokens` -- remints `cashOutCount` tokens to the hook (bypasses reserved percent with `useReservedPercent: false`)
+2. `JBTokens` -- remints `cashOutCountToSell` tokens to the hook (bypasses reserved percent with `useReservedPercent: false`). The count comes from metadata, not `context.cashOutCount`, so wrappers that split the cash-out into fee/non-fee tranches only sell the non-fee portion.
 3. V4 pool state -- swap executed selling project tokens for terminal tokens
 4. Project token `balanceOf[buybackHook]` -- temporarily receives reminted tokens, consumed by swap
 5. Terminal token balance of beneficiary -- increases by `amountReceived`
 
 **Events**:
-- `CashOutSwap(projectId, cashOutCount, poolId, amountReceived, caller)` -- emitted on `JBBuybackHook` after the sell-side swap completes
+- `CashOutSwap(projectId, cashOutCountToSell, poolId, amountReceived, caller)` -- emitted on `JBBuybackHook` after the sell-side swap completes. `cashOutCountToSell` is the metadata-sourced count, not `context.cashOutCount`.
 
 **Edge cases**:
 - `JBBuybackHook_CallerNotTerminal(caller)` -- reverts if `afterCashOutRecordedWith` caller is not a terminal of the project
