@@ -409,6 +409,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Set the V4 pool to use for a given project and terminal token pair.
     /// @dev Pool keys are intentionally immutable once set. This prevents manipulation of swap routing
     /// after a project's buyback hook is configured.
+    /// @dev WARNING: The `poolKey.hooks` field is NOT validated. A malicious or buggy V4 hook address in the pool key
+    /// could interfere with swaps (e.g. manipulate pricing, revert, or extract value). Because this function is
+    /// permissioned to the project owner (or a delegate with `SET_BUYBACK_POOL`), this is a self-harming-only risk.
+    /// Callers MUST ensure the pool key — including its hooks field — references a trusted pool.
     /// @param projectId The ID of the project to set the pool for.
     /// @param poolKey The V4 PoolKey identifying the pool.
     /// @param twapWindow The period of time over which the TWAP is computed.
