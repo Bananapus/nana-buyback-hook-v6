@@ -46,6 +46,8 @@ Cash outs follow the same best-execution philosophy. `beforeCashOutRecordedWith`
 
 When a pool is configured on the sell side, `beforeCashOutRecordedWith` always returns a `JBCashOutHookSpecification` with routing metadata. If the pool wins, the spec is active (`noop = false`) and `afterCashOutRecordedWith` executes the sell. If the protocol cash out wins, the spec is informational (`noop = true`, `amount = 0`) so preview clients can still inspect the pool-vs-protocol comparison without triggering the hook callback.
 
+The cash-out spec metadata encodes the `cashOutCount` that `afterCashOutRecordedWith` should remint and sell. This matters when a data hook wrapper (e.g. REVDeployer) splits the cash-out into fee and non-fee tranches -- the terminal always passes the original full count in `context.cashOutCount`, but only the non-fee portion should be sold. The metadata passthrough ensures the hook sells exactly the count chosen during route selection, not the full terminal-provided count. When metadata is empty, the hook falls back to `context.cashOutCount` for backwards compatibility.
+
 ## Registry
 
 The `JBBuybackHookRegistry` sits between the terminal and individual hook implementations:
@@ -220,6 +222,21 @@ When a pool is configured, the `JBPayHookSpecification.metadata` returned by `be
 | 10 | `minimumReservedTokenCount` | `uint256` | Minimum reserved portion of `minimumSwapAmountOut` after the reserved rate |
 
 `afterPayRecordedWith` only decodes fields 1-4 to execute the swap. Fields 5-10 are informational -- they allow preview/simulation clients to inspect the routing decision context without replaying the computation. On mint-path noop specs, all 10 fields are still present even though no pay-hook callback will be executed.
+
+### Cash-Out Hook Specification Metadata
+
+When a pool is configured, the `JBCashOutHookSpecification.metadata` returned by `beforeCashOutRecordedWith` always encodes 6 fields. If the pool sell wins, the spec is active (`noop = false`). If the protocol cash out wins, the spec is informational (`noop = true`).
+
+| # | Field | Type | Purpose |
+|---|-------|------|---------|
+| 1 | `minimumSwapAmountOut` | `uint256` | Slippage floor -- the minimum acceptable terminal tokens from selling project tokens |
+| 2 | `cashOutCountToSell` | `uint256` | The project token count that `afterCashOutRecordedWith` should remint and sell. Equals `context.cashOutCount` as seen by `beforeCashOutRecordedWith`. When a wrapper (e.g. REVDeployer) adjusts the count before delegating, this preserves the wrapper's intended sell count. |
+| 3 | `directCashOutAmount` | `uint256` | Terminal tokens the holder would receive from the protocol cash-out path (informational) |
+| 4 | `twapTick` | `int24` | TWAP oracle tick used for the sell-side price quote (informational) |
+| 5 | `twapLiquidity` | `uint128` | Harmonic mean liquidity from the TWAP oracle (informational) |
+| 6 | `poolId` | `PoolId` | V4 pool identifier used for the swap (informational) |
+
+`afterCashOutRecordedWith` decodes fields 1-2 to execute the sell. Fields 3-6 are informational for preview clients. When `hookMetadata` is empty, the hook falls back to `context.cashOutCount` for backwards compatibility.
 
 ### Interpreting the Informational Fields
 

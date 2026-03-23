@@ -183,10 +183,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @dev This is called by the terminal after the buyback hook's data-hook path has chosen pool execution over the
     /// protocol cash out path.
     /// @dev The terminal has already burned the holder's project tokens by the time this callback runs, so this hook
-    /// remints the same amount to itself before executing the sell.
-    /// @param context Standard Juicebox cash-out hook context. `hookMetadata` optionally encodes a
-    /// `minimumSwapAmountOut` floor chosen during `beforeCashOutRecordedWith`, followed by informational sell-side
-    /// routing metadata.
+    /// remints tokens to itself before executing the sell. The count to remint/sell comes from `hookMetadata`
+    /// (set during `beforeCashOutRecordedWith`), NOT from `context.cashOutCount`. This distinction matters when a
+    /// data hook wrapper (e.g. REVDeployer) splits the cash-out into fee and non-fee tranches — the terminal
+    /// always passes the original full count in `context.cashOutCount`, but only the non-fee portion should be sold.
+    /// @param context Standard Juicebox cash-out hook context. `hookMetadata` encodes (minimumSwapAmountOut,
+    /// cashOutCountToSell) chosen during `beforeCashOutRecordedWith`, followed by informational sell-side routing
+    /// metadata.
     function afterCashOutRecordedWith(JBAfterCashOutRecordedContext calldata context) external payable override {
         // Make sure only payment terminals of the project can trigger the sell-side hook.
         if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
@@ -201,18 +204,22 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         PoolKey memory key = _poolKeyOf[context.projectId][terminalToken];
         address projectToken = projectTokenOf[context.projectId];
 
-        // Decode the sell-side slippage floor chosen during route selection, if one was provided.
+        // Decode the sell-side slippage floor and the token count to sell, both chosen during route selection.
+        // The cashOutCount from metadata is the count the data hook intended for this swap — it may differ from
+        // context.cashOutCount when a wrapper (e.g. REVDeployer) splits tokens into fee and non-fee tranches.
         uint256 minimumSwapAmountOut;
+        uint256 cashOutCountToSell = context.cashOutCount;
         if (context.hookMetadata.length != 0) {
-            minimumSwapAmountOut = abi.decode(context.hookMetadata, (uint256));
+            (minimumSwapAmountOut, cashOutCountToSell) = abi.decode(context.hookMetadata, (uint256, uint256));
         }
 
-        // Remint the previously burned project tokens to this hook so they can be sold into the pool.
+        // Remint project tokens to this hook so they can be sold into the pool.
+        // Uses the metadata-provided count, not context.cashOutCount, to avoid selling fee-portion tokens.
         IJBController controller = IJBController(address(DIRECTORY.controllerOf(context.projectId)));
         // slither-disable-next-line unused-return
         controller.mintTokensOf({
             projectId: context.projectId,
-            tokenCount: context.cashOutCount,
+            tokenCount: cashOutCountToSell,
             beneficiary: address(this),
             memo: "",
             useReservedPercent: false
@@ -222,7 +229,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // slither-disable-next-line reentrancy-events
         uint256 amountReceived = _swapExactInput({
             key: key,
-            amountIn: context.cashOutCount,
+            amountIn: cashOutCountToSell,
             minimumSwapAmountOut: minimumSwapAmountOut,
             zeroForOne: projectToken < terminalToken
         });
@@ -242,7 +249,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Emit the executed sell-side cash-out details for offchain indexers and analytics.
         emit CashOutSwap({
             projectId: context.projectId,
-            cashOutCount: context.cashOutCount,
+            cashOutCount: cashOutCountToSell,
             poolId: key.toId(),
             amountReceived: amountReceived,
             caller: msg.sender
@@ -668,7 +675,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             hook: IJBCashOutHook(address(this)),
             noop: noop,
             amount: 0,
-            metadata: abi.encode(minimumSwapAmountOut, directCashOutAmount, twapTick, twapLiquidity, poolId)
+            metadata: abi.encode(
+                minimumSwapAmountOut, context.cashOutCount, directCashOutAmount, twapTick, twapLiquidity, poolId
+            )
         });
 
         if (noop) return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);

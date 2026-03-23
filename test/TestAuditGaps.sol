@@ -575,7 +575,7 @@ contract TestAuditGaps is Test {
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: payable(beneficiary),
-            hookMetadata: abi.encode(amountOut),
+            hookMetadata: abi.encode(amountOut, cashOutCount),
             cashOutMetadata: ""
         });
 

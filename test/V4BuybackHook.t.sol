@@ -1361,12 +1361,14 @@ contract V4BuybackHookTest is Test {
         assertEq(specs[0].amount, 0, "sell-side hook should not consume protocol reclaim funds");
         (
             uint256 minimumSwapAmountOut,
+            uint256 cashOutCountInMetadata,
             uint256 minimumProtocolAmountOut,
             int24 twapTick,
             uint128 twapLiquidity,
             PoolId decodedPoolId
-        ) = abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        ) = abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumSwapAmountOut, explicitMinimumReclaimed, "explicit cash-out minimum should be honored");
+        assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
         assertEq(minimumProtocolAmountOut, 0.5 ether, "protocol minimum should reflect the direct cash out amount");
         assertEq(twapTick, 0, "explicit minimum should skip TWAP diagnostics");
         assertEq(twapLiquidity, 0, "explicit minimum should skip TWAP diagnostics");
@@ -1410,11 +1412,13 @@ contract V4BuybackHookTest is Test {
         assertEq(specs[0].amount, 0, "noop sell-side spec should not consume protocol reclaim funds");
         (
             uint256 minimumSwapAmountOut,
+            uint256 cashOutCountInMetadata,
             uint256 minimumProtocolAmountOut,
             int24 twapTick,
             uint128 twapLiquidity,
             PoolId decodedPoolId
-        ) = abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        ) = abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
+        assertEq(cashOutCountInMetadata, 1 ether, "metadata should encode the cash-out count for afterCashOut");
         assertEq(minimumProtocolAmountOut, 50 ether, "metadata should include the protocol minimum");
         assertGt(minimumSwapAmountOut, 0, "metadata should include a non-zero sell-side minimum");
         assertLt(minimumSwapAmountOut, minimumProtocolAmountOut, "sell-side minimum should lose to the protocol path");
@@ -1479,9 +1483,10 @@ contract V4BuybackHookTest is Test {
         assertEq(specs.length, 1, "sell-side route should surface one hook spec");
         assertFalse(specs[0].noop, "sell-side route should not be noop");
 
-        (uint256 minimumSwapAmountOut, uint256 minimumProtocolAmountOut,,,) =
-            abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        (uint256 minimumSwapAmountOut, uint256 cashOutCountInMetadata, uint256 minimumProtocolAmountOut,,,) =
+            abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
+        assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
         assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface protocol minimum");
     }
 
@@ -1542,9 +1547,10 @@ contract V4BuybackHookTest is Test {
         assertEq(specs.length, 1, "noop sell-side metadata should still be returned");
         assertTrue(specs[0].noop, "protocol-winning path should be noop");
 
-        (uint256 minimumSwapAmountOut, uint256 minimumProtocolAmountOut,,,) =
-            abi.decode(specs[0].metadata, (uint256, uint256, int24, uint128, PoolId));
+        (uint256 minimumSwapAmountOut, uint256 cashOutCountInMetadata, uint256 minimumProtocolAmountOut,,,) =
+            abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
+        assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
         assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface protocol minimum");
         assertLe(
             minimumSwapAmountOut, minimumProtocolAmountOut, "noop path should only happen at or below protocol minimum"
@@ -1586,7 +1592,7 @@ contract V4BuybackHookTest is Test {
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: payable(beneficiary),
-            hookMetadata: abi.encode(amountOut),
+            hookMetadata: abi.encode(amountOut, cashOutCount),
             cashOutMetadata: ""
         });
 
@@ -1604,6 +1610,122 @@ contract V4BuybackHookTest is Test {
 
         assertTrue(mockPm.swapCalled(), "sell-side swap should hit the pool manager");
         assertEq(beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive swap proceeds");
+    }
+
+    /// @notice H-3: When a wrapper splits cashOutCount into fee and non-fee tranches, the metadata-sourced count
+    /// should be used for reminting/selling, NOT context.cashOutCount.
+    function test_afterCashOutRecordedWith_usesMetadataCountNotContextCount() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+
+        // Simulate a wrapper (like REVDeployer) that splits: 100 tokens total, 5 are fee, 95 are non-fee.
+        uint256 fullCashOutCount = 100 ether;
+        uint256 nonFeeCashOutCount = 95 ether;
+        uint256 amountOut = 5 ether;
+
+        projectToken.mint(address(hook), nonFeeCashOutCount);
+        vm.deal(address(mockPm), amountOut);
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(int128(uint128(amountOut)), -int128(uint128(nonFeeCashOutCount)));
+
+        // The context has the FULL count, but metadata has the non-fee count.
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: fullCashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: abi.encode(amountOut, nonFeeCashOutCount),
+            cashOutMetadata: ""
+        });
+
+        // The hook MUST mint nonFeeCashOutCount (95 ether), NOT fullCashOutCount (100 ether).
+        vm.expectCall(
+            address(controller),
+            abi.encodeWithSignature(
+                "mintTokensOf(uint256,uint256,address,string,bool)",
+                projectId,
+                nonFeeCashOutCount,
+                address(hook),
+                "",
+                false
+            )
+        );
+
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(context);
+
+        assertTrue(mockPm.swapCalled(), "sell-side swap should execute");
+        assertEq(beneficiary.balance, amountOut, "beneficiary should receive swap proceeds");
+    }
+
+    /// @notice H-3 fallback: when hookMetadata is empty, afterCashOutRecordedWith defaults to context.cashOutCount.
+    function test_afterCashOutRecordedWith_fallsBackToContextCountWhenNoMetadata() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+
+        uint256 cashOutCount = 10 ether;
+        uint256 amountOut = 5 ether;
+
+        projectToken.mint(address(hook), cashOutCount);
+        vm.deal(address(mockPm), amountOut);
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(int128(uint128(amountOut)), -int128(uint128(cashOutCount)));
+
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: "",
+            cashOutMetadata: ""
+        });
+
+        // With empty metadata, the hook should fall back to context.cashOutCount.
+        vm.expectCall(
+            address(controller),
+            abi.encodeWithSignature(
+                "mintTokensOf(uint256,uint256,address,string,bool)", projectId, cashOutCount, address(hook), "", false
+            )
+        );
+
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(context);
+
+        assertTrue(mockPm.swapCalled(), "sell-side swap should execute");
     }
 
     function test_afterCashOutRecordedWith_revertsIfCallerIsNotProjectTerminal() public {
