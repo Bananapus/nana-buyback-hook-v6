@@ -211,6 +211,7 @@ A project owner sets up a Uniswap V4 pool for buyback routing.
    - Validates `terminalToken != projectToken`.
    - Validates the pool is initialized in the PoolManager (`sqrtPriceX96 != 0`).
    - Validates the PoolKey currencies match the project token and terminal token.
+   - `require("JBBuybackHook: pool key currencies mismatch")` — reverts if the PoolKey currencies do not match the project token and terminal token. Unreachable via `initializePoolFor` (which constructs the key internally) but possible via `setPoolFor(PoolKey)` with a mismatched key.
    - Stores the pool key and marks `_poolIsSet = true`.
    - Caches the project token address in `projectTokenOf[projectId]`.
    - Stores the TWAP window.
