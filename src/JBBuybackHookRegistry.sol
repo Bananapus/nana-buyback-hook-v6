@@ -213,6 +213,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         IJBRulesetDataHook hook = _hookOf[projectId];
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
 
+        // Revert if there is no hook to forward to.
+        if (address(hook) == address(0)) revert JBBuybackHookRegistry_HookNotSet(projectId);
+
         // Forward the call to the resolved hook.
         IJBBuybackHook(address(hook))
             .initializePoolFor({
@@ -249,6 +252,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Get the hook for the project (falls back to default).
         IJBRulesetDataHook hook = _hookOf[projectId];
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+
+        // Revert if there is no hook to forward to.
+        if (address(hook) == address(0)) revert JBBuybackHookRegistry_HookNotSet(projectId);
 
         // Forward the call to the resolved hook.
         IJBBuybackHook(address(hook))
@@ -310,6 +316,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Get the hook for the project (falls back to default).
         IJBRulesetDataHook hook = _hookOf[context.projectId];
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+
+        // Revert if there is no hook to forward to.
+        if (address(hook) == address(0)) revert JBBuybackHookRegistry_HookNotSet(context.projectId);
 
         // By design — a project's hook choice is sovereign. Disallowing a hook only prevents NEW
         // projects from selecting it via setHookFor; it does not override existing assignments.
