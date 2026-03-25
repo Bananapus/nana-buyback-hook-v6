@@ -260,7 +260,7 @@ The test suite is comprehensive but these areas have limited coverage:
 
 ## Compiler and Version Info
 
-- **Solidity**: 0.8.26
+- **Solidity**: ^0.8.26
 - **EVM target**: Cancun
 - **Optimizer**: via-IR, 200 runs
 - **Dependencies**: OpenZeppelin 5.x, Uniswap V4 core/periphery, Solady, forge-std
