@@ -1,5 +1,5 @@
 [profile.default]
-solc = '0.8.26'
+solc = '0.8.28'
 evm_version = 'cancun'
 via_ir = true
 optimizer_runs = 200
