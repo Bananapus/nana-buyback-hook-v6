@@ -51,24 +51,26 @@ contract DeployScript is Script, Sphinx {
         trustedForwarder = core.permissions.trustedForwarder();
 
         // Uniswap V4 PoolManager addresses per chain.
-        // Mainnet addresses are canonical. Testnet addresses use the canonical V4 address —
-        // verify against https://docs.uniswap.org/contracts/v4/deployments before deploying.
+        // Verify at https://docs.uniswap.org/contracts/v4/deployments
         if (block.chainid == 1) {
             poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Ethereum Mainnet
         } else if (block.chainid == 11_155_111) {
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Ethereum Sepolia (verify before deploy)
+            poolManager = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543; // Ethereum Sepolia
         } else if (block.chainid == 10) {
             poolManager = 0x9a13F98Cb987694C9F086b1F5eB990EeA8264Ec3; // Optimism Mainnet
         } else if (block.chainid == 8453) {
             poolManager = 0x498581fF718922c3f8e6A244956aF099B2652b2b; // Base Mainnet
         } else if (block.chainid == 11_155_420) {
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Optimism Sepolia (verify before deploy)
+            // Optimism Sepolia — no official V4 PoolManager listed at
+            // https://docs.uniswap.org/contracts/v4/deployments as of 2026-03-24.
+            // Verify before deploying; this address may need updating.
+            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Optimism Sepolia (unverified)
         } else if (block.chainid == 84_532) {
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Base Sepolia (verify before deploy)
+            poolManager = 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408; // Base Sepolia
         } else if (block.chainid == 42_161) {
             poolManager = 0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32; // Arbitrum Mainnet
         } else if (block.chainid == 421_614) {
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Arbitrum Sepolia (verify before deploy)
+            poolManager = 0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317; // Arbitrum Sepolia
         } else {
             revert("Invalid RPC / no juice contracts deployed on this network");
         }

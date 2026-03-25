@@ -465,8 +465,8 @@ contract V4RealOracleForkTest is Test {
         assertEq(hookSpecs.length, 1, "sell-side oracle path should return one hook specification");
         assertFalse(hookSpecs[0].noop, "oracle sell path should be active");
 
-        (uint256 minimumSwapAmountOut, uint256 minimumProtocolAmountOut, int24 twapTick, uint128 twapLiquidity,) =
-            abi.decode(hookSpecs[0].metadata, (uint256, uint256, int24, uint128, bytes32));
+        (uint256 minimumSwapAmountOut,, uint256 minimumProtocolAmountOut, int24 twapTick, uint128 twapLiquidity,) =
+            abi.decode(hookSpecs[0].metadata, (uint256, uint256, uint256, int24, uint128, bytes32));
         assertGt(minimumSwapAmountOut, 0, "oracle sell path should surface a non-zero sell minimum");
         assertEq(minimumProtocolAmountOut, 0, "tiny surplus should produce zero direct reclaim");
         assertEq(twapTick, 0, "oracle tick should match the mocked 1:1 price");
