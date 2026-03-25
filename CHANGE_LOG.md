@@ -106,7 +106,7 @@ The pay hook metadata has since expanded beyond the original 5 fields. It now in
 
 ### Solidity Version
 - **v5:** `pragma solidity 0.8.23`
-- **v6:** `pragma solidity ^0.8.26`
+- **v6:** `pragma solidity 0.8.28`
 
 > **Why V3 → V4**: Uniswap V4's singleton architecture reduces gas costs for multi-hop swaps, enables custom oracle hooks (replacing V3's fixed TWAP), and handles native ETH without WETH wrapping. The migration aligns the buyback hook with the broader V4 ecosystem that `nana-router-terminal-v6` also targets.
 
