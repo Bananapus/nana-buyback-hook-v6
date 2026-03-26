@@ -94,3 +94,7 @@ Newly initialized pools lack observation history. During the warmup period, `obs
 ### 9.3 Token cache cannot become stale
 
 `projectTokenOf[projectId]` is cached on `setPoolFor()`. JBTokens prevents token migration (both `setTokenFor()` and `deployERC20For()` revert with `JBTokens_ProjectAlreadyHasToken`), so the cache can never become stale. Proven by `JBBuybackHook_FalsePositives.t.sol`.
+
+### 9.4 Fee-on-transfer (FOT) token handling in mint fallback
+
+When a swap fails and leftover terminal tokens are returned to the terminal via `addToBalanceOf`, the hook measures the actual amount transferred (balance delta before/after the call) rather than using the pre-transfer amount. For fee-on-transfer tokens, the terminal receives less than the hook sends due to the transfer tax. The mint calculation uses the actual credited amount to prevent overissuance of project tokens. Note: the swap path itself (V4 PoolManager settlement) does not apply this correction — FOT tokens may still cause accounting discrepancies in the swap settlement flow. Projects using FOT terminal tokens should be aware of this general limitation across all Uniswap V4 integrations.
