@@ -256,10 +256,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
     }
 
-    /// @notice Swap the specified amount of terminal tokens for project tokens, using any leftover terminal tokens to
-    /// mint from the project.
-    /// @dev If the swap reverts (due to slippage, insufficient liquidity, or something else),
-    /// then the hook mints the number of tokens which a payment to the project would have minted.
+    /// @notice Swap terminal tokens for project tokens, using any leftover terminal tokens to mint from the project.
+    /// @dev The swap uses the issuance rate as its price limit: it fills while the pool offers a better rate than
+    /// minting, and any unswapped tokens are minted at the issuance rate. If the swap reverts entirely (due to
+    /// insufficient liquidity or something else), all tokens are minted.
     /// @param context The pay context passed in by the terminal.
     function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable override {
         // Make sure only the project's payment terminals can access this function.
@@ -268,8 +268,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // Parse the metadata forwarded from the data hook.
-        (bool projectTokenIs0, uint256 amountToMintWith, uint256 minimumSwapAmountOut, IJBController controller) =
-            abi.decode(context.hookMetadata, (bool, uint256, uint256, IJBController));
+        // `tokenCountWithoutHook` is the number of project tokens a direct payment (no swap) would have minted
+        // for the swap portion of the payment. It is used as the swap's price floor: the pool must offer a rate
+        // at least as good as minting, otherwise the remaining input is minted instead.
+        (bool projectTokenIs0, uint256 amountToMintWith,, IJBController controller, uint256 tokenCountWithoutHook) =
+            abi.decode(context.hookMetadata, (bool, uint256, uint256, IJBController, uint256));
 
         // Record the terminal token balance BEFORE pulling payment tokens so we can compute leftover as a delta.
         // For native ETH, `msg.value` is already included in `address(this).balance` at this point,
@@ -288,17 +291,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Get a reference to the number of project tokens that was swapped for.
         // `swapFailed` is true when the try/catch in _swap caught a revert (pool unavailable, etc.).
+        // The price limit is set to the issuance rate (tokenCountWithoutHook / amountIn), so the swap
+        // fills only while the pool offers a better rate than minting. Any unconsumed input tokens
+        // remain in this contract and are minted at the issuance rate below.
         // slither-disable-next-line reentrancy-events
-        (uint256 exactSwapAmountOut, bool swapFailed) = _swap({
+        (uint256 exactSwapAmountOut,) = _swap({
             context: context,
             projectTokenIs0: projectTokenIs0,
-            minimumSwapAmountOut: minimumSwapAmountOut,
+            minimumSwapAmountOut: tokenCountWithoutHook,
             controller: controller
         });
-
-        // If the swap partially filled (price limit hit, exactSwapAmountOut < minimumSwapAmountOut),
-        // fall through to the leftover-mint path below — never revert a payment. The payer receives
-        // swap output + minted tokens for any leftover terminal tokens that weren't consumed by the pool.
 
         // Compute leftover terminal tokens as a delta (balanceAfter - balanceBefore).
         uint256 leftoverAmountInThisContract = _terminalTokenBalance(context.forwardedAmount.token) - balanceBefore;
@@ -914,7 +916,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Swap the terminal token to receive project tokens via V4.
     /// @param context The `afterPayRecordedContext` passed in by the terminal.
     /// @param projectTokenIs0 Whether the project token is currency0 in the pool.
-    /// @param minimumSwapAmountOut The minimum acceptable output, used for sqrtPriceLimit computation.
+    /// @param minimumSwapAmountOut The token count that sets the swap's price floor (typically the issuance-rate
+    /// equivalent). The swap stops when the pool price reaches `minimumSwapAmountOut / amountIn`.
     /// @param controller The controller used to mint and burn tokens.
     /// @return amountReceived The amount of project tokens received from the swap.
     /// @return swapFailed True if the swap reverted and was caught by try/catch (triggers mint fallback).
