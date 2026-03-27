@@ -306,19 +306,30 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         return hook.beforeCashOutRecordedWith(context);
     }
 
-    /// @notice Forward the call to the hook for the project.
+    /// @notice Forward the pay data-hook call to the resolved buyback hook for the project.
+    /// @dev Uses the project-specific hook when configured, otherwise falls back to the default hook.
+    /// If neither exists, the payment values are passed through unchanged — this allows the registry to be deployed
+    /// on chains where no Uniswap V4 PoolManager is available (and thus no buyback hook exists). Projects function
+    /// normally without buyback optimization; they simply mint at the ruleset weight.
+    /// @param context Standard Juicebox pay data-hook context.
+    /// @return weight The weight returned by the resolved hook, or the original context weight.
+    /// @return hookSpecifications Any pay hook specifications returned by the resolved hook.
     function beforePayRecordedWith(JBBeforePayRecordedContext calldata context)
         external
         view
         override
         returns (uint256 weight, JBPayHookSpecification[] memory hookSpecifications)
     {
-        // Get the hook for the project (falls back to default).
+        // Resolve the project-specific hook first.
         IJBRulesetDataHook hook = _hookOf[context.projectId];
+
+        // Fall back to the default hook when the project has not pinned a specific one.
         if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
 
-        // Revert if there is no hook to forward to.
-        if (address(hook) == address(0)) revert JBBuybackHookRegistry_HookNotSet(context.projectId);
+        // If no hook is configured at all, leave the terminal's pay values untouched.
+        if (address(hook) == address(0)) {
+            return (context.weight, hookSpecifications);
+        }
 
         // By design — a project's hook choice is sovereign. Disallowing a hook only prevents NEW
         // projects from selecting it via setHookFor; it does not override existing assignments.
