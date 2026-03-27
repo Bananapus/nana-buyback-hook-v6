@@ -352,8 +352,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // it will be less, and we must only mint project tokens proportional to what was actually credited.
             uint256 amountActuallySent = balanceBeforeAdd - _terminalTokenBalance(context.forwardedAmount.token);
 
-            partialMintTokenCount =
-                mulDiv({x: amountActuallySent, y: context.weight, denominator: weightRatio});
+            partialMintTokenCount = mulDiv({x: amountActuallySent, y: context.weight, denominator: weightRatio});
 
             emit Mint({
                 projectId: context.projectId,
