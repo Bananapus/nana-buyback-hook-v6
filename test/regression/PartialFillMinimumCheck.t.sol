@@ -227,7 +227,8 @@ contract PFMC_PartialFillMinimumCheck is Test {
     }
 
     /// @dev Build the afterPay context for a native ETH payment.
-    /// hookMetadata encodes: (projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller, tokenCountWithoutHook)
+    /// hookMetadata encodes: (projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller,
+    /// tokenCountWithoutHook)
     function _buildContext(
         uint256 payAmount,
         uint256 minimumSwapAmountOut,
