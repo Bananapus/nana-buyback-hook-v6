@@ -296,11 +296,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             controller: controller
         });
 
-        // Ensure swap satisfies payer/client minimum amount or calculated TWAP.
-        // Skip this check when the swap failed (caught revert) — in that case, fall through to the mint path.
-        if (!swapFailed && exactSwapAmountOut < minimumSwapAmountOut) {
-            revert JBBuybackHook_SpecifiedSlippageExceeded(exactSwapAmountOut, minimumSwapAmountOut);
-        }
+        // If the swap partially filled (price limit hit, exactSwapAmountOut < minimumSwapAmountOut),
+        // fall through to the leftover-mint path below — never revert a payment. The payer receives
+        // swap output + minted tokens for any leftover terminal tokens that weren't consumed by the pool.
 
         // Compute leftover terminal tokens as a delta (balanceAfter - balanceBefore).
         uint256 leftoverAmountInThisContract = _terminalTokenBalance(context.forwardedAmount.token) - balanceBefore;
