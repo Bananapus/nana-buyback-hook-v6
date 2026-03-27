@@ -40,7 +40,7 @@ sequenceDiagram
 7. When swap is selected, the terminal calls `afterPayRecordedWith(context)` on the pay hook.
 8. The hook executes the swap via `POOL_MANAGER.unlock()`, burns the received project tokens, adds any leftover terminal tokens back to the project's balance, and mints the total (swapped + leftover mint) through the controller with `useReservedPercent: true`.
 
-If the swap fails (slippage, insufficient liquidity, etc.), `_swap` catches the revert and returns `(0, swapFailed = true)`. `afterPayRecordedWith` then skips the slippage check, returns the unspent payment amount to the terminal balance, and mints via the normal fallback path.
+The swap uses the issuance rate as its price limit — it fills only while the pool offers a better rate for the payer than minting. Any unconsumed tokens are minted at the issuance rate. The combined output (swap + leftover mint) must meet the user's `minimumSwapAmountOut`, otherwise the transaction reverts. If the swap fails entirely (pool unavailable, etc.), `_swap` catches the revert and returns `(0, swapFailed = true)`. `afterPayRecordedWith` then mints all tokens at the issuance rate as a fallback.
 
 Cash outs follow the same best-execution philosophy. `beforeCashOutRecordedWith` compares protocol cash-out value against a pool sell quote. By default, the sell quote comes from the same geomean/TWAP oracle path used on buys, with the same slippage adjustment. Callers can also supply an explicit minimum reclaimed amount in `"cashOutMinReclaimed"` metadata; when present, that explicit minimum is honored directly and the TWAP lookup is skipped. If the pool route is better, it returns a cash-out hook spec so `afterCashOutRecordedWith` remints the burned project tokens to the hook, sells them into the pool, and forwards the proceeds to the beneficiary.
 
@@ -188,10 +188,11 @@ The buyback hook uses a continuous sigmoid formula (`JBSwapLib.getSlippageTolera
 
 ### Avoiding MEV
 
-The hook provides two layers of MEV protection:
+The hook provides three layers of MEV protection:
 
-1. **sqrtPriceLimitX96**: The V4 swap is executed with a price limit computed from the minimum acceptable output (`JBSwapLib.sqrtPriceLimitFromAmounts`). This stops the swap early if the price moves unfavorably, rather than executing at a bad rate.
-2. **Quote floor**: By default, both buy-side and sell-side minimums come from the geomean/TWAP oracle path. Callers can also provide explicit minimums in metadata (`"quote"` on buys, `"cashOutMinReclaimed"` on sells). When explicit minimums are present, the hook honors them directly and skips the TWAP lookup for that side.
+1. **Issuance-rate price limit**: The V4 swap is executed with a price limit computed from the issuance rate (`tokenCountWithoutHook / amountIn` via `JBSwapLib.sqrtPriceLimitFromAmounts`). The swap fills only while the pool offers a better rate for the payer than minting. Any unconsumed tokens are minted at the issuance rate. There is no gap between the swap boundary and the mint rate for an attacker to exploit.
+2. **Minimum output check**: The combined output (swap + leftover mint) must meet the user's `minimumSwapAmountOut`. If a manipulation pushes the total below this floor, the transaction reverts.
+3. **Quote floor**: By default, both buy-side and sell-side minimums come from the geomean/TWAP oracle path. Callers can also provide explicit minimums in metadata (`"quote"` on buys, `"cashOutMinReclaimed"` on sells). When explicit minimums are present, the hook honors them directly and skips the TWAP lookup for that side.
 
 Payers/frontends should provide a reasonable minimum quote in metadata for additional protection. You can also use the [Flashbots Protect RPC](https://protect.flashbots.net/) for transactions that trigger the buyback hook.
 

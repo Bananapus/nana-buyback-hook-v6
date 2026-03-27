@@ -33,12 +33,19 @@ This is a **V3 → V4 Uniswap migration** — the buyback hook was completely re
 
 When a pool is configured, sell-side previews now always return a `JBCashOutHookSpecification` with routing metadata. The execution path uses `noop = false`; the protocol-winning informational path uses `noop = true` and still surfaces the sell-side minimum, direct protocol minimum, and pool diagnostics for preview clients.
 
+### Issuance-Rate Swap Price Limit (Sandwich Resistance)
+`afterPayRecordedWith` now uses the issuance rate (`tokenCountWithoutHook`) as the swap's price limit instead of the TWAP-derived `minimumSwapAmountOut`. The swap fills only while the pool offers a better rate for the payer than minting would, and stops when the pool price reaches the issuance boundary. Any unconsumed input tokens are minted at the issuance rate.
+
+The user-provided `minimumSwapAmountOut` is still enforced as a minimum on the **combined** output (swap tokens + minted-from-leftover tokens). If the total falls short, the transaction reverts with `JBBuybackHook_SpecifiedSlippageExceeded`. When the swap fails entirely (pool unavailable, etc.), all tokens are minted as a fallback without the minimum check.
+
+Previously, the `sqrtPriceLimit` was derived from `minimumSwapAmountOut / amountIn` (TWAP rate). An attacker could push the pool price to just above the TWAP boundary, causing a tiny partial fill, and profit from the back-run. With the issuance rate as the price limit, there is no profitable manipulation window — the payer always gets at least as many tokens as direct minting would have provided for the swapped portion.
+
 ### Hook Spec Metadata: `tokenCountWithoutHook` (5th field)
-`beforePayRecordedWith` now encodes a 5th field in the `JBPayHookSpecification.metadata` when the swap path is chosen:
+`beforePayRecordedWith` encodes a 5th field in the `JBPayHookSpecification.metadata` when the swap path is chosen:
 ```
 (bool projectTokenIs0, uint256 mintFromExcess, uint256 minimumSwapAmountOut, IJBController controller, uint256 tokenCountWithoutHook)
 ```
-`tokenCountWithoutHook` is the number of tokens that direct minting (without the buyback hook) would have yielded. This is informational for preview clients (e.g., `JBTerminalStore.previewPayFrom`) -- `afterPayRecordedWith` only decodes the first 4 fields. The 5th field is ABI-compatible: `abi.decode` ignores trailing data.
+`tokenCountWithoutHook` is the number of tokens that direct minting (without the buyback hook) would have yielded. `afterPayRecordedWith` decodes all 5 fields: it uses `tokenCountWithoutHook` as the `_swap` price limit (the swap stops when the pool rate degrades to the issuance rate) and `minimumSwapAmountOut` as the minimum acceptable combined output (swap + leftover mint).
 
 ### Expanded Pay Spec Metadata
 The pay hook metadata has since expanded beyond the original 5 fields. It now includes pool/oracle diagnostics and estimated beneficiary/reserved split values:

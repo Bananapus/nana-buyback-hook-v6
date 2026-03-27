@@ -57,15 +57,13 @@ A payer sends ETH to a project whose ruleset has the buyback hook as its data ho
    - Calls `POOL_MANAGER.unlock(callbackData)`.
 
 10. V4 PoolManager calls `unlockCallback(data)`:
-   - Computes `sqrtPriceLimit` from `amountIn` and `minimumSwapAmountOut`.
+   - Computes `sqrtPriceLimit` from `amountIn` and `tokenCountWithoutHook` (the issuance-rate equivalent). The swap fills only while the pool offers a better rate for the payer than minting.
    - Executes `POOL_MANAGER.swap(key, SwapParams{zeroForOne, amountSpecified: -amountIn, sqrtPriceLimitX96})`.
    - Settles input tokens: `POOL_MANAGER.settle{value: inputAmount}()` for native ETH, or `sync → safeTransfer → settle` for ERC-20.
    - Takes output tokens: `POOL_MANAGER.take(outputCurrency, address(this), outputAmount)`.
    - Returns `abi.encode(outputAmount)`.
 
 11. Still inside `_swap()`, the hook receives `exactSwapAmountOut` (e.g., 500 project tokens), emits the `Swap` event, and then burns the tokens via `controller.burnTokensOf(address(this), projectId, 500, "")`. Both happen inside `_swap()` before it returns.
-
-12. Back in `afterPayRecordedWith`, slippage check: `exactSwapAmountOut >= minimumSwapAmountOut` -- passes.
 
 13. Computes `leftover = balanceAfter - balanceBefore`. If the swap consumed all input, leftover = 0.
 
@@ -87,7 +85,7 @@ A payer sends ETH to a project whose ruleset has the buyback hook as its data ho
 
 **Edge cases**:
 - `JBBuybackHook_Unauthorized(caller)` -- reverts if `afterPayRecordedWith` caller is not a terminal of the project
-- `JBBuybackHook_SpecifiedSlippageExceeded(amount, minimum)` -- reverts if swap output is below `minimumSwapAmountOut` (skipped when swap failed)
+- `JBBuybackHook_SpecifiedSlippageExceeded(amount, minimum)` -- only used in the cash-out path. The pay path uses issuance-rate price limits and falls through to mint on partial fills.
 - `JBBuybackHook_InsufficientPayAmount(swapAmount, totalPaid)` -- reverts in `beforePayRecordedWith` if payer-specified `amountToSwapWith > totalPaid`
 - If `weight = 0` in the ruleset and the swap fails, `totalTokensToMint = 0` and the mint call is skipped entirely
 
@@ -447,7 +445,7 @@ A payment triggers the swap path, but the V4 swap reverts (e.g., insufficient li
 11. The `try POOL_MANAGER.unlock(...)` catch block catches the revert. `_swap()` returns `(0, swapFailed=true)`. No tokens were received, so no burn occurs inside `_swap()`.
 
 12. Back in `afterPayRecordedWith`:
-    - `swapFailed == true`, so the slippage check is skipped (no revert even though `exactSwapAmountOut = 0 < minimumSwapAmountOut`).
+    - `exactSwapAmountOut = 0`. No slippage revert (the pay path uses issuance-rate price limits, not a slippage check).
 
 13. Computes `leftover = balanceAfter - balanceBefore`. Since no tokens were consumed by the swap, `leftover == amountToSwapWith`.
 
@@ -477,7 +475,7 @@ A payment triggers the swap path, but the V4 swap reverts (e.g., insufficient li
 
 ## 8. Partial Fill Handling
 
-The V4 swap executes but only partially fills due to the `sqrtPriceLimit` being hit.
+The V4 swap executes but only partially fills because the pool price reached the issuance rate.
 
 **Entry point**: `JBMultiTerminal.pay(uint256 projectId, address token, uint256 amount, address beneficiary, uint256 minReturnedTokens, string memo, bytes metadata)`
 
@@ -489,24 +487,27 @@ The V4 swap executes but only partially fills due to the `sqrtPriceLimit` being 
 
 1-10. Same as Journey 1. The hook enters `unlockCallback`.
 
-11. `POOL_MANAGER.swap()` executes but hits the `sqrtPriceLimit` before consuming all input:
-   - `inputAmount = 0.7 ether` (consumed by swap).
-   - `outputAmount = 350` project tokens (received from swap).
-   - The remaining `0.3 ether` is not consumed.
+11. `POOL_MANAGER.swap()` executes but hits the `sqrtPriceLimit` (set to the issuance rate) before consuming all input:
+   - `inputAmount = 0.7 ether` (consumed by swap at rates above the issuance rate).
+   - `outputAmount = 350` project tokens (received from swap, each unit at a rate better than minting).
+   - The remaining `0.3 ether` is not consumed because further swapping would give fewer tokens per ETH than minting.
 
 12. Settlement: hook settles `0.7 ether` with `POOL_MANAGER.settle{value: 0.7 ether}()` and takes `350` project tokens.
 
 13. Still inside `_swap()`, the hook emits the `Swap` event and then burns the 350 project tokens via `controller.burnTokensOf(address(this), projectId, 350, "")`. Both happen inside `_swap()` before it returns.
 
 14. Back in `afterPayRecordedWith`:
-    - Slippage check: `exactSwapAmountOut = 350` passes `>= minimumSwapAmountOut`.
     - Computes `leftover = balanceAfter - balanceBefore = 0.3 ether` (the unconsumed portion).
 
 15. Returns 0.3 ETH to the terminal via `addToBalanceOf{value: 0.3 ether}(...)` (for ERC-20, the hook approves the terminal via `forceApprove` before calling `addToBalanceOf`).
 
-16. Computes `partialMintTokenCount = 0.3 ether * weight / weightRatio` (e.g., 120 tokens), plus `amountToMintWith * weight / weightRatio` if the payer specified a non-swap portion.
+16. Computes `partialMintTokenCount = 0.3 ether * weight / weightRatio` (e.g., 120 tokens).
 
-17. Mints `totalTokensToMint = exactSwapAmountOut + partialMintTokenCount` (i.e., 350 + 120 = 470) total tokens for the beneficiary.
+17. Checks `exactSwapAmountOut + partialMintTokenCount >= minimumSwapAmountOut` (e.g., 350 + 120 = 470 >= 450). If not, reverts with `JBBuybackHook_SpecifiedSlippageExceeded`.
+
+18. Adds `amountToMintWith * weight / weightRatio` to `partialMintTokenCount` if the payer specified a non-swap portion.
+
+19. Mints `totalTokensToMint = exactSwapAmountOut + partialMintTokenCount` (i.e., 350 + 120 = 470) total tokens for the beneficiary.
 
 **State changes**:
 1. V4 pool state -- partial swap executed
@@ -520,7 +521,9 @@ The V4 swap executes but only partially fills due to the `sqrtPriceLimit` being 
 - `Mint(projectId, 0.3 ether, 120, caller)` -- emitted for the leftover mint portion
 
 **Edge cases**:
-- The `sqrtPriceLimit` is derived from `minimumSwapAmountOut / amountIn`, ensuring the swap stops before the execution price degrades below the minimum acceptable rate
-- Both the swap portion (350 tokens) and the mint portion (120 tokens) respect the reserved percent during the final `controller.mintTokensOf` call
+- The `sqrtPriceLimit` is derived from `tokenCountWithoutHook / amountIn` (the issuance rate), ensuring the swap fills only while the pool offers a better rate for the payer than minting. There is no gap between the swap boundary and the mint rate, preventing sandwich attacks.
+- The combined output (swap + leftover mint) must meet the user's `minimumSwapAmountOut`, otherwise the transaction reverts. This check runs before the `amountToMintWith` addition.
+- When the swap fails entirely (pool unavailable, etc.), all tokens are minted as a fallback without the minimum check.
+- Both the swap portion (350 tokens) and the mint portion (120 tokens) respect the reserved percent during the final `controller.mintTokensOf` call.
 
-**Result:** The payer gets 350 tokens from the swap (at the pool rate) plus 120 tokens from minting (at the mint rate). The partial fill is handled seamlessly. Both portions respect the reserved percent during minting.
+**Result:** The payer gets 350 tokens from the swap (at rates better than issuance) plus 120 tokens from minting (at the issuance rate). Total = 470 tokens, which meets their minimum of 450. The partial fill is seamless and sandwich-resistant.

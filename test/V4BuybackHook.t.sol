@@ -297,7 +297,7 @@ contract V4BuybackHookTest is Test {
             weight: 1e18,
             newlyIssuedTokenCount: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller),
+            hookMetadata: abi.encode(projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller, uint256(0)),
             payerMetadata: ""
         });
     }
