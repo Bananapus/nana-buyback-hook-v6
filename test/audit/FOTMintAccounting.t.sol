@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
-import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
+
 import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
 import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
@@ -74,6 +74,7 @@ contract CodexTerminal {
 
     function addToBalanceOf(uint256, address token, uint256 amount, bool, string calldata, bytes calldata) external {
         uint256 beforeBalance = ERC20(token).balanceOf(address(this));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         ERC20(token).transferFrom(msg.sender, address(this), amount);
         recordedReceived += ERC20(token).balanceOf(address(this)) - beforeBalance;
     }
