@@ -16,6 +16,12 @@ This is a **V3 → V4 Uniswap migration** — the buyback hook was completely re
 
 ## 0.1. Post-v6 Changes
 
+### FOT Token Mint Overissuance Fix (Audit NEW-M-2)
+`afterPayRecordedWith` now measures the actual amount transferred to the terminal via `addToBalanceOf` (balance delta before/after the call) instead of using the pre-transfer hook balance for the mint calculation. For fee-on-transfer tokens, the terminal receives less than the hook sends; the mint count is now proportional to the actual credited amount, preventing overissuance of project tokens.
+
+### Deploy Script: Skip Buyback Hook on Optimism Sepolia (Audit NEW-L-3)
+`Deploy.s.sol` no longer hardcodes an unverified PoolManager address for Optimism Sepolia (chain ID 11155420). Instead, the script deploys only the `JBBuybackHookRegistry` on that chain and skips the `JBBuybackHook` deployment. The registry can be configured with a hook later once a verified V4 PoolManager is available.
+
 ### Noop Informational Pay Hook Specifications
 `beforePayRecordedWith` now returns a noop `JBPayHookSpecification` when a pool is configured but direct minting is still better than swapping. The spec has `noop = true`, `amount = 0`, and carries the same routing metadata as the active swap-path spec. This lets preview/simulation clients inspect pool diagnostics without causing the terminal to call `afterPayRecordedWith`.
 
@@ -133,7 +139,7 @@ The v6 `JBBuybackHookRegistry` gains forwarding methods that resolve the hook fo
 - `setPoolFor(uint256 projectId, uint24 fee, int24 tickSpacing, uint256 twapWindow, address terminalToken)`
 
 ### `JBSwapLib` Library (New File)
-A new shared library at `src/libraries/JBSwapLib.sol` extracts and improves swap math for reuse across `JBBuybackHook` and `JBSwapTerminal`:
+A new shared library at `src/libraries/JBSwapLib.sol` extracts and improves swap math for reuse across `JBBuybackHook` and `JBRouterTerminal`:
 - `getQuoteFromOracle(...)` — queries a V4 oracle hook for TWAP data; returns `(0, 0, 0)` if the oracle is unavailable (forcing the mint path).
 - `getSlippageTolerance(uint256 impact, uint256 poolFeeBps)` — continuous sigmoid slippage curve (replaces v5's piecewise step function).
 - `calculateImpact(...)` — estimates price impact using `1e18` precision (vs v5's `10 * SLIPPAGE_DENOMINATOR`).
@@ -191,6 +197,16 @@ struct SwapCallbackData {
 ---
 
 ## 3. Event Changes
+
+### Indexer Notes
+
+The main v5 → v6 correlation change is pool identity:
+- v5 could key buyback execution by V3 pool address;
+- v6 should key by `(projectId, terminalToken, poolId)` or by decoded `PoolKey`/`PoolId`.
+
+Also note:
+- noop preview paths can expose routing diagnostics without taking the swap path;
+- if your UI compares protocol mint vs buyback execution, consider indexing decoded hook metadata as well as emitted events.
 
 ### `Swap` Event
 - **v5:** `event Swap(uint256 indexed projectId, uint256 amountToSwapWith, IUniswapV3Pool pool, uint256 amountReceived, address caller)`

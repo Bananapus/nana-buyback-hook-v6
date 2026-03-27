@@ -63,8 +63,8 @@ contract DeployScript is Script, Sphinx {
         } else if (block.chainid == 11_155_420) {
             // Optimism Sepolia — no official V4 PoolManager listed at
             // https://docs.uniswap.org/contracts/v4/deployments as of 2026-03-24.
-            // Verify before deploying; this address may need updating.
-            poolManager = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Optimism Sepolia (unverified)
+            // Deploy registry only (no buyback hook) until a verified PoolManager is available.
+            poolManager = address(0);
         } else if (block.chainid == 84_532) {
             poolManager = 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408; // Base Sepolia
         } else if (block.chainid == 42_161) {
@@ -87,6 +87,10 @@ contract DeployScript is Script, Sphinx {
             owner: safeAddress(),
             trustedForwarder: trustedForwarder
         });
+
+        // Skip the buyback hook when no verified PoolManager is available (e.g. Optimism Sepolia).
+        // The registry is still deployed so it can be configured later once a PoolManager is verified.
+        if (poolManager == address(0)) return;
 
         // Deploy the V4 buyback hook.
         JBBuybackHook hook = new JBBuybackHook{salt: buybackHook}({

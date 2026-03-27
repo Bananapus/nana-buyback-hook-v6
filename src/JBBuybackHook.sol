@@ -322,9 +322,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Mint a corresponding number of project tokens using any terminal tokens left over.
         uint256 partialMintTokenCount;
         if (leftoverAmountInThisContract != 0) {
-            partialMintTokenCount =
-                mulDiv({x: leftoverAmountInThisContract, y: context.weight, denominator: weightRatio});
-
             // If the token paid in wasn't the native token, grant the terminal permission to pull them back.
             if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
                 // slither-disable-next-line unused-return
@@ -335,12 +332,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 payValue =
                 context.forwardedAmount.token == JBConstants.NATIVE_TOKEN ? leftoverAmountInThisContract : 0;
 
-            emit Mint({
-                projectId: context.projectId,
-                leftoverAmount: leftoverAmountInThisContract,
-                tokenCount: partialMintTokenCount,
-                caller: msg.sender
-            });
+            // Snapshot balance before `addToBalanceOf` so we can measure the actual amount transferred.
+            // For fee-on-transfer tokens, the terminal receives less than `leftoverAmountInThisContract`.
+            uint256 balanceBeforeAdd = _terminalTokenBalance(context.forwardedAmount.token);
 
             // Add the paid amount back to the project's balance in the terminal.
             // slither-disable-next-line arbitrary-send-eth
@@ -351,6 +345,20 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 shouldReturnHeldFees: false,
                 memo: "",
                 metadata: bytes("")
+            });
+
+            // Compute the actual amount the terminal received by measuring how much left this contract.
+            // For standard tokens this equals `leftoverAmountInThisContract`; for fee-on-transfer tokens
+            // it will be less, and we must only mint project tokens proportional to what was actually credited.
+            uint256 amountActuallySent = balanceBeforeAdd - _terminalTokenBalance(context.forwardedAmount.token);
+
+            partialMintTokenCount = mulDiv({x: amountActuallySent, y: context.weight, denominator: weightRatio});
+
+            emit Mint({
+                projectId: context.projectId,
+                leftoverAmount: amountActuallySent,
+                tokenCount: partialMintTokenCount,
+                caller: msg.sender
             });
         }
 
