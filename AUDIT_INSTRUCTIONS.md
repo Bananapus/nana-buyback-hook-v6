@@ -123,14 +123,13 @@ Terminal calls afterPayRecordedWith(context) with payment tokens
   +--> _swap():
   |      try POOL_MANAGER.unlock(callbackData):
   |        unlockCallback():
-  |          Compute sqrtPriceLimit from amountIn + minimumSwapAmountOut
-  |          POOL_MANAGER.swap(key, params)
+  |          Compute sqrtPriceLimit from amountIn + tokenCountWithoutHook (issuance rate)
+  |          POOL_MANAGER.swap(key, params) -- stops when pool price reaches issuance rate
   |          Settle input (ETH via value, ERC-20 via sync+transfer+settle)
   |          Take output project tokens
   |          Return outputAmount
   |      catch: return (0, swapFailed=true)
   |
-  +--> If !swapFailed && exactSwapAmountOut < minimumSwapAmountOut: REVERT
   +--> Burn received project tokens (they'll be re-minted with reserves)
   |
   +--> Compute leftover = balanceAfter - balanceBefore
@@ -144,11 +143,11 @@ Terminal calls afterPayRecordedWith(context) with payment tokens
 
 ### Three-Layer MEV Protection
 
-1. **TWAP or Explicit Quote Floor**: When the payer provides an explicit `minimumSwapAmountOut` via metadata, it is honored directly and the TWAP lookup is skipped. When no explicit quote is provided, the TWAP oracle supplies the slippage floor. The sell side follows the same pattern with `cashOutMinReclaimed` metadata.
+1. **TWAP or Explicit Quote Gating**: When the payer provides an explicit `minimumSwapAmountOut` via metadata, it is honored directly and the TWAP lookup is skipped. When no explicit quote is provided, the TWAP oracle supplies the comparison floor. The sell side follows the same pattern with `cashOutMinReclaimed` metadata. This gate determines whether to swap at all (only when pool rate > issuance rate).
 
 2. **Sigmoid Slippage**: The TWAP-derived quote is reduced by a continuous sigmoid function of estimated price impact. Small swaps in deep pools get tight tolerance (~2%); large swaps in thin pools get wide tolerance (up to 88%). The sigmoid parameters (`SIGMOID_K = 5e16`, `IMPACT_PRECISION = 1e18`) are hardcoded.
 
-3. **sqrtPriceLimit Circuit Breaker**: The V4 swap has a hard price limit computed from `amountIn` and `minimumSwapAmountOut`. If frontrunning pushes the price past this limit, the swap partially fills or returns zero. Leftover tokens are minted instead.
+3. **Issuance-Rate Price Limit + Minimum Check**: The V4 swap's `sqrtPriceLimitX96` is computed from `amountIn` and `tokenCountWithoutHook` (the issuance-rate equivalent). The swap fills only while the pool offers a better rate for the payer than minting. When the pool price reaches the issuance boundary, the swap stops and leftover tokens are minted. The combined output (swap + leftover mint) must meet the user's `minimumSwapAmountOut`, otherwise the transaction reverts. When the swap fails entirely (pool unavailable), all tokens are minted as a fallback without the minimum check.
 
 ## Pool Configuration
 
@@ -247,7 +246,7 @@ The test suite is comprehensive but these areas have limited coverage:
 | `JBBuybackHook_InvalidTwapWindow(uint256, uint256, uint256)` | JBBuybackHook | TWAP window set outside the allowed range (`MIN_TWAP_WINDOW` to `MAX_TWAP_WINDOW`). Checked in `setTwapWindowOf` and `_setPoolFor`. |
 | `JBBuybackHook_PoolAlreadySet(PoolId)` | JBBuybackHook | `_setPoolFor` called for a project/token pair that already has an immutable pool configured. |
 | `JBBuybackHook_PoolNotInitialized(PoolId)` | JBBuybackHook | `_setPoolFor` called with a pool key whose pool has not been initialized in the V4 PoolManager (`sqrtPriceX96 == 0`). |
-| `JBBuybackHook_SpecifiedSlippageExceeded(uint256, uint256)` | JBBuybackHook | Swap output is less than `minimumSwapAmountOut`. Checked in `afterPayRecordedWith` (pay path) and `afterCashOutRecordedWith` (cash-out path). |
+| `JBBuybackHook_SpecifiedSlippageExceeded(uint256, uint256)` | JBBuybackHook | Combined output (swap + leftover mint) is less than `minimumSwapAmountOut`. Checked in both `afterPayRecordedWith` (pay path, when swap didn't fail entirely) and `afterCashOutRecordedWith` (cash-out path). |
 | `JBBuybackHook_TerminalTokenIsProjectToken(address, address)` | JBBuybackHook | `_setPoolFor` called where `terminalToken` equals the project's token (cannot swap a token for itself). |
 | `JBBuybackHook_Unauthorized(address)` | JBBuybackHook | `afterCashOutRecordedWith` called by an address that is not a terminal of the project. |
 | `JBBuybackHook_ZeroProjectToken()` | JBBuybackHook | `_setPoolFor` called for a project that has no token deployed yet. |
