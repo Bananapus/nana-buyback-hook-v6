@@ -16,6 +16,9 @@ This is a **V3 → V4 Uniswap migration** — the buyback hook was completely re
 
 ## 0.1. Post-v6 Changes
 
+### Registry Pass-Through for Chains Without Buyback Hook
+`beforePayRecordedWith` now passes through gracefully when no hook is configured (neither project-specific nor default), returning the original `context.weight` and an empty `hookSpecifications` array. This matches how `beforeCashOutRecordedWith` already behaves. The change allows the `JBBuybackHookRegistry` to be deployed on chains where no Uniswap V4 PoolManager is available — projects function normally without buyback optimization, minting at the ruleset weight.
+
 ### FOT Token Mint Overissuance Fix (Audit NEW-M-2)
 `afterPayRecordedWith` now measures the actual amount transferred to the terminal via `addToBalanceOf` (balance delta before/after the call) instead of using the pre-transfer hook balance for the mint calculation. For fee-on-transfer tokens, the terminal receives less than the hook sends; the mint count is now proportional to the actual credited amount, preventing overissuance of project tokens.
 
