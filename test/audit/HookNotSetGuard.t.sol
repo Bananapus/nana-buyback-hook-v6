@@ -15,6 +15,9 @@ import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 // NATIVE_TOKEN sentinel used in the pay context.
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 
+// Return type from beforePayRecordedWith.
+import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
+
 // Contract under test.
 import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
 
@@ -103,40 +106,39 @@ contract HookNotSetGuardTest is Test {
         });
     }
 
-    // --- beforePayRecordedWith revert test ------------------------------
+    // --- beforePayRecordedWith passthrough test -------------------------
 
-    /// @notice `beforePayRecordedWith` must revert with `HookNotSet` when
-    ///         `_hookOf[projectId]` is zero AND `defaultHook` is zero.
-    function test_beforePayRecordedWith_revertsWhenNoHookSet() public {
+    /// @notice `beforePayRecordedWith` must pass through the terminal's
+    ///         weight and return no hook specifications when no hook is set.
+    function test_beforePayRecordedWith_passesThroughWhenNoHookSet() public {
         // Confirm neither a project-specific hook nor a default hook is set.
         assertEq(address(registry.hookOf(projectId)), address(0), "hookOf should be zero before test");
 
         // Build a minimal pay context for the project with no hook.
         JBBeforePayRecordedContext memory context = JBBeforePayRecordedContext({
-            terminal: makeAddr("terminal"), // Arbitrary terminal address.
-            payer: makeAddr("payer"), // Arbitrary payer address.
+            terminal: makeAddr("terminal"),
+            payer: makeAddr("payer"),
             amount: JBTokenAmount({
-                token: JBConstants.NATIVE_TOKEN, // Pay with native token.
-                value: 1 ether, // 1 ETH payment.
-                decimals: 18, // 18-decimal precision.
-                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)) // Currency matches token.
+                token: JBConstants.NATIVE_TOKEN,
+                value: 1 ether,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             }),
-            projectId: projectId, // The project with no hook.
-            rulesetId: 0, // Not relevant for this test.
-            beneficiary: makeAddr("beneficiary"), // Arbitrary beneficiary.
-            weight: 1e18, // Arbitrary weight.
-            reservedPercent: 0, // No reserved tokens.
-            metadata: "" // Empty metadata.
+            projectId: projectId,
+            rulesetId: 0,
+            beneficiary: makeAddr("beneficiary"),
+            weight: 1e18,
+            reservedPercent: 0,
+            metadata: ""
         });
 
-        // Build the expected revert payload.
-        bytes memory expectedRevert =
-            abi.encodeWithSelector(JBBuybackHookRegistry.JBBuybackHookRegistry_HookNotSet.selector, projectId);
+        // Call should succeed and return passthrough values.
+        (uint256 weight, JBPayHookSpecification[] memory hookSpecs) = registry.beforePayRecordedWith(context);
 
-        // Expect the HookNotSet revert.
-        vm.expectRevert(expectedRevert);
+        // Weight should be unchanged from the context.
+        assertEq(weight, context.weight, "weight should pass through unchanged");
 
-        // Call beforePayRecordedWith (a view function, but reverts are still caught).
-        registry.beforePayRecordedWith(context);
+        // No hook specifications should be returned.
+        assertEq(hookSpecs.length, 0, "hookSpecs should be empty");
     }
 }
