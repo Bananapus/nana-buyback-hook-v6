@@ -1,10 +1,27 @@
-# RISKS.md -- nana-buyback-hook-v6
+# Juicebox Buyback Hook Risk Register
+
+This file focuses on the routing, MEV, and composition risks in the buyback hook that compares Juicebox minting or cash-out against external AMM execution.
+
+## How to use this file
+
+- Read `Priority risks` first; those are the routing failures with the largest user-impact potential.
+- Use the detailed sections for economic, MEV, and same-pool composition reasoning.
+- Treat `Invariants to Verify` as hard requirements before relying on this hook in production routing.
+
+## Priority risks
+
+| Priority | Risk | Why it matters | Primary controls |
+|----------|------|----------------|------------------|
+| P0 | Wrong-route execution from stale estimates | If the hook mis-estimates protocol or pool output, users can be routed to a materially worse path. | Preview surfaces, TWAP-based pricing, try/catch fallbacks, and strict slippage floors. |
+| P1 | Same-pool recursion and composition complexity | Buyback composition with the V4 router creates deep call chains where a subtle ordering bug can cascade. | Explicit recursion guards, fallback-to-mint behavior, and composition-focused tests. |
+| P1 | MEV around route selection | Buyback routing exposes an attacker incentive to manipulate the comparison boundary, especially around low-liquidity or stale-price conditions. | TWAP use, slippage controls, and operational caution on thin markets. |
+
 
 ## 1. Trust Assumptions
 
 - **Uniswap V4 PoolManager**: Immutable singleton (`POOL_MANAGER`). All swap settlement flows through `unlock()` -> `unlockCallback()` -> `swap()` -> `settle()`/`take()`. A compromised PoolManager can drain any funds sent during settlement. The hook authenticates only via `msg.sender == POOL_MANAGER` in `unlockCallback` -- no further defense against a malicious PoolManager.
 - **Oracle Hook (IGeomeanOracle)**: TWAP integrity depends entirely on the `hooks` field of the PoolKey. The hook calls `IGeomeanOracle(address(key.hooks)).observe()`. A malicious or buggy oracle can return arbitrary tick cumulatives, skewing the TWAP quote in either direction. The `ORACLE_HOOK` is set at construction and baked into all pool keys built by `_buildPoolKey`.
-- **Oracle Failure Behavior**: When the oracle `observe()` reverts (catch block in `JBSwapLib.getQuoteFromOracle`), the library returns `(0, 0, 0)`, forcing the mint path. This prevents sandwich attacks during oracle warmup but means no swaps occur until the oracle accumulates enough observations (~30 min after pool creation).
+- **Oracle Failure Behavior**: When the oracle `observe()` reverts (catch block in `JBSwapLib.getQuoteFromOracle`), the library returns `(0, 0, 0)`, which forces the mint path for oracle-dependent flows. This prevents sandwich attacks during oracle warmup, but it does not disable swaps for callers that provide explicit quote metadata or explicit sell-side minimums, because those paths can bypass the oracle lookup entirely.
 - **JB Core Contracts**: The hook trusts `DIRECTORY.isTerminalOf()` for caller authentication, `controller.currentRulesetOf()` for ruleset data, and `controller.mintTokensOf()`/`burnTokensOf()` for token operations. A compromised controller can mint unlimited tokens or refuse to burn swapped tokens.
 - **Registry Owner Centralization**: `JBBuybackHookRegistry` owner (`Ownable`) controls `allowHook()`, `disallowHook()`, `setDefaultHook()`. Changing the default hook silently redirects all unlocked projects. Disallowing a hook does not affect locked projects (by design), but a rug of the default hook implementation affects every project that has not locked.
 
@@ -31,7 +48,7 @@
   3. `sqrtPriceLimitFromAmounts` circuit breaker: computed in `unlockCallback`, enforces a hard price floor on the V4 swap. If an attacker frontruns past this limit, the PoolManager returns a partial/zero fill -> leftover routes to `addToBalanceOf` -> minted at weight.
 - **Sandwich Attack Outcome**: When circuit breaker fires, victim gets mint-rate tokens (zero MEV extraction). Attacker loses 2x pool fees on the round trip.
 - **TWAP Manipulation Cost**: 5-minute minimum window requires dominating 25 consecutive blocks. For a 1M-liquidity pool, ~10,000 ETH of capital plus ~60 ETH in round-trip fees. Economically viable only for very large payments (>10,000 ETH). Risk: LOW for typical projects, MEDIUM for whale-sized payments.
-- **Oracle Warmup Mint-Only Period**: Newly initialized pools lack observation history. The oracle `observe()` will revert until enough observations accumulate (~30 min). During this warmup period, the hook forces the mint path (no swaps). This is intentional — spot-price fallback was removed because it is trivially sandwich-attackable.
+- **Oracle Warmup Mint-Only Period for no-quote flows**: Newly initialized pools lack observation history. The oracle `observe()` will revert until enough observations accumulate (~30 min). During this warmup period, oracle-dependent flows force the mint path. This is intentional — spot-price fallback was removed because it is trivially sandwich-attackable. Callers that supply explicit quote metadata can still route through the swap path during warmup.
 - **Front-Running the Routing Decision**: `beforePayRecordedWith` is a `view` call executed by the terminal. An attacker who sees the pending payment in the mempool can manipulate the pool state to influence whether the hook returns `weight=0` (swap path) or `weight=original` (mint path with noop diagnostics). However, the TWAP resists single-block manipulation, and the payer quote provides an additional floor.
 
 ## 4. Composition with JBUniswapV4Hook
@@ -86,7 +103,7 @@
 
 ### 9.1 Oracle warmup forces mint-only period (~30 minutes)
 
-Newly initialized pools lack observation history. During the warmup period, `observe()` reverts and the catch block returns `(0, 0, 0)`, which forces `minimumSwapAmountOut = 0` and the mint path wins every comparison. This is intentional: the previous design used spot-price fallback during warmup, which was trivially sandwich-attackable. The mint-only period means users receive tokens at the ruleset weight rate (no swap premium) during the first ~30 minutes. This is a conservative degradation — no value is lost, but the swap-vs-mint optimization is temporarily disabled.
+Newly initialized pools lack observation history. During the warmup period, `observe()` reverts and the catch block returns `(0, 0, 0)`, which makes oracle-dependent comparisons fall back to minting. This is intentional: the previous design used spot-price fallback during warmup, which was trivially sandwich-attackable. The mint-only period applies to callers that rely on the hook's oracle-derived minimums; callers that supply explicit quote metadata can still use the swap path. For no-quote users, this is a conservative degradation — no value is lost, but the swap-vs-mint optimization is temporarily disabled.
 
 ### 9.2 Pool immutability prevents migration to better liquidity
 
