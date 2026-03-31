@@ -1151,6 +1151,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Get the actual LP fee from slot0 (key.fee may differ for dynamic-fee pools).
         // V4 fees are in hundredths of a bip, so divide by 100 to get basis points.
+        // slither-disable-next-line unused-return
         (,,, uint24 lpFee) = POOL_MANAGER.getSlot0(poolId);
         uint256 poolFeeBps = uint256(lpFee) / 100;
 
