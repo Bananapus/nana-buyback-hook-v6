@@ -76,9 +76,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max);
     error JBBuybackHook_PoolAlreadySet(PoolId poolId);
     error JBBuybackHook_PoolNotInitialized(PoolId poolId);
+    error JBBuybackHook_PoolNotSet();
     error JBBuybackHook_SpecifiedSlippageExceeded(uint256 amount, uint256 minimum);
     error JBBuybackHook_TerminalTokenIsProjectToken(address terminalToken, address projectToken);
     error JBBuybackHook_Unauthorized(address caller);
+    error JBBuybackHook_ZeroMinimumSwapAmount();
     error JBBuybackHook_ZeroProjectToken();
 
     //*********************************************************************//
@@ -213,6 +215,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             (minimumSwapAmountOut, cashOutCountToSell) = abi.decode(context.hookMetadata, (uint256, uint256));
         }
 
+        // Defense-in-depth: the normal flow always provides a nonzero minimum from route selection.
+        // Revert if it's missing to prevent zero-slippage sells.
+        if (minimumSwapAmountOut == 0) revert JBBuybackHook_ZeroMinimumSwapAmount();
+
         // Remint project tokens to this hook so they can be sold into the pool.
         // Uses the metadata-provided count, not context.cashOutCount, to avoid selling fee-portion tokens.
         IJBController controller = IJBController(address(DIRECTORY.controllerOf(context.projectId)));
@@ -329,34 +335,42 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Mint a corresponding number of project tokens using any terminal tokens left over.
         uint256 partialMintTokenCount;
         if (leftoverAmountInThisContract != 0) {
+            // Use the actual token balance held by this contract rather than the computed delta.
+            // For fee-on-transfer tokens, `leftoverAmountInThisContract` may overstate what was
+            // actually received; the real balance is the source of truth.
+            uint256 actualBalance = _terminalTokenBalance(context.forwardedAmount.token);
+
             // If the token paid in wasn't the native token, grant the terminal permission to pull them back.
             if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
                 // slither-disable-next-line unused-return
-                IERC20(context.forwardedAmount.token)
-                    .forceApprove({spender: msg.sender, value: leftoverAmountInThisContract});
+                IERC20(context.forwardedAmount.token).forceApprove({spender: msg.sender, value: actualBalance});
             }
 
-            uint256 payValue =
-                context.forwardedAmount.token == JBConstants.NATIVE_TOKEN ? leftoverAmountInThisContract : 0;
+            uint256 payValue = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN ? actualBalance : 0;
 
             // Snapshot balance before `addToBalanceOf` so we can measure the actual amount transferred.
-            // For fee-on-transfer tokens, the terminal receives less than `leftoverAmountInThisContract`.
-            uint256 balanceBeforeAdd = _terminalTokenBalance(context.forwardedAmount.token);
+            // For fee-on-transfer tokens, the terminal receives less than `actualBalance`.
+            uint256 balanceBeforeAdd = actualBalance;
 
             // Add the paid amount back to the project's balance in the terminal.
             // slither-disable-next-line arbitrary-send-eth
             IJBMultiTerminal(msg.sender).addToBalanceOf{value: payValue}({
                 projectId: context.projectId,
                 token: context.forwardedAmount.token,
-                amount: leftoverAmountInThisContract,
+                amount: actualBalance,
                 shouldReturnHeldFees: false,
                 memo: "",
                 metadata: bytes("")
             });
 
+            // Reset the approval to 0 to avoid leaving a residual allowance for the terminal.
+            if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
+                IERC20(context.forwardedAmount.token).forceApprove({spender: msg.sender, value: 0});
+            }
+
             // Compute the actual amount the terminal received by measuring how much left this contract.
-            // For standard tokens this equals `leftoverAmountInThisContract`; for fee-on-transfer tokens
-            // it will be less, and we must only mint project tokens proportional to what was actually credited.
+            // For standard tokens this equals `actualBalance`; for fee-on-transfer tokens it will be
+            // less, and we must only mint project tokens proportional to what was actually credited.
             uint256 amountActuallySent = balanceBeforeAdd - _terminalTokenBalance(context.forwardedAmount.token);
 
             partialMintTokenCount = mulDiv({x: amountActuallySent, y: context.weight, denominator: weightRatio});
@@ -534,6 +548,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Normalize the terminal token — use address(0) for native.
         address normalizedTerminalToken = terminalToken == JBConstants.NATIVE_TOKEN ? address(0) : terminalToken;
+
+        // Make sure a pool has been configured for this project/terminal token pair.
+        if (!_poolIsSet[projectId][normalizedTerminalToken]) revert JBBuybackHook_PoolNotSet();
 
         uint256 oldWindow = twapWindowOf[projectId][normalizedTerminalToken];
         twapWindowOf[projectId][normalizedTerminalToken] = newWindow;
@@ -816,7 +833,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        if (PoolId.unwrap(poolId) != bytes32(0)) {
+        if (_poolIsSet[context.projectId][terminalToken]) {
             bool projectTokenIs0 = address(projectToken) < terminalToken;
             uint256 amountToMintWith = totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith;
             bool noop = tokenCountWithoutHook >= minimumSwapAmountOut;
@@ -1137,8 +1154,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             amountIn: amountIn, liquidity: twapLiquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
         });
 
-        // Get the pool fee in bps (V4 fees are in hundredths of a bip, so divide by 100).
-        uint256 poolFeeBps = uint256(key.fee) / 100;
+        // Get the actual LP fee from slot0 (key.fee may differ for dynamic-fee pools).
+        // V4 fees are in hundredths of a bip, so divide by 100 to get basis points.
+        (,,, uint24 lpFee) = POOL_MANAGER.getSlot0(poolId);
+        uint256 poolFeeBps = uint256(lpFee) / 100;
 
         // Calculate continuous sigmoid slippage tolerance.
         uint256 slippageTolerance = JBSwapLib.getSlippageTolerance({impact: impact, poolFeeBps: poolFeeBps});

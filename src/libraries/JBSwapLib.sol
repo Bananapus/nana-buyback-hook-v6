@@ -279,9 +279,15 @@ library JBSwapLib {
             // Ratio too large for any valid sqrtPriceX96 — fall back to no limit.
             return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
         } else if (num / den >= (uint256(1) << 64)) {
-            // Extended range: use ratioX128 to avoid mulDiv overflow, then shift.
+            // Extended range: use ratioX128 to avoid mulDiv overflow.
+            // Shift before sqrt for better precision: sqrt(ratioX128 << 64) vs sqrt(ratioX128) << 32.
             uint256 ratioX128 = FullMath.mulDiv({a: num, b: uint256(1) << 128, denominator: den});
-            sqrtResult = Math.sqrt(ratioX128) * (uint256(1) << 32);
+            if (ratioX128 <= type(uint256).max >> 64) {
+                sqrtResult = Math.sqrt(ratioX128 << 64);
+            } else {
+                // Overflow guard: fall back to post-sqrt shift when the pre-shift would overflow.
+                sqrtResult = Math.sqrt(ratioX128) * (uint256(1) << 32);
+            }
         } else {
             // Normal range: full precision via ratioX192.
             uint256 ratioX192 = FullMath.mulDiv({a: num, b: uint256(1) << 192, denominator: den});
