@@ -341,10 +341,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 context.forwardedAmount.token == JBConstants.NATIVE_TOKEN ? leftoverAmountInThisContract : 0;
 
             // Snapshot balance before `addToBalanceOf` so we can measure the actual amount transferred.
-            // For fee-on-transfer tokens, the terminal receives less than `leftoverAmountInThisContract`.
             uint256 balanceBeforeAdd = _terminalTokenBalance(context.forwardedAmount.token);
 
             // Add the paid amount back to the project's balance in the terminal.
+            // Note: `leftoverAmountInThisContract` is already a measured balance delta (line 314), so it
+            // reflects the real tokens held. The terminal's `_acceptFundsFor` independently measures
+            // its own balance delta, so fee-on-transfer tokens are correctly accounted for on both sides.
             // slither-disable-next-line arbitrary-send-eth
             IJBMultiTerminal(msg.sender).addToBalanceOf{value: payValue}({
                 projectId: context.projectId,
@@ -360,9 +362,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 IERC20(context.forwardedAmount.token).forceApprove({spender: msg.sender, value: 0});
             }
 
-            // Compute the actual amount the terminal received by measuring how much left this contract.
-            // For standard tokens this equals `leftoverAmountInThisContract`; for fee-on-transfer tokens
-            // it will be less, and we must only mint project tokens proportional to what was actually credited.
+            // Measure how much actually left this contract. For fee-on-transfer tokens this is less than
+            // `leftoverAmountInThisContract` — mint project tokens proportional to what was actually sent.
             uint256 amountActuallySent = balanceBeforeAdd - _terminalTokenBalance(context.forwardedAmount.token);
 
             partialMintTokenCount = mulDiv({x: amountActuallySent, y: context.weight, denominator: weightRatio});
