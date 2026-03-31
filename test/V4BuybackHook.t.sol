@@ -1675,7 +1675,6 @@ contract V4BuybackHookTest is Test {
         assertEq(beneficiary.balance, amountOut, "beneficiary should receive swap proceeds");
     }
 
-    /// @notice H-3 fallback: when hookMetadata is empty, afterCashOutRecordedWith defaults to context.cashOutCount.
     function test_afterCashOutRecordedWith_fallsBackToContextCountWhenNoMetadata() public {
         vm.prank(owner);
         hook.setPoolFor({

@@ -275,6 +275,7 @@ A project owner adjusts the TWAP window for a specific terminal token.
 - `TwapWindowChanged(projectId, terminalToken, oldWindow, newWindow, caller)` -- emitted with both old and new values
 
 **Edge cases**:
+- `JBBuybackHook_PoolNotSet()` -- reverts if no pool has been configured for this project/terminal token pair. Configure the pool first via `setPoolFor` or `initializePoolFor`.
 - `JBBuybackHook_InvalidTwapWindow(value, min, max)` -- reverts if `newWindow < 300` or `newWindow > 172800`
 - Unlike the pool itself, the TWAP window can be changed multiple times (not immutable)
 

@@ -246,6 +246,7 @@ The test suite is comprehensive but these areas have limited coverage:
 | `JBBuybackHook_InvalidTwapWindow(uint256, uint256, uint256)` | JBBuybackHook | TWAP window set outside the allowed range (`MIN_TWAP_WINDOW` to `MAX_TWAP_WINDOW`). Checked in `setTwapWindowOf` and `_setPoolFor`. |
 | `JBBuybackHook_PoolAlreadySet(PoolId)` | JBBuybackHook | `_setPoolFor` called for a project/token pair that already has an immutable pool configured. |
 | `JBBuybackHook_PoolNotInitialized(PoolId)` | JBBuybackHook | `_setPoolFor` called with a pool key whose pool has not been initialized in the V4 PoolManager (`sqrtPriceX96 == 0`). |
+| `JBBuybackHook_PoolNotSet()` | JBBuybackHook | `setTwapWindowOf` called for a project/terminal token pair that has no pool configured via `setPoolFor` or `initializePoolFor`. |
 | `JBBuybackHook_SpecifiedSlippageExceeded(uint256, uint256)` | JBBuybackHook | Combined output (swap + leftover mint) is less than `minimumSwapAmountOut`. Checked in both `afterPayRecordedWith` (pay path, when swap didn't fail entirely) and `afterCashOutRecordedWith` (cash-out path). |
 | `JBBuybackHook_TerminalTokenIsProjectToken(address, address)` | JBBuybackHook | `_setPoolFor` called where `terminalToken` equals the project's token (cannot swap a token for itself). |
 | `JBBuybackHook_Unauthorized(address)` | JBBuybackHook | `afterCashOutRecordedWith` called by an address that is not a terminal of the project. |
