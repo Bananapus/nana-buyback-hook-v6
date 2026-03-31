@@ -25,6 +25,22 @@ This is a **V3 → V4 Uniswap migration** — the buyback hook was completely re
 ### Deploy Script: Skip Buyback Hook on Optimism Sepolia (Audit NEW-L-3)
 `Deploy.s.sol` no longer hardcodes an unverified PoolManager address for Optimism Sepolia (chain ID 11155420). Instead, the script deploys only the `JBBuybackHookRegistry` on that chain and skips the `JBBuybackHook` deployment. The registry can be configured with a hook later once a verified V4 PoolManager is available.
 
+### Dynamic-Fee Pool Support and Audit Remediation Round 2
+
+Several hardening changes from audit remediation round 2:
+
+1. **LP fee read from slot0**: `_getQuote` now reads the actual LP fee from `POOL_MANAGER.getSlot0()` instead of using `key.fee`. For dynamic-fee pools (where `key.fee` may not reflect the current LP fee), this ensures the sigmoid slippage calculation uses the real fee.
+
+2. **`_poolIsSet` mapping for pool existence checks**: `beforePayRecordedWith` now checks `_poolIsSet[projectId][terminalToken]` instead of testing `PoolId.unwrap(poolId) != bytes32(0)`. This is more robust since a default `PoolKey` with all-zero fields produces a non-zero `PoolId` hash.
+
+3. **`setTwapWindowOf` pool guard**: `setTwapWindowOf` now reverts with `JBBuybackHook_PoolNotSet()` if no pool has been configured for the project/terminal token pair. Previously it would silently store a TWAP window for an unconfigured pool.
+
+4. **`forceApprove(0)` cleanup**: After `addToBalanceOf` for ERC-20 leftover tokens, the hook resets the terminal's allowance to 0 via `forceApprove`. This prevents leaving a residual allowance that could be exploited if the terminal contract is compromised.
+
+5. **FOT handling comment improvements**: Clarified that `leftoverAmountInThisContract` is already a measured balance delta, and that both the hook and the terminal independently measure their balance deltas for fee-on-transfer correctness.
+
+6. **`sqrtPriceLimitFromAmounts` precision fix** (`JBSwapLib`): In the extended-range path, the library now shifts before taking the square root (`sqrt(ratioX128 << 64)`) instead of shifting after (`sqrt(ratioX128) << 32`). This preserves more precision in the lower bits. An overflow guard falls back to the post-sqrt shift when the pre-shift would exceed `uint256.max`.
+
 ### Noop Informational Pay Hook Specifications
 `beforePayRecordedWith` now returns a noop `JBPayHookSpecification` when a pool is configured but direct minting is still better than swapping. The spec has `noop = true`, `amount = 0`, and carries the same routing metadata as the active swap-path spec. This lets preview/simulation clients inspect pool diagnostics without causing the terminal to call `afterPayRecordedWith`.
 
@@ -289,7 +305,7 @@ Unchanged in signature.
 
 ### Pool Configuration (`_setPoolFor` / `setPoolFor`)
 - **v5:** Computes the pool address via CREATE2 hash (keccak256 of factory, token pair, fee, init code hash). Stores pool address directly.
-- **v6:** Accepts a `PoolKey` directly or constructs one from `(fee, tickSpacing, oracleHook)`. Validates the pool is initialized via `POOL_MANAGER.getSlot0()`. Validates currency pair matches project/terminal tokens. Uses a `_poolIsSet` boolean mapping to track whether a pool has been configured (since default `PoolKey` has all-zero fields).
+- **v6:** Accepts a `PoolKey` directly or constructs one from `(fee, tickSpacing, oracleHook)`. Validates the pool is initialized via `POOL_MANAGER.getSlot0()`. Validates currency pair matches project/terminal tokens. Uses a `_poolIsSet` boolean mapping to track whether a pool has been configured (since default `PoolKey` has all-zero fields). `_poolIsSet` is also used in `beforePayRecordedWith` for reliable pool existence checks and in `setTwapWindowOf` as a guard against configuring TWAP windows for unconfigured pools.
 
 ### Registry: `hookOf` Storage
 - **v5:** `mapping(uint256 projectId => IJBRulesetDataHook) public override hookOf` — public storage mapping (direct getter). Default-fallback logic duplicated in `beforePayRecordedWith`, `hasMintPermissionFor`, and `lockHookFor`.

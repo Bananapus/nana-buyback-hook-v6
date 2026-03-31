@@ -138,7 +138,7 @@ Route project payments and cash outs through the better of the protocol path or 
 | `projectTokenOf` | `mapping(uint256 => address)` | `public` | ERC-20 address of each project's token (set on first `setPoolFor`) |
 | `twapWindowOf` | `mapping(uint256 => mapping(address => uint256))` | `public` | TWAP window in seconds per project + terminal token pair |
 | `_poolKeyOf` | `mapping(uint256 => mapping(address => PoolKey))` | `internal` | V4 `PoolKey` per project + terminal token pair (exposed via `poolKeyOf()` getter) |
-| `_poolIsSet` | `mapping(uint256 => mapping(address => bool))` | `private` | Tracks whether a pool has been configured (prevents re-setting) |
+| `_poolIsSet` | `mapping(uint256 => mapping(address => bool))` | `private` | Tracks whether a pool has been configured. Used for: (1) preventing re-setting via `setPoolFor`, (2) pool existence checks in `beforePayRecordedWith`, (3) guarding `setTwapWindowOf` against configuring windows for unconfigured pools |
 
 ### JBBuybackHookRegistry
 
@@ -192,6 +192,7 @@ Route project payments and cash outs through the better of the protocol path or 
 | `JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max)` | TWAP window outside [5 minutes, 2 days] |
 | `JBBuybackHook_PoolAlreadySet(PoolId poolId)` | `setPoolFor` called again for same project+token pair |
 | `JBBuybackHook_PoolNotInitialized(PoolId poolId)` | Pool not initialized in V4 PoolManager (sqrtPriceX96 == 0) |
+| `JBBuybackHook_PoolNotSet()` | `setTwapWindowOf` called for a project/terminal token pair that has no pool configured |
 | `JBBuybackHook_SpecifiedSlippageExceeded(uint256 amount, uint256 minimum)` | Swap output less than minimum acceptable amount |
 | `JBBuybackHook_TerminalTokenIsProjectToken(address, address)` | Terminal token same as project token |
 | `JBBuybackHook_Unauthorized(address caller)` | `afterPayRecordedWith` called by non-terminal |
@@ -236,6 +237,9 @@ Route project payments and cash outs through the better of the protocol path or 
 - **Registry setDefaultHook**: `setDefaultHook(address(0))` reverts with `ZeroHook` to prevent DoS when projects without a specific hook try to use the default.
 - **Registry disallowHook**: `disallowHook` reverts with `JBBuybackHookRegistry_CannotDisallowDefaultHook` if the hook being disallowed is the current default. The owner must call `setDefaultHook` to change the default before disallowing the old one.
 - **Currency conversion**: When the payment currency differs from the ruleset's base currency, the hook queries `PRICES.pricePerUnitOf(...)` for the conversion factor. This is used both in `beforePayRecordedWith` (for comparing mint vs swap) and in `afterPayRecordedWith` (for computing leftover mint tokens).
+- **Dynamic-fee pools**: The slippage calculation in `_getQuote` reads the LP fee from `POOL_MANAGER.getSlot0()` rather than from `key.fee`. For dynamic-fee pools (where `key.fee` is a flag, not the actual fee), this ensures the sigmoid slippage uses the real LP fee. For standard pools, `slot0.lpFee == key.fee`.
+- **`setTwapWindowOf` requires a pool**: `setTwapWindowOf` reverts with `JBBuybackHook_PoolNotSet()` if no pool has been configured for the project/terminal token pair. Configure the pool first via `setPoolFor` or `initializePoolFor`.
+- **`forceApprove(0)` after `addToBalanceOf`**: After returning ERC-20 leftover tokens to the terminal via `addToBalanceOf`, the hook resets the terminal's allowance to 0. This prevents leaving a residual approval that could be exploited if the terminal contract were compromised.
 
 ## Example Integration
 
