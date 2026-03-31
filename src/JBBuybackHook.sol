@@ -80,7 +80,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_SpecifiedSlippageExceeded(uint256 amount, uint256 minimum);
     error JBBuybackHook_TerminalTokenIsProjectToken(address terminalToken, address projectToken);
     error JBBuybackHook_Unauthorized(address caller);
-    error JBBuybackHook_ZeroMinimumSwapAmount();
     error JBBuybackHook_ZeroProjectToken();
 
     //*********************************************************************//
@@ -214,10 +213,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (context.hookMetadata.length != 0) {
             (minimumSwapAmountOut, cashOutCountToSell) = abi.decode(context.hookMetadata, (uint256, uint256));
         }
-
-        // Defense-in-depth: the normal flow always provides a nonzero minimum from route selection.
-        // Revert if it's missing to prevent zero-slippage sells.
-        if (minimumSwapAmountOut == 0) revert JBBuybackHook_ZeroMinimumSwapAmount();
 
         // Remint project tokens to this hook so they can be sold into the pool.
         // Uses the metadata-provided count, not context.cashOutCount, to avoid selling fee-portion tokens.

@@ -1675,14 +1675,20 @@ contract V4BuybackHookTest is Test {
         assertEq(beneficiary.balance, amountOut, "beneficiary should receive swap proceeds");
     }
 
-    /// @notice H-3 fallback: when hookMetadata is empty, afterCashOutRecordedWith defaults to context.cashOutCount.
-    function test_afterCashOutRecordedWith_revertsWithZeroMinimumWhenNoMetadata() public {
+    function test_afterCashOutRecordedWith_fallsBackToContextCountWhenNoMetadata() public {
         vm.prank(owner);
         hook.setPoolFor({
             projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
         });
 
         uint256 cashOutCount = 10 ether;
+        uint256 amountOut = 5 ether;
+
+        projectToken.mint(address(hook), cashOutCount);
+        vm.deal(address(mockPm), amountOut);
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(int128(uint128(amountOut)), -int128(uint128(cashOutCount)));
 
         JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
             holder: payer,
@@ -1707,10 +1713,18 @@ contract V4BuybackHookTest is Test {
             cashOutMetadata: ""
         });
 
-        // With empty metadata, minimumSwapAmountOut defaults to 0 — the zero-minimum guard must reject this.
-        vm.expectRevert(JBBuybackHook.JBBuybackHook_ZeroMinimumSwapAmount.selector);
+        // With empty metadata, the hook should fall back to context.cashOutCount.
+        vm.expectCall(
+            address(controller),
+            abi.encodeWithSignature(
+                "mintTokensOf(uint256,uint256,address,string,bool)", projectId, cashOutCount, address(hook), "", false
+            )
+        );
+
         vm.prank(address(terminal));
         hook.afterCashOutRecordedWith(context);
+
+        assertTrue(mockPm.swapCalled(), "sell-side swap should execute");
     }
 
     function test_afterCashOutRecordedWith_revertsIfCallerIsNotProjectTerminal() public {
