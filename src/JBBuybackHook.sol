@@ -213,6 +213,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (context.hookMetadata.length != 0) {
             (minimumSwapAmountOut, cashOutCountToSell) = abi.decode(context.hookMetadata, (uint256, uint256));
         }
+        if (cashOutCountToSell > context.cashOutCount) cashOutCountToSell = context.cashOutCount;
 
         // Remint project tokens to this hook so they can be sold into the pool.
         // Uses the metadata-provided count, not context.cashOutCount, to avoid selling fee-portion tokens.
@@ -240,6 +241,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             revert JBBuybackHook_SpecifiedSlippageExceeded(amountReceived, minimumSwapAmountOut);
         }
 
+        // Burn any reminted project-token residue left behind by a partial fill so the hook does not
+        // retain extra project-token inventory after the sell path completes.
+        uint256 unsoldProjectTokenBalance = IERC20(projectToken).balanceOf(address(this));
+        if (unsoldProjectTokenBalance != 0) {
+            controller.burnTokensOf({
+                holder: address(this), projectId: context.projectId, tokenCount: unsoldProjectTokenBalance, memo: ""
+            });
+        }
+
         // Forward the swap proceeds to the beneficiary in the same token they would have reclaimed natively.
         if (context.reclaimedAmount.token == JBConstants.NATIVE_TOKEN) {
             Address.sendValue(context.beneficiary, amountReceived);
@@ -261,7 +271,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @dev The swap uses the issuance rate as its price limit: it fills while the pool offers a better rate than
     /// minting, and any unswapped tokens are minted at the issuance rate. The combined output (swap + leftover mint)
     /// must meet the user's specified minimum, otherwise the transaction reverts. If the swap reverts entirely (due to
-    /// insufficient liquidity or something else), all tokens are minted as a fallback without the minimum check.
+    /// insufficient liquidity or something else), all tokens are minted as a fallback and that same minimum still
+    /// applies to the combined output.
     /// @param context The pay context passed in by the terminal.
     function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable override {
         // Make sure only the project's payment terminals can access this function.
@@ -303,7 +314,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // fills only while the pool offers a better rate than minting. Any unconsumed input tokens
         // remain in this contract and are minted at the issuance rate below.
         // slither-disable-next-line reentrancy-events
-        (uint256 exactSwapAmountOut, bool swapFailed) = _swap({
+        (uint256 exactSwapAmountOut,) = _swap({
             context: context,
             projectTokenIs0: projectTokenIs0,
             minimumSwapAmountOut: tokenCountWithoutHook,
@@ -376,11 +387,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        // If the swap executed (didn't revert entirely), verify the swap-portion output
-        // (swap tokens + minted-from-leftover tokens) meets the user's specified minimum.
-        // When the swap fails entirely (pool unavailable, etc.), skip — the full amount is
-        // minted at the issuance rate as a fallback.
-        if (!swapFailed && exactSwapAmountOut + partialMintTokenCount < minimumSwapAmountOut) {
+        // Verify the combined output (successful swap plus any minted fallback tokens) against the
+        // payer-specified minimum even if the swap path failed completely and execution degraded
+        // to mint-only output.
+        if (exactSwapAmountOut + partialMintTokenCount < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded(
                 exactSwapAmountOut + partialMintTokenCount, minimumSwapAmountOut
             );
