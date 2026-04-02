@@ -213,6 +213,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (context.hookMetadata.length != 0) {
             (minimumSwapAmountOut, cashOutCountToSell) = abi.decode(context.hookMetadata, (uint256, uint256));
         }
+        // Wrappers can pass a smaller sell count through metadata, but they must never inflate it above
+        // what the terminal actually burned in `context.cashOutCount`.
         if (cashOutCountToSell > context.cashOutCount) cashOutCountToSell = context.cashOutCount;
 
         // Remint project tokens to this hook so they can be sold into the pool.
