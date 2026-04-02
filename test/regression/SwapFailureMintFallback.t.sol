@@ -215,10 +215,10 @@ contract SFMF_SwapFailureMintFallback is Test {
         );
     }
 
-    /// @notice When the V4 pool is unavailable (unlock reverts) and
-    ///         minimumSwapAmountOut > 0 (set by TWAP or payer quote), the payment should
-    ///         still honor the caller's minimum instead of bypassing it via mint fallback.
-    function test_swapFailureMintFallback_stillHonorsNonZeroMinimum() public {
+    /// @notice When the V4 pool is unavailable (unlock reverts) and the minimum came from
+    ///         oracle-based routing rather than an explicit caller quote, execution should still
+    ///         degrade to mint fallback.
+    function test_swapFailureMintFallback_allowsOracleDerivedMinimum() public {
         bool projectTokenIs0 = address(projectToken) < address(0);
         uint256 payAmount = 1 ether;
         uint256 minimumSwapAmountOut = 500e18; // Non-zero — this would have caused revert before fix.
@@ -246,7 +246,9 @@ contract SFMF_SwapFailureMintFallback is Test {
             weight: 1e18,
             newlyIssuedTokenCount: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(projectTokenIs0, uint256(0), minimumSwapAmountOut, controller, uint256(0)),
+            hookMetadata: abi.encode(
+                projectTokenIs0, uint256(0), minimumSwapAmountOut, false, controller, uint256(0)
+            ),
             payerMetadata: ""
         });
 
@@ -259,11 +261,6 @@ contract SFMF_SwapFailureMintFallback is Test {
 
         vm.deal(address(terminal), payAmount);
         vm.prank(address(terminal));
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, 0, minimumSwapAmountOut
-            )
-        );
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
         // swap() should NOT have been called (unlock reverted before reaching swap).

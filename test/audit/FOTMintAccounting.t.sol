@@ -203,7 +203,7 @@ contract CodexFOTMintAccountingPoC is Test {
         hook.setPoolFor(projectId, poolKey, 600, address(terminalToken));
     }
 
-    function test_fotFallback_mints_more_than_terminal_reacquires() public {
+    function test_fotFallback_mints_only_what_terminal_reacquires() public {
         uint256 nominalPayment = 100 ether;
         uint256 firstTransferNet = 99 ether;
         uint256 secondTransferNet = 98.01 ether;
@@ -213,15 +213,15 @@ contract CodexFOTMintAccountingPoC is Test {
         vm.expectCall(
             address(controller),
             abi.encodeWithSignature(
-                "mintTokensOf(uint256,uint256,address,string,bool)", projectId, firstTransferNet, beneficiary, "", true
+                "mintTokensOf(uint256,uint256,address,string,bool)", projectId, secondTransferNet, beneficiary, "", true
             )
         );
         vm.mockCall(
             address(controller),
             abi.encodeWithSignature(
-                "mintTokensOf(uint256,uint256,address,string,bool)", projectId, firstTransferNet, beneficiary, "", true
+                "mintTokensOf(uint256,uint256,address,string,bool)", projectId, secondTransferNet, beneficiary, "", true
             ),
-            abi.encode(firstTransferNet)
+            abi.encode(secondTransferNet)
         );
 
         terminalToken.mint(address(terminal), nominalPayment);
@@ -246,7 +246,9 @@ contract CodexFOTMintAccountingPoC is Test {
             weight: 1e18,
             newlyIssuedTokenCount: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(address(projectToken) < address(terminalToken), 0, 0, controller, uint256(0)),
+            hookMetadata: abi.encode(
+                address(projectToken) < address(terminalToken), 0, 0, false, controller, uint256(0)
+            ),
             payerMetadata: ""
         });
 

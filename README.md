@@ -85,6 +85,6 @@ script/
 ## Risks And Notes
 
 - TWAP quality depends on the oracle hook having enough history and liquidity to be meaningful
-- route comparison intentionally falls back when external calls fail, which is good for liveness but easy to misunderstand operationally
+- route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima: explicit minima can revert, oracle-derived minima can still degrade to mint fallback on total swap failure
 - pool and hook configuration should usually be locked after validation to avoid governance surprises
 - fee-on-transfer and partial-fill behaviors are part of the main threat model and should stay that way

@@ -227,7 +227,7 @@ contract PFMC_PartialFillMinimumCheck is Test {
     }
 
     /// @dev Build the afterPay context for a native ETH payment.
-    /// hookMetadata encodes: (projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller,
+    /// hookMetadata encodes: (projectTokenIs0, amountToMintWith, minimumSwapAmountOut, hasExplicitMinimumSwapAmountOut, controller,
     /// tokenCountWithoutHook)
     function _buildContext(
         uint256 payAmount,
@@ -264,6 +264,7 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 projectTokenIs0,
                 uint256(0), // amountToMintWith
                 minimumSwapAmountOut,
+                true,
                 controller,
                 tokenCountWithoutHook
             ),
@@ -327,7 +328,7 @@ contract PFMC_PartialFillMinimumCheck is Test {
         hook.afterPayRecordedWith{value: payAmount}(ctx);
     }
 
-    /// @notice Complete swap failure still enforces the user's minimum output.
+    /// @notice Complete swap failure still enforces an explicit caller-provided minimum output.
     /// minimumSwapAmountOut = 1100 is higher than the pure-mint fallback (1000), so the payment reverts.
     function test_swapFailure_stillEnforcesMinimumCheck() public {
         uint256 payAmount = 1 ether;

@@ -297,7 +297,9 @@ contract V4BuybackHookTest is Test {
             weight: 1e18,
             newlyIssuedTokenCount: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller, uint256(0)),
+            hookMetadata: abi.encode(
+                projectTokenIs0, amountToMintWith, minimumSwapAmountOut, false, controller, uint256(0)
+            ),
             payerMetadata: ""
         });
     }
@@ -975,7 +977,7 @@ contract V4BuybackHookTest is Test {
         (, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
         assertEq(specs.length, 1, "explicit payer quote should still produce a hook spec");
-        (,, uint256 minOut,) = abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController));
+        (,, uint256 minOut,,) = abi.decode(specs[0].metadata, (bool, uint256, uint256, bool, IJBController));
         assertEq(minOut, badPayerQuote, "explicit payer quote should be honored");
     }
 
@@ -1230,21 +1232,23 @@ contract V4BuybackHookTest is Test {
         // The swap path must have been chosen.
         assertEq(specs.length, 1, "Swap path should be chosen");
 
-        // Decode all 10 fields from the hook spec metadata.
+        // Decode all 11 fields from the hook spec metadata.
         (
             bool projectTokenIs0,
             uint256 mintFromExcess,
             uint256 minimumSwapAmountOut,
+            bool hasExplicitMinimumSwapAmountOut,
             IJBController decodedController,
             uint256 tokenCountWithoutHook,
             int24 twapTick,
             uint128 twapLiquidity,
             PoolId decodedPoolId,
             uint256 minimumBeneficiaryTokenCount,
-            uint256 minimumReservedTokenCount
+            uint256 minimumReservedTokenCount,
+            uint256 rawSwapQuote
         ) = abi.decode(
             specs[0].metadata,
-            (bool, uint256, uint256, IJBController, uint256, int24, uint128, PoolId, uint256, uint256)
+            (bool, uint256, uint256, bool, IJBController, uint256, int24, uint128, PoolId, uint256, uint256, uint256)
         );
 
         // Verify field 5: with weight=1e18, baseCurrency=NATIVE_TOKEN, paying 1 ETH in native,
@@ -1257,6 +1261,7 @@ contract V4BuybackHookTest is Test {
         assertEq(address(decodedController), address(controller), "controller should match");
         assertEq(mintFromExcess, 0, "mintFromExcess should be 0 when amountToSwapWith == totalPaid");
         assertEq(minimumSwapAmountOut, highPayerQuote, "minimumSwapAmountOut should honor the explicit payer quote");
+        assertTrue(hasExplicitMinimumSwapAmountOut, "explicit payer quote should be marked explicit");
         assertEq(projectTokenIs0, address(projectToken) < address(0), "projectTokenIs0 should match address comparison");
 
         // Verify fields 6-7: explicit payer quotes skip TWAP lookup, so diagnostics remain zeroed.
@@ -1265,6 +1270,7 @@ contract V4BuybackHookTest is Test {
 
         // Verify field 8: poolId (should match the configured pool).
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
+        assertEq(rawSwapQuote, 0, "rawSwapQuote should be zero when TWAP is skipped");
 
         // Verify fields 9-10: minimum beneficiary/reserved split for the swap path.
         (uint256 expectedBeneficiaryTokenCount, uint256 expectedReservedTokenCount) = controller.previewMintOf({

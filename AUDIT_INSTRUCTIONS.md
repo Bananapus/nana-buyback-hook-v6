@@ -41,7 +41,7 @@ The registry governs which hook configuration a project uses.
 Choosing swap versus native protocol should only change where value is sourced, not increase user output beyond what either real path can support.
 
 2. Fallback behavior is safe
-If the external swap route reverts, misquotes, or becomes unavailable, the protocol must degrade to the intended native path without trapping funds.
+If the external swap route reverts, misquotes, or becomes unavailable, the protocol must either honor an explicit caller minimum or degrade to the intended native path without trapping funds. Oracle-derived routing minimums are not user promises.
 
 3. Price and amount estimates are coherent
 Preview logic, execution logic, and callback settlement must agree on direction, token roles, and minimum-return semantics.
@@ -64,6 +64,7 @@ Prioritize:
 - quote computation and swap settlement deltas
 - registry defaults and project-specific override rules
 - fallback branches after failed external calls
+- sell-side execution after `MAX_CASH_OUT_TAX_RATE` routing, especially hard-failure behavior
 - any path that assumes a valid oracle hook or initialized pool exists
 
 ## Build And Verification

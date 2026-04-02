@@ -867,7 +867,7 @@ contract V4SandwichForkTest is Test {
             weight: 0.5e18,
             newlyIssuedTokenCount: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(projectTokenIs0, uint256(0), uint256(0), controller, uint256(0)),
+            hookMetadata: abi.encode(projectTokenIs0, uint256(0), uint256(0), false, controller, uint256(0)),
             payerMetadata: ""
         });
 

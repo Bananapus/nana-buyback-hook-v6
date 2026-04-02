@@ -29,6 +29,10 @@ contract CodexCashOutProjectToken is ERC20 {
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
     }
+
+    function burn(address from, uint256 amount) external {
+        _burn(from, amount);
+    }
 }
 
 contract CodexCashOutTerminalToken is ERC20 {
@@ -44,6 +48,7 @@ contract CodexCashOutController {
 
     uint256 internal _lastMintCount;
     address internal _lastBeneficiary;
+    uint256 internal _lastBurnCount;
 
     constructor(CodexCashOutProjectToken token) {
         TOKEN = token;
@@ -71,6 +76,15 @@ contract CodexCashOutController {
 
     function lastBeneficiary() external view returns (address) {
         return _lastBeneficiary;
+    }
+
+    function burnTokensOf(address holder, uint256, uint256 tokenCount, string memory) external {
+        _lastBurnCount = tokenCount;
+        TOKEN.burn(holder, tokenCount);
+    }
+
+    function lastBurnCount() external view returns (uint256) {
+        return _lastBurnCount;
     }
 }
 
@@ -163,24 +177,23 @@ contract CodexCashOutMetadataInflationPoC is Test {
         hook.forTestInitPool({
             projectId: projectId, key: key, projectToken: address(projectToken), terminalToken: address(terminalToken)
         });
-
-        uint256 inflatedCashOutCount = 200 ether;
-        if (address(projectToken) < address(terminalToken)) {
-            // token0 in, token1 out
-            // forge-lint: disable-next-line(unsafe-typecast)
-            poolManager.setMockDeltas(-int128(uint128(inflatedCashOutCount)), int128(uint128(inflatedCashOutCount)));
-        } else {
-            // token1 in, token0 out
-            // forge-lint: disable-next-line(unsafe-typecast)
-            poolManager.setMockDeltas(int128(uint128(inflatedCashOutCount)), -int128(uint128(inflatedCashOutCount)));
-        }
-
-        terminalToken.mint(address(poolManager), inflatedCashOutCount);
     }
 
     function test_afterCashOutRecordedWith_inflatedMetadataCannotOverpayBeneficiary() public {
         uint256 actualBurnedCount = 100 ether;
         uint256 inflatedCashOutCount = 200 ether;
+
+        if (address(projectToken) < address(terminalToken)) {
+            // token0 in, token1 out
+            // forge-lint: disable-next-line(unsafe-typecast)
+            poolManager.setMockDeltas(-int128(uint128(actualBurnedCount)), int128(uint128(actualBurnedCount)));
+        } else {
+            // token1 in, token0 out
+            // forge-lint: disable-next-line(unsafe-typecast)
+            poolManager.setMockDeltas(int128(uint128(actualBurnedCount)), -int128(uint128(actualBurnedCount)));
+        }
+
+        terminalToken.mint(address(poolManager), actualBurnedCount);
 
         JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
             holder: makeAddr("holder"),
@@ -200,17 +213,13 @@ contract CodexCashOutMetadataInflationPoC is Test {
         });
 
         vm.prank(terminal);
-        vm.expectRevert(
-            abi.encodeWithSignature(
-                "ERC20InsufficientBalance(address,uint256,uint256)",
-                address(hook),
-                actualBurnedCount,
-                inflatedCashOutCount
-            )
-        );
         hook.afterCashOutRecordedWith(context);
 
-        assertEq(controller.lastMintCount(), 0, "cash-out path should revert before reminting inflated project tokens");
-        assertEq(terminalToken.balanceOf(beneficiary), 0, "beneficiary should not receive an inflated payout");
+        assertEq(controller.lastMintCount(), actualBurnedCount, "remint should clamp to the actual burned count");
+        assertEq(controller.lastBurnCount(), 0, "full fill should not leave reminted residue to burn");
+        assertEq(
+            terminalToken.balanceOf(beneficiary), actualBurnedCount, "beneficiary payout should be capped to burned tokens"
+        );
+        assertEq(projectToken.balanceOf(address(hook)), 0, "hook should not retain reminted project tokens");
     }
 }

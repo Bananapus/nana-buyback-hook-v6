@@ -29,6 +29,7 @@ payment arrives
   -> hook estimates pool output using explicit quote metadata or TWAP-based quoting
   -> if pool wins, hook returns an active pay-hook spec and later executes the swap
   -> swapped tokens are burned and re-minted through the controller so reserved-rate semantics still apply
+  -> if the swap later fails completely, explicit caller minima still revert but oracle-derived routing minima degrade to mint fallback
   -> if mint wins, the spec is informational only
 ```
 
@@ -38,6 +39,7 @@ payment arrives
 cash out requested
   -> hook compares protocol reclaim value to pool sell value
   -> if pool wins, after-cash-out callback remints the selected token count to itself and sells it
+  -> if the sell-side swap fails hard, the cash out reverts; there is no protocol reclaim fallback after route selection
   -> if protocol wins, the spec stays noop but still carries diagnostics for preview clients
 ```
 
