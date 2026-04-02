@@ -243,8 +243,8 @@ contract BuybackHookHandler is Test {
             }
 
             // Decode the hook metadata to extract minimumSwapAmountOut.
-            // Format: abi.encode(projectTokenIs0, amountToMintWith, minimumSwapAmountOut, hasExplicitMinimumSwapAmountOut, controller,
-            // tokenCountWithoutHook, ...)
+            // Format: abi.encode(projectTokenIs0, amountToMintWith, minimumSwapAmountOut,
+            // hasExplicitMinimumSwapAmountOut, controller, tokenCountWithoutHook, ...)
             (, uint256 amountToMintWith, uint256 minimumSwapAmountOut,,) =
                 abi.decode(specs[0].metadata, (bool, uint256, uint256, bool, IJBController));
 

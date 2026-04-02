@@ -218,7 +218,9 @@ contract CodexCashOutMetadataInflationPoC is Test {
         assertEq(controller.lastMintCount(), actualBurnedCount, "remint should clamp to the actual burned count");
         assertEq(controller.lastBurnCount(), 0, "full fill should not leave reminted residue to burn");
         assertEq(
-            terminalToken.balanceOf(beneficiary), actualBurnedCount, "beneficiary payout should be capped to burned tokens"
+            terminalToken.balanceOf(beneficiary),
+            actualBurnedCount,
+            "beneficiary payout should be capped to burned tokens"
         );
         assertEq(projectToken.balanceOf(address(hook)), 0, "hook should not retain reminted project tokens");
     }
