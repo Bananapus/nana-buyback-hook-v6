@@ -205,7 +205,6 @@ contract CodexFOTMintAccountingPoC is Test {
 
     function test_fotFallback_mints_only_what_terminal_reacquires() public {
         uint256 nominalPayment = 100 ether;
-        uint256 firstTransferNet = 99 ether;
         uint256 secondTransferNet = 98.01 ether;
 
         poolManager.setShouldRevertOnUnlock(true);
