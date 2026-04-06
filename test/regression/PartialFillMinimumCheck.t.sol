@@ -87,7 +87,7 @@ contract PFMC_ForTest_BuybackHook is JBBuybackHook {
 /// @notice Tests for the partial-fill + minimum-check behavior in afterPayRecordedWith.
 /// The buyback hook uses the issuance rate as the swap's price limit. A partial fill produces
 /// swap output + leftover mint. The combined total is checked against the user's minimumSwapAmountOut.
-/// When the swap fails entirely, the check is skipped and all tokens are minted as a fallback.
+/// When the swap fails entirely, the mint-only fallback is still checked against the user's minimum.
 contract PFMC_PartialFillMinimumCheck is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
@@ -227,8 +227,8 @@ contract PFMC_PartialFillMinimumCheck is Test {
     }
 
     /// @dev Build the afterPay context for a native ETH payment.
-    /// hookMetadata encodes: (projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller,
-    /// tokenCountWithoutHook)
+    /// hookMetadata encodes: (projectTokenIs0, amountToMintWith, minimumSwapAmountOut, hasExplicitMinimumSwapAmountOut,
+    /// controller, tokenCountWithoutHook)
     function _buildContext(
         uint256 payAmount,
         uint256 minimumSwapAmountOut,
@@ -264,6 +264,7 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 projectTokenIs0,
                 uint256(0), // amountToMintWith
                 minimumSwapAmountOut,
+                true,
                 controller,
                 tokenCountWithoutHook
             ),
@@ -327,10 +328,9 @@ contract PFMC_PartialFillMinimumCheck is Test {
         hook.afterPayRecordedWith{value: payAmount}(ctx);
     }
 
-    /// @notice Complete swap failure bypasses the minimum check → succeeds via mint fallback.
-    /// minimumSwapAmountOut = 1100 (higher than 1000 from pure mint), but swapFailed = true
-    /// so the check is skipped and all tokens are minted at the issuance rate.
-    function test_swapFailure_bypassesMinimumCheck() public {
+    /// @notice Complete swap failure still enforces an explicit caller-provided minimum output.
+    /// minimumSwapAmountOut = 1100 is higher than the pure-mint fallback (1000), so the payment reverts.
+    function test_swapFailure_stillEnforcesMinimumCheck() public {
         uint256 payAmount = 1 ether;
 
         // Force the swap to revert entirely.
@@ -342,9 +342,11 @@ contract PFMC_PartialFillMinimumCheck is Test {
             tokenCountWithoutHook: 1000e18
         });
 
-        // Should succeed — swap failure skips minimum check, full amount minted.
         vm.deal(address(terminal), payAmount);
         vm.prank(address(terminal));
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, 1000e18, 1100e18)
+        );
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
         assertFalse(mockPm.swapCalled(), "swap should NOT have been called (unlock reverted)");

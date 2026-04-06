@@ -213,6 +213,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (context.hookMetadata.length != 0) {
             (minimumSwapAmountOut, cashOutCountToSell) = abi.decode(context.hookMetadata, (uint256, uint256));
         }
+        // Wrappers can pass a smaller sell count through metadata, but they must never inflate it above
+        // what the terminal actually burned in `context.cashOutCount`.
+        if (cashOutCountToSell > context.cashOutCount) cashOutCountToSell = context.cashOutCount;
 
         // Remint project tokens to this hook so they can be sold into the pool.
         // Uses the metadata-provided count, not context.cashOutCount, to avoid selling fee-portion tokens.
@@ -240,6 +243,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             revert JBBuybackHook_SpecifiedSlippageExceeded(amountReceived, minimumSwapAmountOut);
         }
 
+        // Burn any reminted project-token residue left behind by a partial fill so the hook does not
+        // retain extra project-token inventory after the sell path completes.
+        uint256 unsoldProjectTokenBalance = IERC20(projectToken).balanceOf(address(this));
+        if (unsoldProjectTokenBalance != 0) {
+            controller.burnTokensOf({
+                holder: address(this), projectId: context.projectId, tokenCount: unsoldProjectTokenBalance, memo: ""
+            });
+        }
+
         // Forward the swap proceeds to the beneficiary in the same token they would have reclaimed natively.
         if (context.reclaimedAmount.token == JBConstants.NATIVE_TOKEN) {
             Address.sendValue(context.beneficiary, amountReceived);
@@ -261,7 +273,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @dev The swap uses the issuance rate as its price limit: it fills while the pool offers a better rate than
     /// minting, and any unswapped tokens are minted at the issuance rate. The combined output (swap + leftover mint)
     /// must meet the user's specified minimum, otherwise the transaction reverts. If the swap reverts entirely (due to
-    /// insufficient liquidity or something else), all tokens are minted as a fallback without the minimum check.
+    /// insufficient liquidity or something else), all tokens are minted as a fallback. Explicit caller-provided
+    /// minimums still apply in that case, but oracle-derived routing minimums do not.
     /// @param context The pay context passed in by the terminal.
     function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable override {
         // Make sure only the project's payment terminals can access this function.
@@ -278,9 +291,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             bool projectTokenIs0,
             uint256 amountToMintWith,
             uint256 minimumSwapAmountOut,
+            bool hasExplicitMinimumSwapAmountOut,
             IJBController controller,
             uint256 tokenCountWithoutHook
-        ) = abi.decode(context.hookMetadata, (bool, uint256, uint256, IJBController, uint256));
+        ) = abi.decode(context.hookMetadata, (bool, uint256, uint256, bool, IJBController, uint256));
 
         // Record the terminal token balance BEFORE pulling payment tokens so we can compute leftover as a delta.
         // For native ETH, `msg.value` is already included in `address(this).balance` at this point,
@@ -330,8 +344,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Mint a corresponding number of project tokens using any terminal tokens left over.
         uint256 partialMintTokenCount;
         if (leftoverAmountInThisContract != 0) {
+            uint256 terminalBalanceBeforeAdd;
+
             // If the token paid in wasn't the native token, grant the terminal permission to pull them back.
             if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
+                terminalBalanceBeforeAdd = IERC20(context.forwardedAmount.token).balanceOf(msg.sender);
                 // slither-disable-next-line unused-return
                 IERC20(context.forwardedAmount.token)
                     .forceApprove({spender: msg.sender, value: leftoverAmountInThisContract});
@@ -362,9 +379,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 IERC20(context.forwardedAmount.token).forceApprove({spender: msg.sender, value: 0});
             }
 
-            // Measure how much actually left this contract. For fee-on-transfer tokens this is less than
-            // `leftoverAmountInThisContract` — mint project tokens proportional to what was actually sent.
-            uint256 amountActuallySent = balanceBeforeAdd - _terminalTokenBalance(context.forwardedAmount.token);
+            // Measure how much value the terminal actually reacquired. For fee-on-transfer tokens, the hook-side
+            // debit can exceed the terminal's credited amount on the return hop. Native ETH cannot tax the transfer,
+            // so the hook-side debit and terminal credit are identical there.
+            uint256 amountActuallySent = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN
+                ? balanceBeforeAdd - _terminalTokenBalance(context.forwardedAmount.token)
+                : IERC20(context.forwardedAmount.token).balanceOf(msg.sender) - terminalBalanceBeforeAdd;
 
             partialMintTokenCount = mulDiv({x: amountActuallySent, y: context.weight, denominator: weightRatio});
 
@@ -376,11 +396,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        // If the swap executed (didn't revert entirely), verify the swap-portion output
-        // (swap tokens + minted-from-leftover tokens) meets the user's specified minimum.
-        // When the swap fails entirely (pool unavailable, etc.), skip — the full amount is
-        // minted at the issuance rate as a fallback.
-        if (!swapFailed && exactSwapAmountOut + partialMintTokenCount < minimumSwapAmountOut) {
+        // Explicit caller minima are hard settlement guarantees and still apply if the swap path
+        // fails completely. Oracle-derived minima are routing hints, so a total swap failure may
+        // still degrade to mint-only fallback without reverting.
+        bool shouldEnforceMinimum = hasExplicitMinimumSwapAmountOut || !swapFailed;
+        if (shouldEnforceMinimum && exactSwapAmountOut + partialMintTokenCount < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded(
                 exactSwapAmountOut + partialMintTokenCount, minimumSwapAmountOut
             );
@@ -840,6 +860,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     projectTokenIs0,
                     amountToMintWith,
                     minimumSwapAmountOut,
+                    hasUserSpecifiedQuote,
                     controller,
                     tokenCountWithoutHook,
                     twapTick,

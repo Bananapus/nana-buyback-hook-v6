@@ -243,10 +243,10 @@ contract BuybackHookHandler is Test {
             }
 
             // Decode the hook metadata to extract minimumSwapAmountOut.
-            // Format: abi.encode(projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller,
-            // tokenCountWithoutHook, ...)
-            (, uint256 amountToMintWith, uint256 minimumSwapAmountOut,) =
-                abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController));
+            // Format: abi.encode(projectTokenIs0, amountToMintWith, minimumSwapAmountOut,
+            // hasExplicitMinimumSwapAmountOut, controller, tokenCountWithoutHook, ...)
+            (, uint256 amountToMintWith, uint256 minimumSwapAmountOut,,) =
+                abi.decode(specs[0].metadata, (bool, uint256, uint256, bool, IJBController));
 
             // The amount forwarded to the hook for swapping.
             uint256 amountToSwapWith = specs[0].amount;
@@ -362,8 +362,8 @@ contract BuybackHookHandler is Test {
                     return;
                 }
 
-                (, uint256 decodedMintWith, uint256 decodedMinSwapOut,) =
-                    abi.decode(specs[0].metadata, (bool, uint256, uint256, IJBController));
+                (, uint256 decodedMintWith, uint256 decodedMinSwapOut,,) =
+                    abi.decode(specs[0].metadata, (bool, uint256, uint256, bool, IJBController));
 
                 uint256 swapAmount = specs[0].amount;
                 uint256 leftoverMintTokens = 0;

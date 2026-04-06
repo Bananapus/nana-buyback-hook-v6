@@ -292,7 +292,9 @@ contract TestBuybackFOT is Test {
             weight: 1e18,
             newlyIssuedTokenCount: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(projectTokenIs0, amountToMintWith, minimumSwapAmountOut, controller, uint256(0)),
+            hookMetadata: abi.encode(
+                projectTokenIs0, amountToMintWith, minimumSwapAmountOut, false, controller, uint256(0)
+            ),
             payerMetadata: ""
         });
     }

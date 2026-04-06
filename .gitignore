@@ -33,6 +33,7 @@ publish.sh
 # Audit/nemesis output
 .audit/
 .audit-logs/
+assets/
 AUDIT_FINDINGS.md
 NEMESIS_SCOPE.md
 run-nemesis-all.sh
