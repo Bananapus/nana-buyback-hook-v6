@@ -296,17 +296,20 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 tokenCountWithoutHook
         ) = abi.decode(context.hookMetadata, (bool, uint256, uint256, bool, IJBController, uint256));
 
+        // Cache the native token check to avoid repeated comparison (~50-100 gas).
+        bool isNativeToken = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN;
+
         // Record the terminal token balance BEFORE pulling payment tokens so we can compute leftover as a delta.
         // For native ETH, `msg.value` is already included in `address(this).balance` at this point,
         // so we subtract it. For ERC-20, we capture BEFORE safeTransferFrom.
         // This prevents both pre-existing balances AND the payment itself from inflating leftovers.
         uint256 balanceBefore = _terminalTokenBalance(context.forwardedAmount.token);
-        if (context.forwardedAmount.token == JBConstants.NATIVE_TOKEN) {
+        if (isNativeToken) {
             balanceBefore -= msg.value;
         }
 
         // If the token paid in isn't the native token, pull the amount to swap from the terminal.
-        if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
+        if (!isNativeToken) {
             IERC20(context.forwardedAmount.token)
                 .safeTransferFrom({from: msg.sender, to: address(this), value: context.forwardedAmount.value});
         }
@@ -347,15 +350,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 terminalBalanceBeforeAdd;
 
             // If the token paid in wasn't the native token, grant the terminal permission to pull them back.
-            if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
+            if (!isNativeToken) {
                 terminalBalanceBeforeAdd = IERC20(context.forwardedAmount.token).balanceOf(msg.sender);
                 // slither-disable-next-line unused-return
                 IERC20(context.forwardedAmount.token)
                     .forceApprove({spender: msg.sender, value: leftoverAmountInThisContract});
             }
 
-            uint256 payValue =
-                context.forwardedAmount.token == JBConstants.NATIVE_TOKEN ? leftoverAmountInThisContract : 0;
+            uint256 payValue = isNativeToken ? leftoverAmountInThisContract : 0;
 
             // Snapshot balance before `addToBalanceOf` so we can measure the actual amount transferred.
             uint256 balanceBeforeAdd = _terminalTokenBalance(context.forwardedAmount.token);
@@ -375,14 +377,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
 
             // Reset the approval to 0 to avoid leaving a residual allowance for the terminal.
-            if (context.forwardedAmount.token != JBConstants.NATIVE_TOKEN) {
+            if (!isNativeToken) {
                 IERC20(context.forwardedAmount.token).forceApprove({spender: msg.sender, value: 0});
             }
 
             // Measure how much value the terminal actually reacquired. For fee-on-transfer tokens, the hook-side
             // debit can exceed the terminal's credited amount on the return hop. Native ETH cannot tax the transfer,
             // so the hook-side debit and terminal credit are identical there.
-            uint256 amountActuallySent = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN
+            uint256 amountActuallySent = isNativeToken
                 ? balanceBeforeAdd - _terminalTokenBalance(context.forwardedAmount.token)
                 : IERC20(context.forwardedAmount.token).balanceOf(msg.sender) - terminalBalanceBeforeAdd;
 
@@ -714,13 +716,17 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 rawSwapQuote;
         int24 twapTick;
         uint128 twapLiquidity;
-        PoolId poolId = _poolKeyOf[context.projectId][terminalToken].toId();
-        if (!hasUserSpecifiedMinimumSwapAmountOut) {
+        PoolId poolId;
+        if (hasUserSpecifiedMinimumSwapAmountOut) {
+            // Only compute poolId from storage when skipping _getQuote (which would return it).
+            poolId = _poolKeyOf[context.projectId][terminalToken].toId();
+        } else {
             (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
                 projectId: context.projectId,
                 amountIn: context.cashOutCount,
                 baseToken: projectToken,
-                quoteToken: terminalToken
+                quoteToken: terminalToken,
+                terminalToken: terminalToken
             });
         }
 
@@ -826,13 +832,17 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 rawSwapQuote;
         int24 twapTick;
         uint128 twapLiquidity;
-        PoolId poolId = _poolKeyOf[context.projectId][terminalToken].toId();
-        if (!hasUserSpecifiedQuote) {
+        PoolId poolId;
+        if (hasUserSpecifiedQuote) {
+            // Only compute poolId from storage when skipping _getQuote (which would return it).
+            poolId = _poolKeyOf[context.projectId][terminalToken].toId();
+        } else {
             (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
                 projectId: context.projectId,
                 amountIn: amountToSwapWith,
                 baseToken: terminalToken,
-                quoteToken: projectToken
+                quoteToken: projectToken,
+                terminalToken: terminalToken
             });
         }
 
@@ -1112,6 +1122,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param amountIn The number of input tokens being used to swap.
     /// @param baseToken The token being swapped in.
     /// @param quoteToken The token being swapped out.
+    /// @param terminalToken The terminal token address (already normalized: address(0) for native). Passed by the
+    /// caller to avoid a redundant `projectTokenOf` SLOAD that would otherwise be needed to derive it.
     /// @return rawAmountOut The raw oracle quote before slippage adjustment.
     /// @return amountOut The minimum number of tokens to receive after slippage adjustment.
     /// @return twapTick The arithmetic mean tick from the TWAP oracle.
@@ -1121,19 +1133,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 projectId,
         uint256 amountIn,
         address baseToken,
-        address quoteToken
+        address quoteToken,
+        address terminalToken
     )
         internal
         view
         returns (uint256 rawAmountOut, uint256 amountOut, int24 twapTick, uint128 twapLiquidity, PoolId poolId)
     {
-        address terminalToken = baseToken == projectTokenOf[projectId] ? quoteToken : baseToken;
+        // Check pool existence before loading the full PoolKey struct (~500 gas saved on early exit).
+        if (!_poolIsSet[projectId][terminalToken]) return (0, 0, 0, 0, PoolId.wrap(0));
 
         // Get the pool key for this project/terminal token pair.
         PoolKey memory key = _poolKeyOf[projectId][terminalToken];
-
-        // Make sure a pool has been configured.
-        if (!_poolIsSet[projectId][terminalToken]) return (0, 0, 0, 0, PoolId.wrap(0));
 
         // Get the TWAP window for this project/terminal token pair.
         uint256 twapWindow = twapWindowOf[projectId][terminalToken];
