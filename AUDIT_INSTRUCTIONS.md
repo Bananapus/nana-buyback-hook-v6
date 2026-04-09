@@ -77,7 +77,7 @@ Standard workflow:
 Current tests focus on:
 - oracle reverts and stale windows
 - fee-on-transfer behavior
-- partial fill and leftover balance regressions
+- partial fill, leftover delta, and cash-out residue regressions
 - V4 fork scenarios and sandwich resistance
 
 Strong findings here usually demonstrate that a user can receive materially better-than-real economics or that the hook can force users onto a worse path than the contract believes it selected.
