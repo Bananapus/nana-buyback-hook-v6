@@ -25,7 +25,7 @@ This file describes the verified change from `nana-buyback-hook-v5` to the curre
 - `IJBBuybackHook` now extends `IJBCashOutHook` in addition to the pay/data-hook responsibilities.
 - The registry adds explicit `HookMismatch` and `ZeroHook` error cases that were not part of the older model.
 - The current source and tests are built around v4 pool-manager routing, not the v5 direct-v3-pool mental model.
-- The repo includes dedicated regression coverage for default-hook validation, initialization races, leftover accounting, and swap-failure fallback behavior.
+- The repo includes dedicated regression coverage for default-hook validation, initialization races, leftover accounting, swap-failure fallback behavior, and cash-out partial-fill residue accounting.
 
 ## Breaking ABI changes
 

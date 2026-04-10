@@ -231,7 +231,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Sell the reminted project tokens for the terminal token using the configured pool direction.
         // slither-disable-next-line reentrancy-events
-        uint256 amountReceived = _swapExactInput({
+        (uint256 amountSpent, uint256 amountReceived) = _swapExactInput({
             key: key,
             amountIn: cashOutCountToSell,
             minimumSwapAmountOut: minimumSwapAmountOut,
@@ -243,12 +243,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             revert JBBuybackHook_SpecifiedSlippageExceeded(amountReceived, minimumSwapAmountOut);
         }
 
-        // Burn any reminted project-token residue left behind by a partial fill so the hook does not
-        // retain extra project-token inventory after the sell path completes.
-        uint256 unsoldProjectTokenBalance = IERC20(projectToken).balanceOf(address(this));
-        if (unsoldProjectTokenBalance != 0) {
+        // Burn only the reminted residue left unsold by THIS execution.
+        // Pre-existing project-token balances on the hook must not be swept into this burn.
+        uint256 unsoldProjectTokenCount = cashOutCountToSell > amountSpent ? cashOutCountToSell - amountSpent : 0;
+        if (unsoldProjectTokenCount != 0) {
             controller.burnTokensOf({
-                holder: address(this), projectId: context.projectId, tokenCount: unsoldProjectTokenBalance, memo: ""
+                holder: address(this), projectId: context.projectId, tokenCount: unsoldProjectTokenCount, memo: ""
             });
         }
 
@@ -582,7 +582,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice The V4 PoolManager unlock callback. Executes the swap and settles/takes tokens.
     /// @dev ONLY callable by the PoolManager singleton.
     /// @param data ABI-encoded SwapCallbackData.
-    /// @return result ABI-encoded amount of project tokens received.
+    /// @return result ABI-encoded swap input consumed and output received.
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
         // Only the PoolManager can call this.
         if (msg.sender != address(POOL_MANAGER)) revert JBBuybackHook_CallerNotPoolManager(msg.sender);
@@ -647,7 +647,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Take the output (PoolManager owes us).
         POOL_MANAGER.take({currency: outputCurrency, to: address(this), amount: outputAmount});
 
-        return abi.encode(outputAmount);
+        return abi.encode(inputAmount, outputAmount);
     }
 
     /// @notice Receive native tokens. Required for V4 native take() and wrapped token unwrap.
@@ -1024,7 +1024,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Try the V4 unlock/callback swap. On failure, fall back to minting.
         // slither-disable-next-line reentrancy-events
         try POOL_MANAGER.unlock(callbackData) returns (bytes memory result) {
-            amountReceived = abi.decode(result, (uint256));
+            (, amountReceived) = abi.decode(result, (uint256, uint256));
         } catch {
             return (0, true);
         }
@@ -1052,6 +1052,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param amountIn The exact amount of input tokens to sell.
     /// @param minimumSwapAmountOut The minimum acceptable amount of output tokens.
     /// @param zeroForOne Whether the swap should move from `currency0` to `currency1`.
+    /// @return amountSpent The amount of input tokens actually consumed by the swap.
     /// @return amountReceived The amount of output tokens received from the swap.
     function _swapExactInput(
         PoolKey memory key,
@@ -1060,7 +1061,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool zeroForOne
     )
         internal
-        returns (uint256 amountReceived)
+        returns (uint256 amountSpent, uint256 amountReceived)
     {
         // Encode the swap parameters so `unlockCallback(...)` can execute the swap after the PoolManager unlocks.
         bytes memory callbackData = abi.encode(
@@ -1070,7 +1071,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         );
 
         // Enter the PoolManager unlock flow and decode the output amount returned by the callback.
-        amountReceived = abi.decode(POOL_MANAGER.unlock(callbackData), (uint256));
+        (amountSpent, amountReceived) = abi.decode(POOL_MANAGER.unlock(callbackData), (uint256, uint256));
     }
 
     //*********************************************************************//
