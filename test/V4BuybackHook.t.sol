@@ -1358,7 +1358,7 @@ contract V4BuybackHookTest is Test {
             metadata: fullMetadata
         });
 
-        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "cash out should be rerouted through the pool");
         assertEq(specs.length, 1, "cash out hook spec should be returned");
@@ -1407,7 +1407,7 @@ contract V4BuybackHookTest is Test {
             metadata: ""
         });
 
-        (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, JBCashOutHookSpecification[] memory specs) =
+        (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply,, JBCashOutHookSpecification[] memory specs) =
             hook.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, context.cashOutTaxRate, "cash out tax rate should pass through");
@@ -1450,7 +1450,7 @@ contract V4BuybackHookTest is Test {
         uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
         uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
         uint256 protocolMinimum = JBCashOuts.cashOutFrom({
-            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
+            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, taxTotalSupply: totalSupply, cashOutTaxRate: 0
         });
         uint256 explicitMinimum = protocolMinimum + bound(uint256(deltaSeed), 1, 1_000_000 ether);
 
@@ -1480,6 +1480,7 @@ contract V4BuybackHookTest is Test {
             uint256 cashOutTaxRate,
             uint256 returnedCashOutCount,
             uint256 returnedTotalSupply,
+            ,
             JBCashOutHookSpecification[] memory specs
         ) = hook.beforeCashOutRecordedWith(context);
 
@@ -1513,7 +1514,7 @@ contract V4BuybackHookTest is Test {
         uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
         uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
         uint256 protocolMinimum = JBCashOuts.cashOutFrom({
-            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
+            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, taxTotalSupply: totalSupply, cashOutTaxRate: 0
         });
         uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
         uint256 explicitMinimum = protocolMinimum - delta;
@@ -1544,6 +1545,7 @@ contract V4BuybackHookTest is Test {
             uint256 cashOutTaxRate,
             uint256 returnedCashOutCount,
             uint256 returnedTotalSupply,
+            ,
             JBCashOutHookSpecification[] memory specs
         ) = hook.beforeCashOutRecordedWith(context);
 

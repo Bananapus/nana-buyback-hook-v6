@@ -289,19 +289,21 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.mockCall(
             address(hookB),
             abi.encodeWithSelector(IJBRulesetDataHook.beforeCashOutRecordedWith.selector),
-            abi.encode(uint256(123), uint256(456), uint256(789), specs)
+            abi.encode(uint256(123), uint256(456), uint256(789), uint256(789), specs)
         );
 
         (
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
             uint256 totalSupply,
+            uint256 taxTotalSupply,
             JBCashOutHookSpecification[] memory returnedSpecs
         ) = registry.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, 123, "should forward cashOutTaxRate");
         assertEq(cashOutCount, 456, "should forward cashOutCount");
         assertEq(totalSupply, 789, "should forward totalSupply");
+        assertEq(taxTotalSupply, 789, "should forward taxTotalSupply");
         assertEq(returnedSpecs.length, 1, "should forward specs");
     }
 

@@ -445,7 +445,7 @@ contract V4USDCForkTest is Test {
             metadata: fullMetadata
         });
 
-        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
             hook.beforeCashOutRecordedWith(beforeCtx);
 
         assertEq(cashOutTaxRate, 0, "protocol path should be preserved when USDC reclaim is better");
@@ -894,7 +894,7 @@ contract V4USDCForkTest is Test {
                 metadata: fullMetadata
             });
 
-            (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+            (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
                 hook.beforeCashOutRecordedWith(beforeCtx);
 
             assertEq(

@@ -519,7 +519,7 @@ contract TestAuditGaps is Test {
             metadata: ""
         });
 
-        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "USDC sell-side should reroute through swap");
         assertEq(specs.length, 1, "USDC sell-side should return a hook spec");

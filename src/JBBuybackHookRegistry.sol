@@ -278,6 +278,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @return cashOutTaxRate The tax rate returned by the resolved hook, or the original context value.
     /// @return cashOutCount The cash-out count returned by the resolved hook, or the original context value.
     /// @return totalSupply The total supply returned by the resolved hook, or the original context value.
+    /// @return taxTotalSupply The tax total supply returned by the resolved hook, or the original context value.
     /// @return hookSpecifications Any cash-out hook specifications returned by the resolved hook.
     function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
         external
@@ -287,6 +288,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
             uint256 totalSupply,
+            uint256 taxTotalSupply,
             JBCashOutHookSpecification[] memory hookSpecifications
         )
     {
@@ -298,7 +300,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
         // If no hook is configured at all, leave the terminal's cash-out values untouched.
         if (address(hook) == address(0)) {
-            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, 0, hookSpecifications);
         }
 
         // Forward the full cash-out context to the resolved hook.

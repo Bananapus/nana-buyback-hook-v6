@@ -465,7 +465,7 @@ contract V4ForkTest is Test {
             metadata: fullMetadata
         });
 
-        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
             hook.beforeCashOutRecordedWith(beforeCtx);
 
         assertEq(cashOutTaxRate, 0, "protocol path should be preserved when reclaim is better");
@@ -1125,7 +1125,7 @@ contract V4ForkTest is Test {
                 metadata: fullMetadata
             });
 
-            (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) =
+            (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
                 hook.beforeCashOutRecordedWith(beforeCtx);
 
             assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "sell-side E2E should choose the pool route");
