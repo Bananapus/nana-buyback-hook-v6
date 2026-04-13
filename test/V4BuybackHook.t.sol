@@ -1450,7 +1450,7 @@ contract V4BuybackHookTest is Test {
         uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
         uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
         uint256 protocolMinimum = JBCashOuts.cashOutFrom({
-            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, taxTotalSupply: totalSupply, cashOutTaxRate: 0
+            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, taxSurplus: 0, cashOutTaxRate: 0
         });
         uint256 explicitMinimum = protocolMinimum + bound(uint256(deltaSeed), 1, 1_000_000 ether);
 
@@ -1514,7 +1514,7 @@ contract V4BuybackHookTest is Test {
         uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
         uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
         uint256 protocolMinimum = JBCashOuts.cashOutFrom({
-            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, taxTotalSupply: totalSupply, cashOutTaxRate: 0
+            surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, taxSurplus: 0, cashOutTaxRate: 0
         });
         uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
         uint256 explicitMinimum = protocolMinimum - delta;
