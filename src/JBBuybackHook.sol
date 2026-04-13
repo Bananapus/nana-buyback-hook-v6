@@ -667,7 +667,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @return cashOutTaxRate The tax rate the terminal should use for the cash out.
     /// @return cashOutCount The number of project tokens to cash out.
     /// @return totalSupply The total project token supply to use in reclaim math.
-    /// @return taxSurplus The global surplus to use for reclaim calculation (0 = use local surplus).
+    /// @return effectiveSurplus The surplus to use for reclaim calculation (0 = use local surplus).
     /// @return hookSpecifications Any cash-out hook specifications to fulfill after the terminal records the cash out.
     function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
         external
@@ -677,7 +677,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
             uint256 totalSupply,
-            uint256 taxSurplus,
+            uint256 effectiveSurplus,
             JBCashOutHookSpecification[] memory hookSpecifications
         )
     {
@@ -698,7 +698,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             surplus: context.surplus.value,
             cashOutCount: context.cashOutCount,
             totalSupply: context.totalSupply,
-            taxSurplus: 0,
             cashOutTaxRate: context.cashOutTaxRate
         });
 
