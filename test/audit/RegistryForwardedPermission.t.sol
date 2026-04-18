@@ -114,11 +114,7 @@ contract RegistryForwardedPermissionPoC is Test {
         );
 
         registry.setPoolFor({
-            projectId: PROJECT_ID,
-            fee: 3000,
-            tickSpacing: 60,
-            twapWindow: 5 minutes,
-            terminalToken: terminalToken
+            projectId: PROJECT_ID, fee: 3000, tickSpacing: 60, twapWindow: 5 minutes, terminalToken: terminalToken
         });
     }
 

@@ -151,9 +151,7 @@ contract CodexSellSideFOTOutputDoSTest is Test {
             abi.encode(true)
         );
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(address(this)));
-        vm.mockCall(
-            address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(address(projectToken))
-        );
+        vm.mockCall(address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(address(projectToken)));
         vm.mockCall(
             address(permissions),
             abi.encodeWithSignature("hasPermission(address,address,uint256,uint256,bool,bool)"),
@@ -174,7 +172,7 @@ contract CodexSellSideFOTOutputDoSTest is Test {
         });
 
         oracleHook.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
-        poolManager.setSlot0(key.toId(), 79228162514264337593543950336, 0, 3000); // sqrtPriceX96 at tick 0
+        poolManager.setSlot0(key.toId(), 79_228_162_514_264_337_593_543_950_336, 0, 3000); // sqrtPriceX96 at tick 0
         poolManager.setLiquidity(key.toId(), 1_000_000 ether);
         hook.setPoolFor({
             projectId: projectId, poolKey: key, twapWindow: twapWindow, terminalToken: address(terminalToken)
@@ -203,16 +201,10 @@ contract CodexSellSideFOTOutputDoSTest is Test {
             rulesetId: 1,
             cashOutCount: cashOutCount,
             reclaimedAmount: JBTokenAmount({
-                token: address(terminalToken),
-                value: 0,
-                decimals: 18,
-                currency: uint32(uint160(address(terminalToken)))
+                token: address(terminalToken), value: 0, decimals: 18, currency: uint32(uint160(address(terminalToken)))
             }),
             forwardedAmount: JBTokenAmount({
-                token: address(terminalToken),
-                value: 0,
-                decimals: 18,
-                currency: uint32(uint160(address(terminalToken)))
+                token: address(terminalToken), value: 0, decimals: 18, currency: uint32(uint160(address(terminalToken)))
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: beneficiary,

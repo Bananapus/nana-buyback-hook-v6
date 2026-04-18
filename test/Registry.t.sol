@@ -295,8 +295,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         (
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
-            uint256 totalSupply,
-            ,
+            uint256 totalSupply,,
             JBCashOutHookSpecification[] memory returnedSpecs
         ) = registry.beforeCashOutRecordedWith(context);
 

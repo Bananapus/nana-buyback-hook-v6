@@ -214,7 +214,7 @@ contract CodexBuySideFOTProjectTokenDoSTest is Test {
             currency0: currency0, currency1: currency1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(oracleHook))
         });
 
-        poolManager.setSlot0(key.toId(), 79228162514264337593543950336, 0, 3000);
+        poolManager.setSlot0(key.toId(), 79_228_162_514_264_337_593_543_950_336, 0, 3000);
         hook.setPoolFor({
             projectId: projectId, poolKey: key, twapWindow: twapWindow, terminalToken: address(terminalToken)
         });
@@ -261,12 +261,7 @@ contract CodexBuySideFOTProjectTokenDoSTest is Test {
             newlyIssuedTokenCount: 0,
             beneficiary: makeAddr("beneficiary"),
             hookMetadata: abi.encode(
-                projectTokenIs0,
-                uint256(0),
-                uint256(0),
-                false,
-                IJBController(address(controller)),
-                uint256(0)
+                projectTokenIs0, uint256(0), uint256(0), false, IJBController(address(controller)), uint256(0)
             ),
             payerMetadata: ""
         });
