@@ -289,13 +289,13 @@ contract Test_BuybackHookRegistry_Unit is Test {
         vm.mockCall(
             address(hookB),
             abi.encodeWithSelector(IJBRulesetDataHook.beforeCashOutRecordedWith.selector),
-            abi.encode(uint256(123), uint256(456), uint256(789), specs)
+            abi.encode(uint256(123), uint256(456), uint256(789), uint256(0), specs)
         );
 
         (
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
-            uint256 totalSupply,
+            uint256 totalSupply,,
             JBCashOutHookSpecification[] memory returnedSpecs
         ) = registry.beforeCashOutRecordedWith(context);
 

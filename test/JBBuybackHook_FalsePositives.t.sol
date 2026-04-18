@@ -4,6 +4,8 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
+import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
 import {JBTokens} from "@bananapus/core-v6/src/JBTokens.sol";
 import {JBERC20} from "@bananapus/core-v6/src/JBERC20.sol";
@@ -55,7 +57,7 @@ contract JBBuybackHook_FalsePositives is Test {
         controller = makeAddr("controller");
 
         // Deploy the real JBERC20 implementation (used as the clone template).
-        tokenImpl = new JBERC20();
+        tokenImpl = new JBERC20(IJBPermissions(makeAddr("permissions")), IJBProjects(makeAddr("projects")));
 
         // Deploy the real JBTokens contract.
         vm.etch(address(directory), bytes("0x01"));

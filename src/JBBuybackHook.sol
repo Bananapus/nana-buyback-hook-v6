@@ -667,6 +667,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @return cashOutTaxRate The tax rate the terminal should use for the cash out.
     /// @return cashOutCount The number of project tokens to cash out.
     /// @return totalSupply The total project token supply to use in reclaim math.
+    /// @return effectiveSurplusValue The surplus to use for reclaim calculation.
     /// @return hookSpecifications Any cash-out hook specifications to fulfill after the terminal records the cash out.
     function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
         external
@@ -676,6 +677,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
             uint256 totalSupply,
+            uint256 effectiveSurplusValue,
             JBCashOutHookSpecification[] memory hookSpecifications
         )
     {
@@ -688,7 +690,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Fall back to the protocol cash-out path if no pool is configured, no project token is known,
         // or no project tokens are being cashed out.
         if (!_poolIsSet[context.projectId][terminalToken] || projectToken == address(0) || context.cashOutCount == 0) {
-            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, 0, hookSpecifications);
         }
 
         // Compute the direct protocol reclaim amount for this cash-out request.
@@ -750,10 +752,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             )
         });
 
-        if (noop) return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, hookSpecifications);
+        if (noop) return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, 0, hookSpecifications);
 
         // Max the tax rate so the terminal does not reclaim surplus directly before the hook executes the sell.
-        return (JBConstants.MAX_CASH_OUT_TAX_RATE, context.cashOutCount, context.totalSupply, hookSpecifications);
+        return (JBConstants.MAX_CASH_OUT_TAX_RATE, context.cashOutCount, context.totalSupply, 0, hookSpecifications);
     }
 
     /// @notice The `IJBRulesetDataHook` implementation which determines whether tokens should be minted from the

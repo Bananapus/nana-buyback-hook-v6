@@ -459,7 +459,7 @@ contract V4RealOracleForkTest is Test {
         });
 
         vm.prank(address(terminal));
-        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory hookSpecs) = hook.beforeCashOutRecordedWith(ctx);
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory hookSpecs) = hook.beforeCashOutRecordedWith(ctx);
 
         assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "oracle sell quote should beat protocol reclaim");
         assertEq(hookSpecs.length, 1, "sell-side oracle path should return one hook specification");

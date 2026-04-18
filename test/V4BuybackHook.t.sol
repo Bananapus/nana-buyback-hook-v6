@@ -1358,7 +1358,7 @@ contract V4BuybackHookTest is Test {
             metadata: fullMetadata
         });
 
-        (uint256 cashOutTaxRate,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "cash out should be rerouted through the pool");
         assertEq(specs.length, 1, "cash out hook spec should be returned");
@@ -1407,8 +1407,12 @@ contract V4BuybackHookTest is Test {
             metadata: ""
         });
 
-        (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, JBCashOutHookSpecification[] memory specs) =
-            hook.beforeCashOutRecordedWith(context);
+        (
+            uint256 cashOutTaxRate,
+            uint256 cashOutCount,
+            uint256 totalSupply,,
+            JBCashOutHookSpecification[] memory specs
+        ) = hook.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, context.cashOutTaxRate, "cash out tax rate should pass through");
         assertEq(cashOutCount, context.cashOutCount, "cash out count should pass through");
@@ -1479,7 +1483,7 @@ contract V4BuybackHookTest is Test {
         (
             uint256 cashOutTaxRate,
             uint256 returnedCashOutCount,
-            uint256 returnedTotalSupply,
+            uint256 returnedTotalSupply,,
             JBCashOutHookSpecification[] memory specs
         ) = hook.beforeCashOutRecordedWith(context);
 
@@ -1543,7 +1547,7 @@ contract V4BuybackHookTest is Test {
         (
             uint256 cashOutTaxRate,
             uint256 returnedCashOutCount,
-            uint256 returnedTotalSupply,
+            uint256 returnedTotalSupply,,
             JBCashOutHookSpecification[] memory specs
         ) = hook.beforeCashOutRecordedWith(context);
 
