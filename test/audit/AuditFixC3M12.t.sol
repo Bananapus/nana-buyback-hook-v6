@@ -246,9 +246,7 @@ contract AuditFixC3M12Test is Test {
         });
 
         vm.mockCall(
-            address(controller),
-            abi.encodeCall(IJBController.currentRulesetOf, (projectId)),
-            abi.encode(ruleset, meta)
+            address(controller), abi.encodeCall(IJBController.currentRulesetOf, (projectId)), abi.encode(ruleset, meta)
         );
     }
 
@@ -405,9 +403,7 @@ contract AuditFixC3M12Test is Test {
 
         assertTrue(specs[0].noop, "should be noop when explicit minimum is below direct reclaim");
         assertEq(
-            effectiveSurplusValue,
-            surplusValue,
-            "C-3: noop path with explicit minimum must still return surplus value"
+            effectiveSurplusValue, surplusValue, "C-3: noop path with explicit minimum must still return surplus value"
         );
     }
 
@@ -430,12 +426,8 @@ contract AuditFixC3M12Test is Test {
         projectToken.mint(address(mockPm), expectedOut);
 
         // Build callback data for a zeroForOne swap (ETH -> project token).
-        SwapCallbackData memory callbackData = SwapCallbackData({
-            key: poolKey,
-            zeroForOne: true,
-            amountIn: amountIn,
-            minimumSwapAmountOut: 0
-        });
+        SwapCallbackData memory callbackData =
+            SwapCallbackData({key: poolKey, zeroForOne: true, amountIn: amountIn, minimumSwapAmountOut: 0});
 
         // Fund the hook with ETH for settlement.
         vm.deal(address(hook), amountIn);
@@ -447,9 +439,7 @@ contract AuditFixC3M12Test is Test {
         (uint256 returnedInput, uint256 returnedOutput) = abi.decode(result, (uint256, uint256));
 
         assertEq(returnedInput, amountIn, "M-12: input amount should match delta");
-        assertEq(
-            returnedOutput, expectedOut, "M-12: output amount should equal pool-reported amount for normal tokens"
-        );
+        assertEq(returnedOutput, expectedOut, "M-12: output amount should equal pool-reported amount for normal tokens");
     }
 
     /// @notice For a fee-on-transfer token, the balance-delta accounting in unlockCallback returns
@@ -480,12 +470,8 @@ contract AuditFixC3M12Test is Test {
         fotToken.mint(address(mockPm), poolReportedOut);
 
         // Build callback data.
-        SwapCallbackData memory callbackData = SwapCallbackData({
-            key: fotPoolKey,
-            zeroForOne: true,
-            amountIn: amountIn,
-            minimumSwapAmountOut: 0
-        });
+        SwapCallbackData memory callbackData =
+            SwapCallbackData({key: fotPoolKey, zeroForOne: true, amountIn: amountIn, minimumSwapAmountOut: 0});
 
         // Fund the hook with ETH for settlement.
         vm.deal(address(hook), amountIn);
