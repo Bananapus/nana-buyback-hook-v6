@@ -645,9 +645,21 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // Take the output (PoolManager owes us).
+        // Use balance-delta accounting to handle fee-on-transfer tokens that deliver less than `outputAmount`.
+        uint256 balanceBeforeTake = outputCurrency.isAddressZero()
+            ? address(this).balance
+            : IERC20(Currency.unwrap(outputCurrency)).balanceOf(address(this));
+
         POOL_MANAGER.take({currency: outputCurrency, to: address(this), amount: outputAmount});
 
-        return abi.encode(inputAmount, outputAmount);
+        uint256 balanceAfterTake = outputCurrency.isAddressZero()
+            ? address(this).balance
+            : IERC20(Currency.unwrap(outputCurrency)).balanceOf(address(this));
+
+        // The actual received amount accounts for any fee-on-transfer deduction.
+        uint256 actualOutputAmount = balanceAfterTake - balanceBeforeTake;
+
+        return abi.encode(inputAmount, actualOutputAmount);
     }
 
     /// @notice Receive native tokens. Required for V4 native take() and wrapped token unwrap.
@@ -752,7 +764,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             )
         });
 
-        if (noop) return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, 0, hookSpecifications);
+        if (noop) {
+            return (
+                context.cashOutTaxRate,
+                context.cashOutCount,
+                context.totalSupply,
+                context.surplus.value,
+                hookSpecifications
+            );
+        }
 
         // Max the tax rate so the terminal does not reclaim surplus directly before the hook executes the sell.
         return (JBConstants.MAX_CASH_OUT_TAX_RATE, context.cashOutCount, context.totalSupply, 0, hookSpecifications);
