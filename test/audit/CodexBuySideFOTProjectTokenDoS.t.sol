@@ -266,8 +266,13 @@ contract CodexBuySideFOTProjectTokenDoSTest is Test {
             payerMetadata: ""
         });
 
-        vm.expectRevert();
+        // The balance-delta fix (M-12) in unlockCallback now properly handles fee-on-transfer tokens,
+        // so the swap completes without reverting.
         vm.prank(terminal);
         hook.afterPayRecordedWith(context);
+
+        // Verify the beneficiary received project tokens (minus FOT fee).
+        address beneficiary = makeAddr("beneficiary");
+        assertGt(projectToken.balanceOf(beneficiary), 0, "beneficiary should have received project tokens");
     }
 }

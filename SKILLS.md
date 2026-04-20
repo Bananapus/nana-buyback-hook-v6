@@ -3,7 +3,7 @@
 ## Use This File For
 
 - Use this file when the task involves buyback-vs-mint routing, cash-out-vs-swap routing, Uniswap V4 pool configuration, TWAP settings, or the hook registry.
-- Start here, then decide whether the issue is route selection, sell-side callback execution, pool/TWAP configuration, or registry choice. Those are separate failure modes in this repo.
+- Start here, then decide whether the issue is route selection, sell-side callback execution, pool or TWAP configuration, or registry choice.
 
 ## Read This Next
 
@@ -32,17 +32,15 @@ Market-aware buyback hook for Juicebox V6. This repo compares protocol-native mi
 
 ## Reference Files
 
-- Open [`references/runtime.md`](./references/runtime.md) when you need the hook and registry roles, route-selection flow, TWAP and pool assumptions, or the main safety properties.
-- Open [`references/operations.md`](./references/operations.md) when you need configuration steps, permission and lock behavior, test breadcrumbs, or the common sources of stale assumptions.
+- Open [`references/runtime.md`](./references/runtime.md) when you need hook and registry roles, route-selection flow, TWAP and pool assumptions, or the main safety properties.
+- Open [`references/operations.md`](./references/operations.md) when you need configuration steps, permission and lock behavior, test breadcrumbs, or common stale assumptions.
 
 ## Working Rules
 
-- Start in [`src/JBBuybackHook.sol`](./src/JBBuybackHook.sol) for route comparison and execution. Do not treat the registry as an implementation detail when the issue is really a configuration bug.
-- The buy-side and sell-side paths are intentionally asymmetric. Re-check both before “simplifying” quote or callback handling.
-- `hookMetadata` can carry the sell count chosen during route selection, which may be smaller than the terminal’s original `cashOutCount`. Treat that distinction as intentional.
-- Treat quote logic, fallback behavior, and oracle/TWAP assumptions as high-risk. Small changes there can alter execution outcomes materially.
+- Start in [`src/JBBuybackHook.sol`](./src/JBBuybackHook.sol) for route comparison and execution.
+- The buy-side and sell-side paths are intentionally asymmetric. Re-check both before simplifying quote or callback handling.
+- `hookMetadata` can carry the sell count chosen during route selection, which may be smaller than the terminal's original `cashOutCount`.
+- Treat quote logic, fallback behavior, and oracle or TWAP assumptions as high-risk.
 - A configured pool is not enough by itself. Initialization, terminal-token normalization, and resolved-hook selection all affect whether the market path is actually live.
-- TWAP-based quoting is intentionally conservative. Zero-liquidity, immature-oracle, and max-slippage branches are part of the routing contract, not just defensive code.
-- Registry locking and allowed-hook policy are part of the threat model, not admin garnish.
-- When a task mentions Uniswap behavior, verify whether the source of truth is this repo or the integrated V4 routing surface in the wider ecosystem.
+- Registry locking and allowed-hook policy are part of the threat model.
 - If you touch pool or hook assignment logic, check the lock path and allowed-hook constraints before calling the change safe.

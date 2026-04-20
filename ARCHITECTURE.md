@@ -6,17 +6,19 @@
 
 ## System Overview
 
-`JBBuybackHook` is the runtime route selector and executor. `JBBuybackHookRegistry` is not only configuration storage; it is also the project-facing wrapper that resolves the active hook for a project and forwards hook callbacks to that resolved implementation. `JBSwapLib` provides quoting and slippage helpers. The TWAP oracle surface comes from `univ4-router-v6`, while settlement truth remains in `nana-core-v6`.
+`JBBuybackHook` is the runtime route selector and executor. `JBBuybackHookRegistry` is not just configuration storage. It is also the project-facing wrapper that resolves the active hook for a project and forwards hook callbacks to that resolved implementation. `JBSwapLib` provides quoting and slippage helpers.
+
+The TWAP oracle surface comes from `univ4-router-v6`, while settlement truth remains in `nana-core-v6`.
 
 ## Core Invariants
 
-- The hook must never create alternate treasury accounting; it only chooses between protocol and market routes.
-- Oracle failure should degrade toward the safer protocol path.
-- Registry allowlisting and lock status are part of the security model.
-- Buy-side fallback and sell-side fallback are intentionally asymmetric.
-- The registry may intentionally behave as a pass-through data hook when no concrete buyback hook exists on that chain.
-- A project's chosen hook remains sovereign once assigned; disallowing a hook only blocks new selection, not existing project assignments.
-- Noop hook specs may carry diagnostics, but not funds.
+- the hook must never create alternate treasury accounting
+- oracle failure should degrade toward the safer protocol path
+- registry allowlisting and lock status are part of the security model
+- buy-side fallback and sell-side fallback are intentionally asymmetric
+- the registry may intentionally act as a pass-through data hook when no concrete buyback hook exists on that chain
+- a project's chosen hook remains sovereign once assigned
+- noop hook specs may carry diagnostics, but not funds
 
 ## Modules
 
@@ -28,10 +30,10 @@
 
 ## Trust Boundaries
 
-- Core accounting, token minting, and permissions remain in `nana-core-v6`.
-- Oracle observations and pool-level market data come from `univ4-router-v6` and Uniswap V4.
-- Projects should not be able to point at arbitrary hook implementations once locked.
-- The registry is trusted to resolve the correct active hook for project-facing callback flows.
+- core accounting, token minting, and permissions remain in `nana-core-v6`
+- oracle observations and pool-level market data come from `univ4-router-v6` and Uniswap V4
+- projects should not be able to point at arbitrary hook implementations once locked
+- the registry is trusted to resolve the correct active hook for project-facing callback flows
 
 ## Critical Flows
 
@@ -60,25 +62,25 @@ cash out requested
 
 ## Accounting Model
 
-The repo owns route selection and swap execution logic. It does not own the canonical ledger for balances, fees, or surplus; those stay in `nana-core-v6`.
+This repo owns route selection and swap execution logic. It does not own the canonical ledger for balances, fees, or surplus.
 
-On the buy side, the hook uses the controller preview path to preserve beneficiary-versus-reserved-token semantics even when comparing against market quotes. On the sell side, hook metadata can describe the route comparison even when the hook ultimately leaves the protocol cash-out path unchanged.
+On the buy side, the hook uses the controller preview path to preserve beneficiary-versus-reserved-token semantics even when comparing against market quotes. On the sell side, hook metadata can describe the route comparison even when the hook leaves the protocol cash-out path unchanged.
 
 ## Security Model
 
-- The danger is semantic drift between quote selection, slippage logic, and actual execution.
-- Buy and sell routing are not mirror images; they have different fallback and settlement guarantees.
-- Explicit user minima and oracle-derived minima are not equivalent. User-provided minima stay strict; oracle-derived quoting may degrade toward mint fallback on the buy side.
-- Sell-side routing suppresses direct protocol reclaim only when the market path wins. That tax override, the returned diagnostics, and the eventual callback execution should be reviewed together.
-- Reserved-rate preservation is a primary audit target on the buy side.
+- the danger is semantic drift between quote selection, slippage logic, and execution
+- buy and sell routing are not mirror images
+- explicit user minima and oracle-derived minima are not equivalent
+- sell-side routing suppresses direct protocol reclaim only when the market path wins
+- reserved-rate preservation is a primary audit target on the buy side
 
 ## Safe Change Guide
 
-- Review quote selection, slippage bounds, and fallback behavior as one system.
-- If registry behavior changes, re-check the no-hook pass-through path and the rule that disallowed hooks do not override already-pinned project assignments.
-- If buy-side behavior changes, re-check reserved-rate application through the controller.
-- If sell-side callback behavior changes, inspect wrappers and preview clients that read the returned specs.
-- Keep governance or registry mutability out of the core hook.
+- review quote selection, slippage bounds, and fallback behavior as one system
+- if registry behavior changes, re-check the no-hook pass-through path and the rule that disallowed hooks do not override already-pinned project assignments
+- if buy-side behavior changes, re-check reserved-rate application through the controller
+- if sell-side callback behavior changes, inspect wrappers and preview clients that read the returned specs
+- keep governance or registry mutability out of the core hook
 
 ## Canonical Checks
 
