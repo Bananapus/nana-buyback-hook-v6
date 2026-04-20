@@ -36,9 +36,9 @@ If the question is "how does the pool-side routing primitive work?" you may need
 There are two separate responsibilities here:
 
 1. `JBBuybackHook` decides between protocol-native and market-native execution
-2. `JBBuybackHookRegistry` decides which pool and hook configuration a project is allowed to use
+2. `JBBuybackHookRegistry` decides which hook and pool configuration a project is allowed to use
 
-Operational bugs often come from the second part; economic bugs often come from the first.
+Operational bugs often come from the second part. Economic bugs often come from the first.
 
 ## Read These Files First
 
@@ -49,18 +49,18 @@ Operational bugs often come from the second part; economic bugs often come from 
 
 ## Integration Traps
 
-- this hook can fall back between market and protocol paths, so preview semantics are not the same as guaranteed execution semantics
+- this hook can fall back between market and protocol paths, so preview behavior is not the same as guaranteed execution
 - oracle-derived minima and caller-supplied minima have intentionally different failure behavior
-- pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is operationally expensive
+- pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is expensive
 - registry configuration is part of the economic surface because it determines which hook and pool are even eligible
-- fee-on-transfer and partial-fill behavior are central threat-model concerns, not edge compatibility details
+- fee-on-transfer and partial-fill behavior are central threat-model concerns
 
 ## Where State Lives
 
-- route-choice and execution behavior live in `JBBuybackHook`
-- per-project pool and hook selection live in `JBBuybackHookRegistry`
-- swap math helpers live in `JBSwapLib`
-- actual pool-side routing and oracle state live in `univ4-router-v6`
+- route choice and execution behavior: `JBBuybackHook`
+- per-project pool and hook selection: `JBBuybackHookRegistry`
+- swap math helpers: `JBSwapLib`
+- actual pool routing and oracle state: `univ4-router-v6`
 
 ## Install
 
@@ -105,9 +105,9 @@ script/
 ## Risks And Notes
 
 - TWAP quality depends on the oracle hook having enough history and liquidity to be meaningful
-- route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima: explicit minima can revert, oracle-derived minima can still degrade to mint fallback on total swap failure
-- hook configuration should usually be locked after validation to avoid governance surprises, and pool choices should be treated as sticky once set
-- fee-on-transfer and partial-fill behaviors are part of the main threat model and should stay that way
+- route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima
+- hook configuration should usually be locked after validation, and pool choices should be treated as sticky once set
+- fee-on-transfer and partial-fill behaviors are part of the main threat model
 
 ## For AI Agents
 

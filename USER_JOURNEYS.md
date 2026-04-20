@@ -2,9 +2,7 @@
 
 ## Repo Purpose
 
-This repo decides whether a project-facing buy or sell should execute through Juicebox-native economics or a UniV4
-market path. It owns route comparison and registry-level pool selection. It does not own the lower-level UniV4 hook
-it depends on for market execution and oracle observations.
+This repo decides whether a project-facing buy or sell should execute through Juicebox-native economics or a UniV4 market path. It owns route comparison and registry-level pool selection. It does not own the lower-level UniV4 hook it depends on for market execution and oracle observations.
 
 ## Primary Actors
 
@@ -45,9 +43,9 @@ it depends on for market execution and oracle observations.
 **Postconditions**
 - the project's buyback routing surface is registered and can be treated as the canonical comparison path
 
-## Journey 2: Pay Into A Project Through The Better Of Juicebox Or The Pool
+## Journey 2: Pay Through The Better Of Juicebox Or The Pool
 
-**Actor:** payer or router/integration acting for a payer.
+**Actor:** payer or router or integration acting for a payer.
 
 **Intent:** buy project exposure through whichever path yields the better result.
 
