@@ -2,70 +2,98 @@
 
 ## Purpose
 
-`nana-buyback-hook-v6` gives a Juicebox project best-execution behavior on both entry and exit. On payments it compares minting through Juicebox against buying from a Uniswap V4 pool. On cash outs it compares reclaiming through Juicebox against selling reminted project tokens into the pool. The hook chooses the better route while preserving Juicebox's accounting and reserved-rate semantics.
+`nana-buyback-hook-v6` gives a Juicebox project market-aware entry and exit routing. On pay, it compares the protocol mint path with a Uniswap V4 buy path. On cash out, it compares the protocol reclaim path with selling reminted project tokens into the pool. It chooses the better route without replacing core treasury accounting.
 
-## Boundaries
+## System Overview
 
-- `JBBuybackHook` owns route selection and swap execution.
-- `JBBuybackHookRegistry` owns which hook instance a project is allowed to use.
-- `univ4-router-v6` owns the TWAP oracle hook used by the configured pools.
-- Core terminal accounting remains in `nana-core-v6`.
+`JBBuybackHook` is the runtime route selector and executor. `JBBuybackHookRegistry` is not only configuration storage; it is also the project-facing wrapper that resolves the active hook for a project and forwards hook callbacks to that resolved implementation. `JBSwapLib` provides quoting and slippage helpers. The TWAP oracle surface comes from `univ4-router-v6`, while settlement truth remains in `nana-core-v6`.
 
-## Main Components
+## Core Invariants
 
-| Component | Responsibility |
-| --- | --- |
-| `JBBuybackHook` | Data hook, pay hook, cash-out hook, and Uniswap V4 unlock callback |
-| `JBBuybackHookRegistry` | Project-level routing to an approved hook instance, with optional locking |
-| `JBSwapLib` | TWAP-based quoting, liquidity-sensitive slippage limits, and price-limit helpers |
+- The hook must never create alternate treasury accounting; it only chooses between protocol and market routes.
+- Oracle failure should degrade toward the safer protocol path.
+- Registry allowlisting and lock status are part of the security model.
+- Buy-side fallback and sell-side fallback are intentionally asymmetric.
+- The registry may intentionally behave as a pass-through data hook when no concrete buyback hook exists on that chain.
+- A project's chosen hook remains sovereign once assigned; disallowing a hook only blocks new selection, not existing project assignments.
+- Noop hook specs may carry diagnostics, but not funds.
 
-## Runtime Model
+## Modules
+
+| Module | Responsibility | Notes |
+| --- | --- | --- |
+| `JBBuybackHook` | Data-hook, pay-hook, cash-out-hook, and swap callback logic | Runtime core |
+| `JBBuybackHookRegistry` | Project-to-hook configuration, locking, and runtime forwarding to the resolved hook | Governance and wrapper surface |
+| `JBSwapLib` | Quoting, slippage, and price-limit helpers | Shared routing math |
+
+## Trust Boundaries
+
+- Core accounting, token minting, and permissions remain in `nana-core-v6`.
+- Oracle observations and pool-level market data come from `univ4-router-v6` and Uniswap V4.
+- Projects should not be able to point at arbitrary hook implementations once locked.
+- The registry is trusted to resolve the correct active hook for project-facing callback flows.
+
+## Critical Flows
 
 ### Buy Side
 
 ```text
 payment arrives
   -> hook estimates direct mint output
-  -> hook estimates pool output using explicit quote metadata or TWAP-based quoting
+  -> hook estimates pool output from explicit quote metadata or TWAP-derived quoting
   -> if pool wins, hook returns an active pay-hook spec and later executes the swap
   -> swapped tokens are burned and re-minted through the controller so reserved-rate semantics still apply
-  -> if the swap later fails completely, explicit caller minima still revert but oracle-derived routing minima degrade to mint fallback
-  -> if mint wins, the spec is informational only
+  -> if the swap fully fails, explicit caller minima still revert but oracle-derived minima can degrade to mint fallback
 ```
 
 ### Sell Side
 
 ```text
 cash out requested
-  -> hook compares protocol reclaim value to pool sell value
-  -> if pool wins, after-cash-out callback remints the selected token count to itself and sells it
-  -> if the sell-side swap fails hard, the cash out reverts; there is no protocol reclaim fallback after route selection
-  -> if protocol wins, the spec stays noop but still carries diagnostics for preview clients
+  -> hook compares protocol reclaim value with pool sell value
+  -> hook always returns sell-side diagnostics in metadata so preview clients can inspect the comparison
+  -> if pool wins, hook maxes the cash-out tax so the terminal does not reclaim surplus directly
+  -> after-cash-out callback remints the chosen token amount to itself and sells it
+  -> if the sell-side swap fails hard, the cash out reverts
+  -> if protocol wins, the hook returns diagnostics but no active swap path
 ```
 
-## Critical Invariants
+## Accounting Model
 
-- Buy-side and sell-side execution must never bypass core accounting. The hook chooses routes; it does not create alternate treasury math.
-- Oracle failure should degrade to the safer protocol path, not silently force a risky swap path.
-- Registry allowlisting and project-level locking are part of the security model. Projects should not be able to point at arbitrary hook implementations.
-- Noop specs may carry metadata, but not funds. That distinction is fundamental to composability with preview surfaces and wrappers.
+The repo owns route selection and swap execution logic. It does not own the canonical ledger for balances, fees, or surplus; those stay in `nana-core-v6`.
 
-## Where Complexity Lives
+On the buy side, the hook uses the controller preview path to preserve beneficiary-versus-reserved-token semantics even when comparing against market quotes. On the sell side, hook metadata can describe the route comparison even when the hook ultimately leaves the protocol cash-out path unchanged.
 
-- The hard part is not swapping; it is preserving Juicebox semantics while sometimes swapping.
-- Buy-side and sell-side routing look symmetrical at a glance, but their settlement paths differ materially.
-- Oracle assumptions, slippage limits, and fallback behavior are tightly coupled and should be reviewed together.
+## Security Model
 
-## Dependencies
-
-- `nana-core-v6` hooks, controller, terminal, prices, and permissions
-- `univ4-router-v6` as the canonical oracle hook
-- Uniswap V4 pool manager infrastructure
+- The danger is semantic drift between quote selection, slippage logic, and actual execution.
+- Buy and sell routing are not mirror images; they have different fallback and settlement guarantees.
+- Explicit user minima and oracle-derived minima are not equivalent. User-provided minima stay strict; oracle-derived quoting may degrade toward mint fallback on the buy side.
+- Sell-side routing suppresses direct protocol reclaim only when the market path wins. That tax override, the returned diagnostics, and the eventual callback execution should be reviewed together.
+- Reserved-rate preservation is a primary audit target on the buy side.
 
 ## Safe Change Guide
 
-- Treat quote selection, slippage logic, and execution fallback as one system.
-- If you modify buy-side behavior, re-check reserved-rate application. That is where most subtle accounting regressions appear.
-- If you modify sell-side metadata or callback behavior, inspect wrapper deployers that pass through hook specs.
-- Avoid adding mutable governance surfaces to the core hook; keep project-level selection in the registry.
-- Changes that make the hook "more helpful" by adding implicit fallback routes are usually dangerous.
+- Review quote selection, slippage bounds, and fallback behavior as one system.
+- If registry behavior changes, re-check the no-hook pass-through path and the rule that disallowed hooks do not override already-pinned project assignments.
+- If buy-side behavior changes, re-check reserved-rate application through the controller.
+- If sell-side callback behavior changes, inspect wrappers and preview clients that read the returned specs.
+- Keep governance or registry mutability out of the core hook.
+
+## Canonical Checks
+
+- buy-side failure fallback and mint degradation:
+  `test/regression/SwapFailureMintFallback.t.sol`
+- sell-side metadata and callback safety:
+  `test/audit/CashOutMetadataInflation.t.sol`
+- routing invariants across configurations:
+  `test/invariant/BuybackHookInvariant.t.sol`
+
+## Source Map
+
+- `src/JBBuybackHook.sol`
+- `src/JBBuybackHookRegistry.sol`
+- `src/libraries/JBSwapLib.sol`
+- `test/regression/SwapFailureMintFallback.t.sol`
+- `test/audit/CashOutMetadataInflation.t.sol`
+- `test/invariant/BuybackHookInvariant.t.sol`
