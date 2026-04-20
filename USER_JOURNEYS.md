@@ -1,61 +1,125 @@
 # User Journeys
 
-## Who This Repo Serves
+## Repo Purpose
+
+This repo decides whether a project-facing buy or sell should execute through Juicebox-native economics or a UniV4
+market path. It owns route comparison and registry-level pool selection. It does not own the lower-level UniV4 hook
+it depends on for market execution and oracle observations.
+
+## Primary Actors
 
 - projects that want market-aware routing on buys and sells
-- operators selecting and locking a project's buyback hook and pool configuration
+- operators selecting and locking a project's hook and pool configuration
 - traders or supporters whose route may go through Juicebox or UniV4 depending on price
-- integrators consuming geomean-oracle-aware routing decisions
+- auditors reviewing comparison logic, minima, and pool-selection governance
+
+## Key Surfaces
+
+- `JBBuybackHook`: compares protocol and market routes and executes the better one
+- `JBBuybackHookRegistry`: stores and optionally locks which hook and pool a project uses
+- `setHookFor(...)` / `setPoolFor(...)`: main project-configuration entrypoints
+- `JBSwapLib`: shared swap and oracle helper logic
 
 ## Journey 1: Attach Buyback Routing To A Project
 
-**Starting state:** the project has a Juicebox treasury and a relevant UniV4 pool, and wants dynamic routing between them.
+**Actor:** project operator.
 
-**Success:** the project has a registered buyback hook and pool configuration that its terminals and frontends can rely on.
+**Intent:** configure a project so routing can compare protocol and market execution.
 
-**Flow**
-1. Deploy `JBBuybackHook` and choose the Juicebox project token plus market pool it should compare against.
-2. Register the project's hook and pool choice in `JBBuybackHookRegistry`.
-3. Optionally lock the configuration to prevent later substitution or pool drift.
-4. From that point on, project-facing payment and cash-out surfaces can ask this repo which path is better.
+**Preconditions**
+- the project already has a Juicebox treasury and a relevant market pool
+- the operator knows which hook and pool the project should trust
+- the surrounding governance surface is ready to lock the choice if needed
+
+**Main Flow**
+1. Deploy `JBBuybackHook` with the expected project-token and pool assumptions.
+2. Register the project's hook and pool in `JBBuybackHookRegistry` with the appropriate setter surfaces.
+3. Lock the choice once operational confidence is high.
+4. Frontends and downstream flows can now treat that routing surface as canonical.
+
+**Failure Modes**
+- the wrong pool or hook is registered
+- teams leave governance mutable longer than intended
+- reviewers inspect `JBBuybackHook` but ignore registry lock state
+
+**Postconditions**
+- the project's buyback routing surface is registered and can be treated as the canonical comparison path
 
 ## Journey 2: Pay Into A Project Through The Better Of Juicebox Or The Pool
 
-**Starting state:** a user wants to buy into the project and either a protocol mint or a market swap could be the better execution.
+**Actor:** payer or router/integration acting for a payer.
 
-**Success:** the user gets the better result and the project still respects its configured hooks and accounting model.
+**Intent:** buy project exposure through whichever path yields the better result.
 
-**Flow**
-1. The buyback hook compares the Juicebox mint path with the UniV4 swap path.
-2. It uses the project configuration, pool state, and oracle assumptions to decide which route should execute.
-3. If the terminal path is better, it preserves ordinary Juicebox issuance behavior.
-4. If the market path is better, it routes through the pool and returns the market-backed result.
+**Preconditions**
+- the project's hook and pool configuration are already registered
+- the oracle and pool state are usable enough for route comparison
+- caller minima and metadata are shaped for the path being attempted
 
-**Failure cases that matter:** oracle failure, fee-on-transfer tokens, minimum-output mismatches, partial fills, and misconfigured default hooks that leave the project believing a path is protected when it is not.
+**Main Flow**
+1. Compare the Juicebox mint path with the UniV4 swap path.
+2. Decide the route using project config, pool state, and oracle assumptions.
+3. If the protocol path is better, preserve ordinary Juicebox issuance behavior.
+4. If the market path is better, execute through the pool and return the market-backed result.
+
+**Failure Modes**
+- oracle failure or immature oracle history
+- fee-on-transfer behavior breaks route assumptions
+- explicit caller minima fail or partial fills behave unexpectedly
+- default-hook expectations are misconfigured around the chosen path
+
+**Postconditions**
+- the payment uses whichever route is better under the hook's configured comparison model
 
 ## Journey 3: Cash Out Through The Better Exit Path
 
-**Starting state:** a holder wants out and either the protocol cash-out curve or the market pool might offer the better exit.
+**Actor:** holder exiting a position.
 
-**Success:** the holder exits through the higher-value route without bypassing the project's configured protections.
+**Intent:** cash out through the higher-value route without bypassing project protections.
 
-**Flow**
-1. The hook compares reclaim value from the Juicebox terminal against the pool-side sell route.
-2. It executes whichever path is better under current conditions.
-3. Registry state and expected-hook checks make sure the project is using the intended routing surface.
+**Preconditions**
+- the project's buyback route is configured and live
+- the holder understands the best exit may be protocol or market depending on conditions
 
-**Edge conditions that change user experience:** leftover balances after a swap, sandwich-sensitive pool movement, slippage windows, and sell-side hook validation that differs from pay-side assumptions.
+**Main Flow**
+1. Compare terminal reclaim value against the pool-side sell route.
+2. Execute whichever route is better under current conditions.
+3. Use registry and expected-hook checks to ensure the intended routing surface is active.
+
+**Failure Modes**
+- leftover balances or partial swap settlement
+- sandwich-sensitive movement between preview and execution
+- sell-side validation differs from pay-side assumptions in ways the caller did not expect
+
+**Postconditions**
+- the holder exits through the higher-value permitted path under current market and protocol conditions
 
 ## Journey 4: Operate Oracle And Pool Assumptions Safely
 
-**Starting state:** the project is live and routing quality now depends on pool health and oracle behavior.
+**Actor:** operator or auditor.
 
-**Success:** operators understand that this repo owns comparison logic, not just a one-time deployment.
+**Intent:** keep route-comparison assumptions valid after deployment.
 
-**Flow**
-1. Monitor whether the referenced pool still reflects a sane market for the project token.
-2. Treat geomean or other oracle failures as materially important because they can collapse the route-comparison premise.
-3. Revisit registry lock decisions only through the governance surface intended for the project.
+**Preconditions**
+- the project is already live and routing quality now depends on pool and oracle health
+
+**Main Flow**
+1. Monitor whether the referenced pool still reflects a sane market.
+2. Treat oracle degradation as a routing-risk event, not just an analytics issue.
+3. Revisit registry lock decisions only through the intended governance path.
+
+**Failure Modes**
+- the market stays live but no longer represents healthy execution
+- teams trust the presence of a pool more than the quality of its observations
+
+**Postconditions**
+- operators know whether the project's routing assumptions still justify leaving the configured pool live
+
+## Trust Boundaries
+
+- this repo trusts the UniV4 hook and oracle surface for market-side estimation
+- this repo trusts core terminals for protocol-side mint and cash-out truth
+- registry governance is part of the economic safety model, not just metadata
 
 ## Hand-Offs
 

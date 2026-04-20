@@ -2,8 +2,13 @@
 
 `@bananapus/buyback-hook-v6` is a data hook that compares Juicebox's native mint or cash-out path with a Uniswap V4 pool and routes through whichever produces the better result for the project at that moment.
 
-Docs: <https://docs.juicebox.money>
-Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
+Docs: <https://docs.juicebox.money>  
+Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)  
+User journeys: [USER_JOURNEYS.md](./USER_JOURNEYS.md)  
+Skills: [SKILLS.md](./SKILLS.md)  
+Risks: [RISKS.md](./RISKS.md)  
+Administration: [ADMINISTRATION.md](./ADMINISTRATION.md)  
+Audit instructions: [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md)
 
 ## Overview
 
@@ -41,6 +46,21 @@ Operational bugs often come from the second part; economic bugs often come from 
 2. `src/JBBuybackHookRegistry.sol`
 3. `src/libraries/JBSwapLib.sol`
 4. `univ4-router-v6/src/JBUniswapV4Hook.sol`
+
+## Integration Traps
+
+- this hook can fall back between market and protocol paths, so preview semantics are not the same as guaranteed execution semantics
+- oracle-derived minima and caller-supplied minima have intentionally different failure behavior
+- pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is operationally expensive
+- registry configuration is part of the economic surface because it determines which hook and pool are even eligible
+- fee-on-transfer and partial-fill behavior are central threat-model concerns, not edge compatibility details
+
+## Where State Lives
+
+- route-choice and execution behavior live in `JBBuybackHook`
+- per-project pool and hook selection live in `JBBuybackHookRegistry`
+- swap math helpers live in `JBSwapLib`
+- actual pool-side routing and oracle state live in `univ4-router-v6`
 
 ## Install
 
@@ -86,5 +106,11 @@ script/
 
 - TWAP quality depends on the oracle hook having enough history and liquidity to be meaningful
 - route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima: explicit minima can revert, oracle-derived minima can still degrade to mint fallback on total swap failure
-- pool and hook configuration should usually be locked after validation to avoid governance surprises
+- hook configuration should usually be locked after validation to avoid governance surprises, and pool choices should be treated as sticky once set
 - fee-on-transfer and partial-fill behaviors are part of the main threat model and should stay that way
+
+## For AI Agents
+
+- Treat this repo as a route selector between Juicebox-native and market-native execution.
+- If the question is about pool swap mechanics or oracle observations, move to `univ4-router-v6`.
+- Use the registry tests and FOT/partial-fill tests before claiming a path is safe or deterministic.
