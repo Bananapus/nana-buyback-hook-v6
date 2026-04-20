@@ -2,7 +2,7 @@
 
 This repo routes Juicebox payments or cash-outs toward a Uniswap V4 market when the market is better than native protocol pricing. Audit it as an economic-routing primitive with fallback behavior.
 
-## Objective
+## Audit Objective
 
 Find issues that:
 - route through the wrong path and lose user or treasury value
@@ -25,7 +25,13 @@ Key dependencies:
 - `nana-core-v6`
 - `univ4-router-v6`
 
-## System Model
+## Start Here
+
+1. `src/JBBuybackHook.sol`
+2. `src/JBBuybackHookRegistry.sol`
+3. `src/libraries/JBSwapLib.sol`
+
+## Security Model
 
 The buyback hook is used during Juicebox payment and cash-out flows. It:
 - compares native protocol economics against a Uniswap V4 route
@@ -34,6 +40,21 @@ The buyback hook is used during Juicebox payment and cash-out flows. It:
 - falls back to native minting or cash-out when swap execution is unavailable or inferior
 
 The registry governs which hook configuration a project uses.
+
+## Roles And Privileges
+
+| Role | Powers | How constrained |
+|------|--------|-----------------|
+| Project authority | Opt into a hook configuration | Must not accidentally inherit unsafe defaults |
+| Registry controller | Set defaults or project overrides | Must not widen trust to arbitrary hooks or pools |
+| Router or oracle hook | Supply estimates and execution path | Must not make fallback logic unsafe |
+
+## Integration Assumptions
+
+| Dependency | Assumption | What breaks if wrong |
+|------------|------------|----------------------|
+| `nana-core-v6` | Native previews reflect executable economics | Best-path selection breaks |
+| `univ4-router-v6` | Oracle and route estimates are directionally sound | Users can be forced onto the worse path |
 
 ## Critical Invariants
 
@@ -49,16 +70,7 @@ Preview logic, execution logic, and callback settlement must agree on direction,
 4. Registry trust is narrow
 Projects must not accidentally inherit an unsafe default hook or a hook whose expected external oracle or router is not actually set.
 
-## Threat Model
-
-Prioritize:
-- flash-manipulated market conditions
-- fee-on-transfer or non-standard ERC-20 behavior
-- default-hook misconfiguration
-- hook-recursion or reentry through V4 callbacks
-- mismatches between estimated and realized outputs under partial fills
-
-## Hotspots
+## Attack Surfaces
 
 - `beforePayRecordedWith` and `beforeCashOutRecordedWith`
 - quote computation and swap settlement deltas
@@ -67,17 +79,12 @@ Prioritize:
 - sell-side execution after `MAX_CASH_OUT_TAX_RATE` routing, especially hard-failure behavior
 - any path that assumes a valid oracle hook or initialized pool exists
 
-## Build And Verification
+## Accepted Risks Or Behaviors
 
-Standard workflow:
+- Falling back to native protocol behavior is preferable to trapping funds when an external market path fails.
+
+## Verification
+
 - `npm install`
 - `forge build`
 - `forge test`
-
-Current tests focus on:
-- oracle reverts and stale windows
-- fee-on-transfer behavior
-- partial fill, leftover delta, and cash-out residue regressions
-- V4 fork scenarios and sandwich resistance
-
-Strong findings here usually demonstrate that a user can receive materially better-than-real economics or that the hook can force users onto a worse path than the contract believes it selected.

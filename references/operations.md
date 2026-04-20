@@ -11,6 +11,8 @@
 - If you edit route comparison logic, re-check both payment and cash-out paths.
 - If you edit pool or TWAP configuration, verify the permissions and lock behavior still match the intended governance model.
 - If you change swap math or quotes, inspect [`src/libraries/JBSwapLib.sol`](../src/libraries/JBSwapLib.sol) and the dedicated tests before assuming behavior is unchanged.
+- If you touch sell-side behavior, verify `hookMetadata`-encoded sell counts, not just the terminal's original `cashOutCount`.
+- If you touch fallback behavior, verify that liveness branches still degrade safely instead of hiding a new execution-quality regression.
 - If you touch external integration assumptions, confirm whether the behavior actually lives in this repo or in the connected Uniswap hook/oracle surface.
 
 ## Common Failure Modes
@@ -25,4 +27,6 @@
 - [`test/Registry.t.sol`](../test/Registry.t.sol) for registry and lock behavior.
 - [`test/CrossCurrency_Unit.t.sol`](../test/CrossCurrency_Unit.t.sol) for denomination-sensitive behavior.
 - [`test/JBSwapLib.t.sol`](../test/JBSwapLib.t.sol) for library math assumptions.
+- [`test/invariant/BuybackHookInvariant.t.sol`](../test/invariant/BuybackHookInvariant.t.sol) for route-level invariants.
+- [`test/audit/CashOutMetadataInflation.t.sol`](../test/audit/CashOutMetadataInflation.t.sol) and [`test/audit/RegistryForwardedPermission.t.sol`](../test/audit/RegistryForwardedPermission.t.sol) for the easiest governance and sell-side mistakes to reintroduce.
 - [`test/TestAuditGaps.sol`](../test/TestAuditGaps.sol) for pinned edge cases worth preserving.

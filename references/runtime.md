@@ -19,6 +19,7 @@
 - Oracle and quote fallbacks: this repo intentionally balances liveness against precision. Do not remove safeguards casually.
 - Pool configuration drift: runtime bugs are often really stale pool-selection or registry-state bugs.
 - Fee-on-transfer, partial-fill, and MEV-sensitive behavior: these are core threat-model concerns, not corner cases.
+- Sell-side callback semantics: the terminal passes the original `cashOutCount`, but sell execution can be intentionally based on a smaller count encoded into `hookMetadata`.
 
 ## Tests To Trust First
 
@@ -26,4 +27,5 @@
 - [`test/TestOracleRevertBehavior.t.sol`](../test/TestOracleRevertBehavior.t.sol) for oracle-failure semantics.
 - [`test/MEVScenarios.t.sol`](../test/MEVScenarios.t.sol) for market-manipulation pressure.
 - [`test/TestBuybackFOT.t.sol`](../test/TestBuybackFOT.t.sol) for fee-on-transfer behavior.
-- [`test/regression/`](../test/regression/) and [`test/invariant/`](../test/invariant/) for broader safety checks.
+- [`test/invariant/BuybackHookInvariant.t.sol`](../test/invariant/BuybackHookInvariant.t.sol) for route-level invariants.
+- [`test/JBBuybackHook_FalsePositives.t.sol`](../test/JBBuybackHook_FalsePositives.t.sol), [`test/audit/CashOutMetadataInflation.t.sol`](../test/audit/CashOutMetadataInflation.t.sol), [`test/audit/RegistryForwardedPermission.t.sol`](../test/audit/RegistryForwardedPermission.t.sol), and [`test/TestAuditGaps.sol`](../test/TestAuditGaps.sol) for broader safety checks.
