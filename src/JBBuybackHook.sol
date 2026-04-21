@@ -231,12 +231,22 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Sell the reminted project tokens for the terminal token using the configured pool direction.
         // slither-disable-next-line reentrancy-events
-        (uint256 amountSpent, uint256 amountReceived) = _swapExactInput({
+        (uint256 amountSpent, uint256 amountReceived, bool swapFailed) = _swapExactInput({
             key: key,
             amountIn: cashOutCountToSell,
             minimumSwapAmountOut: minimumSwapAmountOut,
             zeroForOne: projectToken < terminalToken
         });
+
+        // H-23: If the pool reverted, return the reminted project tokens to the beneficiary instead of
+        // blocking the cash-out entirely. The user keeps their tokens and can sell manually or retry.
+        if (swapFailed) {
+            IERC20(projectToken).safeTransfer(context.beneficiary, cashOutCountToSell);
+            emit SellSwapReverted({
+                projectId: context.projectId, beneficiary: context.beneficiary, amount: cashOutCountToSell
+            });
+            return;
+        }
 
         // Re-check the minimum to fail closed if the pool returned less than expected.
         if (amountReceived < minimumSwapAmountOut) {
@@ -1069,13 +1079,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice Swap an exact amount of the input token through the configured V4 pool.
     /// @dev Encodes the swap parameters into callback data, hands control to the PoolManager through `unlock(...)`,
-    /// and decodes the amount received from the callback result.
+    /// and decodes the amount received from the callback result. If the pool reverts, returns `swapFailed = true`
+    /// instead of propagating the revert, allowing the caller to implement a fallback path.
     /// @param key The V4 pool key to swap against.
     /// @param amountIn The exact amount of input tokens to sell.
     /// @param minimumSwapAmountOut The minimum acceptable amount of output tokens.
     /// @param zeroForOne Whether the swap should move from `currency0` to `currency1`.
     /// @return amountSpent The amount of input tokens actually consumed by the swap.
     /// @return amountReceived The amount of output tokens received from the swap.
+    /// @return swapFailed True if the swap reverted and was caught by try/catch.
     function _swapExactInput(
         PoolKey memory key,
         uint256 amountIn,
@@ -1083,7 +1095,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool zeroForOne
     )
         internal
-        returns (uint256 amountSpent, uint256 amountReceived)
+        returns (uint256 amountSpent, uint256 amountReceived, bool swapFailed)
     {
         // Encode the swap parameters so `unlockCallback(...)` can execute the swap after the PoolManager unlocks.
         bytes memory callbackData = abi.encode(
@@ -1092,8 +1104,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             })
         );
 
-        // Enter the PoolManager unlock flow and decode the output amount returned by the callback.
-        (amountSpent, amountReceived) = abi.decode(POOL_MANAGER.unlock(callbackData), (uint256, uint256));
+        // Try the V4 unlock/callback swap. On failure, signal the caller to handle the fallback.
+        try POOL_MANAGER.unlock(callbackData) returns (bytes memory result) {
+            (amountSpent, amountReceived) = abi.decode(result, (uint256, uint256));
+        } catch {
+            return (0, 0, true);
+        }
     }
 
     //*********************************************************************//
