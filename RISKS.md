@@ -113,6 +113,14 @@ When a swap fails and leftover terminal tokens return through `addToBalanceOf`, 
 
 `initializePoolFor()` catches pool initialization failures and then proceeds with whatever pool state already exists. This lets owners register already-initialized pools, but it also means a third party can win the initial price-setting race for that exact pool key.
 
-### 9.6 Sell-side swaps fail closed
+### 9.6 Sell-side swaps degrade gracefully
 
-Once `beforeCashOutRecordedWith()` routes a cash-out through the pool, `afterCashOutRecordedWith()` does not degrade to direct reclaim on hard swap failure. It reverts instead.
+When `afterCashOutRecordedWith()` attempts to sell reminted project tokens through the pool and the swap reverts (e.g., zero liquidity, pool unavailable), the hook transfers the reminted project tokens back to the beneficiary instead of reverting the entire cash-out. The user retains their project tokens and can sell them manually or retry. A `SellSwapReverted` event is emitted for offchain monitoring.
+
+### 9.7 Unpinned projects fall back to the mutable default hook
+
+Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookOf()` fall back to the mutable `defaultHook`. The registry owner can change `defaultHook`, affecting all projects that have not pinned their hook. Always call `setHookOf(projectId, hook)` to pin your project's hook.
+
+### 9.8 Sell-Side AMM Proceeds Are Not Fee-Metered
+
+When the buyback hook routes a cash-out through the AMM sell path, the swap proceeds go directly to the beneficiary without passing through the terminal's fee meter. This is by design — protocol fees apply only to actual terminal cashouts, not AMM market operations. The hook's `hookSpecifications.amount = 0` reflects this intent.
