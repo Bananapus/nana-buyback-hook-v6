@@ -238,7 +238,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             zeroForOne: projectToken < terminalToken
         });
 
-        // H-23: If the pool reverted, return the reminted project tokens to the beneficiary instead of
+        // If the pool reverted, return the reminted project tokens to the beneficiary instead of
         // blocking the cash-out entirely. The user keeps their tokens and can sell manually or retry.
         if (swapFailed) {
             IERC20(projectToken).safeTransfer(context.beneficiary, cashOutCountToSell);

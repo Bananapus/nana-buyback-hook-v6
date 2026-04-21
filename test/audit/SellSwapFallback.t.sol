@@ -107,7 +107,7 @@ contract SSF_Hook is JBBuybackHook {
     }
 }
 
-/// @notice H-23: When the V4 pool reverts during a sell-side cash-out, the hook should return
+/// @notice When the V4 pool reverts during a sell-side cash-out, the hook should return
 /// reminted project tokens to the beneficiary instead of reverting the entire cash-out.
 contract SellSwapFallback is Test {
     SSF_Hook internal hook;
