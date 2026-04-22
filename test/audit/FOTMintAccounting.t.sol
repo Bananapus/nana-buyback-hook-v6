@@ -246,7 +246,19 @@ contract CodexFOTMintAccountingPoC is Test {
             newlyIssuedTokenCount: 0,
             beneficiary: beneficiary,
             hookMetadata: abi.encode(
-                address(projectToken) < address(terminalToken), 0, 0, false, controller, uint256(0)
+                address(projectToken) < address(terminalToken),
+                0,
+                0,
+                false,
+                controller,
+                uint256(0),
+                1e18,
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                uint256(0),
+                uint256(0)
             ),
             payerMetadata: ""
         });
