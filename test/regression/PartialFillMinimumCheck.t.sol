@@ -266,7 +266,14 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 minimumSwapAmountOut,
                 true,
                 controller,
-                tokenCountWithoutHook
+                tokenCountWithoutHook,
+                1e18,
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                uint256(0),
+                uint256(0)
             ),
             payerMetadata: ""
         });

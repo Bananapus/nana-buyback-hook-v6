@@ -297,14 +297,17 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // `tokenCountWithoutHook` is the number of project tokens a direct payment (no swap) would have minted
         // for the swap portion. It sets the swap's price limit: the pool must offer a better rate than minting,
         // otherwise the remaining input is minted instead.
+        // `weightRatio` is the currency conversion factor computed in `beforePayRecordedWith`, passed through
+        // metadata to avoid a redundant `currentRulesetOf` + price lookup in this function.
         (
             bool projectTokenIs0,
             uint256 amountToMintWith,
             uint256 minimumSwapAmountOut,
             bool hasExplicitMinimumSwapAmountOut,
             IJBController controller,
-            uint256 tokenCountWithoutHook
-        ) = abi.decode(context.hookMetadata, (bool, uint256, uint256, bool, IJBController, uint256));
+            uint256 tokenCountWithoutHook,
+            uint256 weightRatio
+        ) = abi.decode(context.hookMetadata, (bool, uint256, uint256, bool, IJBController, uint256, uint256));
 
         // Cache the native token check to avoid repeated comparison (~50-100 gas).
         bool isNativeToken = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN;
@@ -339,20 +342,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Compute leftover terminal tokens as a delta (balanceAfter - balanceBefore).
         uint256 leftoverAmountInThisContract = _terminalTokenBalance(context.forwardedAmount.token) - balanceBefore;
-
-        // Get a reference to the ruleset.
-        // slither-disable-next-line unused-return
-        (JBRuleset memory ruleset,) = controller.currentRulesetOf(context.projectId);
-
-        // Determine the weight ratio for currency conversion.
-        uint256 weightRatio = context.amount.currency == ruleset.baseCurrency()
-            ? 10 ** context.amount.decimals
-            : PRICES.pricePerUnitOf({
-                projectId: context.projectId,
-                pricingCurrency: context.amount.currency,
-                unitCurrency: ruleset.baseCurrency(),
-                decimals: context.amount.decimals
-            });
 
         // Mint a corresponding number of project tokens using any terminal tokens left over.
         uint256 partialMintTokenCount;
@@ -905,6 +894,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     hasUserSpecifiedQuote,
                     controller,
                     tokenCountWithoutHook,
+                    weightRatio,
                     twapTick,
                     twapLiquidity,
                     poolId,

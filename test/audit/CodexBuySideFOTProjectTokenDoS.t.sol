@@ -261,7 +261,19 @@ contract CodexBuySideFOTProjectTokenDoSTest is Test {
             newlyIssuedTokenCount: 0,
             beneficiary: makeAddr("beneficiary"),
             hookMetadata: abi.encode(
-                projectTokenIs0, uint256(0), uint256(0), false, IJBController(address(controller)), uint256(0)
+                projectTokenIs0,
+                uint256(0),
+                uint256(0),
+                false,
+                IJBController(address(controller)),
+                uint256(0),
+                1e18,
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                uint256(0),
+                uint256(0)
             ),
             payerMetadata: ""
         });

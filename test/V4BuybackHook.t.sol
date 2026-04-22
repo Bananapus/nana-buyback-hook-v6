@@ -298,7 +298,19 @@ contract V4BuybackHookTest is Test {
             newlyIssuedTokenCount: 0,
             beneficiary: beneficiary,
             hookMetadata: abi.encode(
-                projectTokenIs0, amountToMintWith, minimumSwapAmountOut, false, controller, uint256(0)
+                projectTokenIs0,
+                amountToMintWith,
+                minimumSwapAmountOut,
+                false,
+                controller,
+                uint256(0),
+                1e18,
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                uint256(0),
+                uint256(0)
             ),
             payerMetadata: ""
         });
@@ -1232,7 +1244,7 @@ contract V4BuybackHookTest is Test {
         // The swap path must have been chosen.
         assertEq(specs.length, 1, "Swap path should be chosen");
 
-        // Decode all 11 fields from the hook spec metadata.
+        // Decode all 13 fields from the hook spec metadata.
         (
             bool projectTokenIs0,
             uint256 mintFromExcess,
@@ -1240,6 +1252,7 @@ contract V4BuybackHookTest is Test {
             bool hasExplicitMinimumSwapAmountOut,
             IJBController decodedController,
             uint256 tokenCountWithoutHook,
+            uint256 weightRatio,
             int24 twapTick,
             uint128 twapLiquidity,
             PoolId decodedPoolId,
@@ -1248,7 +1261,21 @@ contract V4BuybackHookTest is Test {
             uint256 rawSwapQuote
         ) = abi.decode(
             specs[0].metadata,
-            (bool, uint256, uint256, bool, IJBController, uint256, int24, uint128, PoolId, uint256, uint256, uint256)
+            (
+                bool,
+                uint256,
+                uint256,
+                bool,
+                IJBController,
+                uint256,
+                uint256,
+                int24,
+                uint128,
+                PoolId,
+                uint256,
+                uint256,
+                uint256
+            )
         );
 
         // Verify field 5: with weight=1e18, baseCurrency=NATIVE_TOKEN, paying 1 ETH in native,
@@ -1264,7 +1291,10 @@ contract V4BuybackHookTest is Test {
         assertTrue(hasExplicitMinimumSwapAmountOut, "explicit payer quote should be marked explicit");
         assertEq(projectTokenIs0, address(projectToken) < address(0), "projectTokenIs0 should match address comparison");
 
-        // Verify fields 6-7: explicit payer quotes skip TWAP lookup, so diagnostics remain zeroed.
+        // Verify field 6: weightRatio should be 10^decimals when baseCurrency == payment currency.
+        assertEq(weightRatio, 1e18, "weightRatio should be 10^18 for same-currency payment");
+
+        // Verify fields 7-8: explicit payer quotes skip TWAP lookup, so diagnostics remain zeroed.
         assertEq(twapTick, int24(0), "twapTick should be zero when TWAP is skipped");
         assertEq(twapLiquidity, 0, "twapLiquidity should be zero when TWAP is skipped");
 
