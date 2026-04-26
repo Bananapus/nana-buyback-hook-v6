@@ -701,7 +701,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Fall back to the protocol cash-out path if no pool is configured, no project token is known,
         // or no project tokens are being cashed out.
         if (!_poolIsSet[context.projectId][terminalToken] || projectToken == address(0) || context.cashOutCount == 0) {
-            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, context.surplus.value, hookSpecifications);
+            return (
+                context.cashOutTaxRate,
+                context.cashOutCount,
+                context.totalSupply,
+                context.surplus.value,
+                hookSpecifications
+            );
         }
 
         // Compute the direct protocol reclaim amount for this cash-out request.

@@ -300,7 +300,13 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
         // If no hook is configured at all, leave the terminal's cash-out values untouched.
         if (address(hook) == address(0)) {
-            return (context.cashOutTaxRate, context.cashOutCount, context.totalSupply, context.surplus.value, hookSpecifications);
+            return (
+                context.cashOutTaxRate,
+                context.cashOutCount,
+                context.totalSupply,
+                context.surplus.value,
+                hookSpecifications
+            );
         }
 
         // Forward the full cash-out context to the resolved hook.
