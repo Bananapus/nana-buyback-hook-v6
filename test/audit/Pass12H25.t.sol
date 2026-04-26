@@ -46,19 +46,11 @@ contract Pass12H25Test is Test {
 
         JBBeforeCashOutRecordedContext memory context = _context();
 
-        (
-            uint256 cashOutTaxRate,
-            uint256 cashOutCount,
-            uint256 totalSupply,
-            uint256 effectiveSurplusValue,
-        ) = hook.beforeCashOutRecordedWith(context);
+        (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, uint256 effectiveSurplusValue,) =
+            hook.beforeCashOutRecordedWith(context);
 
         // H-25 FIX: effectiveSurplusValue must equal context.surplus.value, NOT zero.
-        assertEq(
-            effectiveSurplusValue,
-            SURPLUS,
-            "H-25: hook no-pool fallback must return context.surplus.value"
-        );
+        assertEq(effectiveSurplusValue, SURPLUS, "H-25: hook no-pool fallback must return context.surplus.value");
 
         // Other return values must pass through unchanged.
         assertEq(cashOutTaxRate, CASH_OUT_TAX_RATE, "cashOutTaxRate should pass through");
@@ -86,19 +78,11 @@ contract Pass12H25Test is Test {
 
         JBBeforeCashOutRecordedContext memory context = _context();
 
-        (
-            uint256 cashOutTaxRate,
-            uint256 cashOutCount,
-            uint256 totalSupply,
-            uint256 effectiveSurplusValue,
-        ) = registry.beforeCashOutRecordedWith(context);
+        (uint256 cashOutTaxRate, uint256 cashOutCount, uint256 totalSupply, uint256 effectiveSurplusValue,) =
+            registry.beforeCashOutRecordedWith(context);
 
         // H-25 FIX: effectiveSurplusValue must equal context.surplus.value, NOT zero.
-        assertEq(
-            effectiveSurplusValue,
-            SURPLUS,
-            "H-25: registry no-hook fallback must return context.surplus.value"
-        );
+        assertEq(effectiveSurplusValue, SURPLUS, "H-25: registry no-hook fallback must return context.surplus.value");
 
         // Other return values must pass through unchanged.
         assertEq(cashOutTaxRate, CASH_OUT_TAX_RATE, "cashOutTaxRate should pass through");
