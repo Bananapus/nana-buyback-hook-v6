@@ -39,16 +39,10 @@ contract CodexNemesisNoPoolCashOutPoC is Test {
         (,,, uint256 effectiveSurplusValue,) = hook.beforeCashOutRecordedWith(_context());
 
         uint256 reclaimFromReturnedSurplus = JBCashOuts.cashOutFrom({
-            surplus: effectiveSurplusValue,
-            cashOutCount: CASH_OUT_COUNT,
-            totalSupply: TOTAL_SUPPLY,
-            cashOutTaxRate: 0
+            surplus: effectiveSurplusValue, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
         });
         uint256 reclaimFromContextSurplus = JBCashOuts.cashOutFrom({
-            surplus: SURPLUS,
-            cashOutCount: CASH_OUT_COUNT,
-            totalSupply: TOTAL_SUPPLY,
-            cashOutTaxRate: 0
+            surplus: SURPLUS, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
         });
 
         assertEq(effectiveSurplusValue, 0, "bug: no-pool hook fallback returns zero surplus");
@@ -67,16 +61,10 @@ contract CodexNemesisNoPoolCashOutPoC is Test {
         (,,, uint256 effectiveSurplusValue,) = registry.beforeCashOutRecordedWith(_context());
 
         uint256 reclaimFromReturnedSurplus = JBCashOuts.cashOutFrom({
-            surplus: effectiveSurplusValue,
-            cashOutCount: CASH_OUT_COUNT,
-            totalSupply: TOTAL_SUPPLY,
-            cashOutTaxRate: 0
+            surplus: effectiveSurplusValue, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
         });
         uint256 reclaimFromContextSurplus = JBCashOuts.cashOutFrom({
-            surplus: SURPLUS,
-            cashOutCount: CASH_OUT_COUNT,
-            totalSupply: TOTAL_SUPPLY,
-            cashOutTaxRate: 0
+            surplus: SURPLUS, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
         });
 
         assertEq(effectiveSurplusValue, 0, "bug: no-hook registry fallback returns zero surplus");
