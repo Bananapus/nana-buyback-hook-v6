@@ -86,7 +86,9 @@ contract CodexNemesisRegistryMetadataBoundaryTest is Test {
         });
 
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (PROJECT_ID)), abi.encode(owner));
-        vm.mockCall(address(tokens), abi.encodeCall(tokens.tokenOf, (PROJECT_ID)), abi.encode(IJBToken(address(projectToken))));
+        vm.mockCall(
+            address(tokens), abi.encodeCall(tokens.tokenOf, (PROJECT_ID)), abi.encode(IJBToken(address(projectToken)))
+        );
         vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (PROJECT_ID)), abi.encode(controller));
         vm.mockCall(
             address(permissions),
@@ -133,7 +135,9 @@ contract CodexNemesisRegistryMetadataBoundaryTest is Test {
             metadata: metadata.packRulesetMetadata()
         });
         vm.mockCall(
-            address(controller), abi.encodeCall(IJBController.currentRulesetOf, (PROJECT_ID)), abi.encode(ruleset, metadata)
+            address(controller),
+            abi.encodeCall(IJBController.currentRulesetOf, (PROJECT_ID)),
+            abi.encode(ruleset, metadata)
         );
         vm.mockCall(
             address(controller),
