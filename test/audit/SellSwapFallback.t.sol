@@ -206,7 +206,7 @@ contract SellSwapFallback is Test {
     }
 
     /// @notice When the V4 pool reverts (e.g., zero liquidity), afterCashOutRecordedWith should NOT
-    /// revert. Instead, it should transfer project tokens to the beneficiary and emit SellSwapReverted.
+    /// revert. Instead, it should transfer project tokens to the holder and emit SellSwapReverted.
     function test_sellSwapFallback_returnsTokensOnPoolRevert() public {
         uint256 cashOutCount = 100 ether;
 
@@ -217,17 +217,18 @@ contract SellSwapFallback is Test {
             cashOutCount: cashOutCount, minimumSwapAmountOut: 0, cashOutCountToSell: cashOutCount
         });
 
-        // Expect the SellSwapReverted event.
+        // Expect the SellSwapReverted event (M-45: tokens go to holder, not beneficiary).
         vm.expectEmit(true, true, true, true);
-        emit IJBBuybackHook.SellSwapReverted({projectId: projectId, beneficiary: beneficiary, amount: cashOutCount});
+        emit IJBBuybackHook.SellSwapReverted({projectId: projectId, holder: context.holder, amount: cashOutCount});
 
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
-        // The beneficiary should have received the reminted project tokens.
-        assertEq(
-            projectToken.balanceOf(beneficiary), cashOutCount, "beneficiary should receive reminted project tokens"
-        );
+        // The holder should have received the reminted project tokens (M-45 fix).
+        assertEq(projectToken.balanceOf(context.holder), cashOutCount, "holder should receive reminted project tokens");
+
+        // The beneficiary should NOT receive tokens on swap failure.
+        assertEq(projectToken.balanceOf(beneficiary), 0, "beneficiary should not receive tokens on swap failure");
 
         // The hook should have zero project token balance (all transferred out).
         assertEq(projectToken.balanceOf(address(hook)), 0, "hook should not retain any project tokens");
@@ -283,11 +284,11 @@ contract SellSwapFallback is Test {
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
-        // Only the metadata-provided count should be minted and returned.
+        // Only the metadata-provided count should be minted and returned (M-45: to holder, not beneficiary).
         assertEq(
-            projectToken.balanceOf(beneficiary),
+            projectToken.balanceOf(context.holder),
             cashOutCountToSell,
-            "only metadata sell count should be returned to beneficiary"
+            "only metadata sell count should be returned to holder"
         );
         assertEq(controller.lastMintCount(), cashOutCountToSell, "controller should mint only the metadata sell count");
     }
@@ -310,26 +311,25 @@ contract SellSwapFallback is Test {
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
-        // Pre-existing balance should be untouched; only the reminted tokens should go to beneficiary.
+        // Pre-existing balance should be untouched; only the reminted tokens should go to holder (M-45).
         assertEq(
             projectToken.balanceOf(address(hook)), preExisting, "pre-existing hook balance should remain untouched"
         );
-        assertEq(
-            projectToken.balanceOf(beneficiary), cashOutCount, "beneficiary should receive only the reminted tokens"
-        );
+        assertEq(projectToken.balanceOf(context.holder), cashOutCount, "holder should receive only the reminted tokens");
     }
 
     /// @notice When the pool reverts during a native ETH cash-out, the fallback still works
-    /// (project tokens go to beneficiary, no ETH involved in fallback path).
+    /// (project tokens go to holder, no ETH involved in fallback path).
     function test_sellSwapFallback_nativeTokenCashOut() public {
         uint256 cashOutCount = 100 ether;
+        address holder = makeAddr("holder");
 
         // Force revert.
         poolManager.setShouldRevertOnUnlock(true);
 
         // Build context with native token as the reclaimed token.
         JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
-            holder: makeAddr("holder"),
+            holder: holder,
             projectId: projectId,
             rulesetId: 1,
             cashOutCount: cashOutCount,
@@ -348,8 +348,7 @@ contract SellSwapFallback is Test {
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
-        assertEq(
-            projectToken.balanceOf(beneficiary), cashOutCount, "beneficiary should receive project tokens on failure"
-        );
+        // M-45 fix: tokens go to holder, not beneficiary.
+        assertEq(projectToken.balanceOf(holder), cashOutCount, "holder should receive project tokens on failure");
     }
 }
