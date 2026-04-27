@@ -19,7 +19,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
-contract NemesisFallbackToken is ERC20 {
+contract FallbackToken is ERC20 {
     constructor() ERC20("Project Token", "PRJ") {}
 
     function mint(address account, uint256 amount) external {
@@ -27,10 +27,10 @@ contract NemesisFallbackToken is ERC20 {
     }
 }
 
-contract NemesisFallbackController {
-    NemesisFallbackToken internal immutable TOKEN;
+contract FallbackController {
+    FallbackToken internal immutable TOKEN;
 
-    constructor(NemesisFallbackToken token) {
+    constructor(FallbackToken token) {
         TOKEN = token;
     }
 
@@ -49,7 +49,7 @@ contract NemesisFallbackController {
     }
 }
 
-contract NemesisFallbackDirectory {
+contract FallbackDirectory {
     address internal immutable TERMINAL;
     IERC165 internal immutable CONTROLLER;
 
@@ -67,13 +67,13 @@ contract NemesisFallbackDirectory {
     }
 }
 
-contract NemesisRevertingPoolManager {
+contract RevertingPoolManager {
     function unlock(bytes calldata) external pure returns (bytes memory) {
         revert("forced swap failure");
     }
 }
 
-contract NemesisFallbackHook is JBBuybackHook {
+contract FallbackHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -92,19 +92,19 @@ contract NemesisFallbackHook is JBBuybackHook {
     }
 }
 
-contract CodexNemesisCashOutFallbackBeneficiaryTransferTest is Test {
+contract CashOutFallbackBeneficiaryTransferTest is Test {
     function test_failedSellFallbackTransfersRemintedTokensToHolder() public {
         uint256 projectId = 1;
         uint256 cashOutCount = 100 ether;
         address holder = address(0xA11CE);
         address beneficiary = address(0xB0B);
 
-        NemesisFallbackToken projectToken = new NemesisFallbackToken();
-        NemesisFallbackController controller = new NemesisFallbackController(projectToken);
-        NemesisFallbackDirectory directory = new NemesisFallbackDirectory(address(this), IERC165(address(controller)));
-        NemesisRevertingPoolManager poolManager = new NemesisRevertingPoolManager();
+        FallbackToken projectToken = new FallbackToken();
+        FallbackController controller = new FallbackController(projectToken);
+        FallbackDirectory directory = new FallbackDirectory(address(this), IERC165(address(controller)));
+        RevertingPoolManager poolManager = new RevertingPoolManager();
 
-        NemesisFallbackHook hook = new NemesisFallbackHook({
+        FallbackHook hook = new FallbackHook({
             directory: IJBDirectory(address(directory)),
             permissions: IJBPermissions(address(0x1)),
             prices: IJBPrices(address(0x2)),

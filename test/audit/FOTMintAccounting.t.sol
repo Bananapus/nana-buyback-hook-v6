@@ -31,7 +31,7 @@ import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {MockOracleHook} from "test/mock/MockOracleHook.sol";
 import {MockPoolManager} from "test/mock/MockPoolManager.sol";
 
-contract CodexFOTToken is ERC20 {
+contract FOTToken is ERC20 {
     uint256 internal constant FEE_BPS = 100;
     uint256 internal constant BPS_DENOMINATOR = 10_000;
 
@@ -57,7 +57,7 @@ contract CodexFOTToken is ERC20 {
     }
 }
 
-contract CodexProjectToken is ERC20 {
+contract MockProjectToken is ERC20 {
     constructor() ERC20("ProjectToken", "PT") {}
 
     function mint(address to, uint256 amount) external {
@@ -65,7 +65,7 @@ contract CodexProjectToken is ERC20 {
     }
 }
 
-contract CodexTerminal {
+contract MockTerminal {
     uint256 public recordedReceived;
 
     function approveToken(address token, address spender, uint256 amount) external {
@@ -84,16 +84,16 @@ contract CodexTerminal {
     }
 }
 
-contract CodexFOTMintAccountingPoC is Test {
+contract FOTMintAccountingTest is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
     JBBuybackHook internal hook;
     MockPoolManager internal poolManager;
     MockOracleHook internal oracleHook;
-    CodexTerminal internal terminal;
-    CodexProjectToken internal projectToken;
-    CodexFOTToken internal terminalToken;
+    MockTerminal internal terminal;
+    MockProjectToken internal projectToken;
+    FOTToken internal terminalToken;
 
     IJBDirectory internal directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions internal permissions = IJBPermissions(makeAddr("permissions"));
@@ -109,9 +109,9 @@ contract CodexFOTMintAccountingPoC is Test {
     function setUp() public {
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
-        terminal = new CodexTerminal();
-        projectToken = new CodexProjectToken();
-        terminalToken = new CodexFOTToken();
+        terminal = new MockTerminal();
+        projectToken = new MockProjectToken();
+        terminalToken = new FOTToken();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");

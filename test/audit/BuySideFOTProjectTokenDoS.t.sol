@@ -29,7 +29,7 @@ import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {MockOracleHook} from "test/mock/MockOracleHook.sol";
 import {MockPoolManager} from "test/mock/MockPoolManager.sol";
 
-contract CodexBuySideTerminalToken is ERC20 {
+contract BuySideTerminalToken is ERC20 {
     constructor() ERC20("TerminalToken", "TT") {}
 
     function mint(address to, uint256 amount) external {
@@ -37,7 +37,7 @@ contract CodexBuySideTerminalToken is ERC20 {
     }
 }
 
-contract CodexBuySideFOTProjectToken is ERC20 {
+contract BuySideFOTProjectToken is ERC20 {
     uint256 internal constant FEE_DIVISOR = 100; // 1%
 
     constructor() ERC20("FeeOnTransferProjectToken", "FPT") {}
@@ -63,10 +63,10 @@ contract CodexBuySideFOTProjectToken is ERC20 {
     }
 }
 
-contract CodexBuySideController {
-    CodexBuySideFOTProjectToken internal immutable TOKEN;
+contract BuySideController {
+    BuySideFOTProjectToken internal immutable TOKEN;
 
-    constructor(CodexBuySideFOTProjectToken token) {
+    constructor(BuySideFOTProjectToken token) {
         TOKEN = token;
     }
 
@@ -89,7 +89,7 @@ contract CodexBuySideController {
     }
 }
 
-contract CodexBuySideHook is JBBuybackHook {
+contract BuySideHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -104,16 +104,16 @@ contract CodexBuySideHook is JBBuybackHook {
     {}
 }
 
-contract CodexBuySideFOTProjectTokenDoSTest is Test {
+contract BuySideFOTProjectTokenDoSTest is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
-    CodexBuySideHook internal hook;
+    BuySideHook internal hook;
     MockPoolManager internal poolManager;
     MockOracleHook internal oracleHook;
-    CodexBuySideFOTProjectToken internal projectToken;
-    CodexBuySideTerminalToken internal terminalToken;
-    CodexBuySideController internal controller;
+    BuySideFOTProjectToken internal projectToken;
+    BuySideTerminalToken internal terminalToken;
+    BuySideController internal controller;
 
     IJBDirectory internal directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions internal permissions = IJBPermissions(makeAddr("permissions"));
@@ -128,9 +128,9 @@ contract CodexBuySideFOTProjectTokenDoSTest is Test {
     function setUp() public {
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
-        projectToken = new CodexBuySideFOTProjectToken();
-        terminalToken = new CodexBuySideTerminalToken();
-        controller = new CodexBuySideController(projectToken);
+        projectToken = new BuySideFOTProjectToken();
+        terminalToken = new BuySideTerminalToken();
+        controller = new BuySideController(projectToken);
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -138,7 +138,7 @@ contract CodexBuySideFOTProjectTokenDoSTest is Test {
         vm.etch(address(projects), "0x01");
         vm.etch(address(tokens), "0x01");
 
-        hook = new CodexBuySideHook({
+        hook = new BuySideHook({
             directory: directory,
             permissions: permissions,
             prices: prices,

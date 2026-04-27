@@ -23,7 +23,7 @@ import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {MockOracleHook} from "test/mock/MockOracleHook.sol";
 import {MockPoolManager} from "test/mock/MockPoolManager.sol";
 
-contract CodexCashOutProjectToken is ERC20 {
+contract CashOutProjectToken is ERC20 {
     constructor() ERC20("ProjectToken", "PT") {}
 
     function mint(address to, uint256 amount) external {
@@ -35,7 +35,7 @@ contract CodexCashOutProjectToken is ERC20 {
     }
 }
 
-contract CodexCashOutTerminalToken is ERC20 {
+contract CashOutTerminalToken is ERC20 {
     constructor() ERC20("TerminalToken", "TT") {}
 
     function mint(address to, uint256 amount) external {
@@ -43,14 +43,14 @@ contract CodexCashOutTerminalToken is ERC20 {
     }
 }
 
-contract CodexCashOutController {
-    CodexCashOutProjectToken internal immutable TOKEN;
+contract CashOutController {
+    CashOutProjectToken internal immutable TOKEN;
 
     uint256 internal _lastMintCount;
     address internal _lastBeneficiary;
     uint256 internal _lastBurnCount;
 
-    constructor(CodexCashOutProjectToken token) {
+    constructor(CashOutProjectToken token) {
         TOKEN = token;
     }
 
@@ -88,7 +88,7 @@ contract CodexCashOutController {
     }
 }
 
-contract CodexCashOutMetadataHook is JBBuybackHook {
+contract CashOutMetadataHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -115,15 +115,15 @@ contract CodexCashOutMetadataHook is JBBuybackHook {
     }
 }
 
-contract CodexCashOutMetadataInflationPoC is Test {
+contract CashOutMetadataInflationTest is Test {
     using PoolIdLibrary for PoolKey;
 
-    CodexCashOutMetadataHook internal hook;
+    CashOutMetadataHook internal hook;
     MockPoolManager internal poolManager;
     MockOracleHook internal oracleHook;
-    CodexCashOutProjectToken internal projectToken;
-    CodexCashOutTerminalToken internal terminalToken;
-    CodexCashOutController internal controller;
+    CashOutProjectToken internal projectToken;
+    CashOutTerminalToken internal terminalToken;
+    CashOutController internal controller;
 
     IJBDirectory internal directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions internal permissions = IJBPermissions(makeAddr("permissions"));
@@ -138,9 +138,9 @@ contract CodexCashOutMetadataInflationPoC is Test {
     function setUp() public {
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
-        projectToken = new CodexCashOutProjectToken();
-        terminalToken = new CodexCashOutTerminalToken();
-        controller = new CodexCashOutController(projectToken);
+        projectToken = new CashOutProjectToken();
+        terminalToken = new CashOutTerminalToken();
+        controller = new CashOutController(projectToken);
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -148,7 +148,7 @@ contract CodexCashOutMetadataInflationPoC is Test {
         vm.etch(address(projects), "0x01");
         vm.etch(address(tokens), "0x01");
 
-        hook = new CodexCashOutMetadataHook({
+        hook = new CashOutMetadataHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
