@@ -115,7 +115,7 @@ When a swap fails and leftover terminal tokens return through `addToBalanceOf`, 
 
 ### 9.6 Sell-side swaps degrade gracefully
 
-When `afterCashOutRecordedWith()` attempts to sell reminted project tokens through the pool and the swap reverts (e.g., zero liquidity, pool unavailable), the hook transfers the reminted project tokens back to the beneficiary instead of reverting the entire cash-out. The user retains their project tokens and can sell them manually or retry. A `SellSwapReverted` event is emitted for offchain monitoring.
+When `afterCashOutRecordedWith()` attempts to sell reminted project tokens through the pool and the swap reverts (e.g., zero liquidity, pool unavailable), the hook transfers the reminted project tokens back to the **holder** (not the beneficiary) instead of reverting the entire cash-out. The holder retains their project tokens and can sell them manually or retry. A `SellSwapReverted` event is emitted for offchain monitoring.
 
 ### 9.7 Unpinned projects fall back to the mutable default hook
 
