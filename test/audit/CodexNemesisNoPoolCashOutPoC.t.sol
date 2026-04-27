@@ -45,12 +45,12 @@ contract CodexNemesisNoPoolCashOutPoC is Test {
             surplus: SURPLUS, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
         });
 
-        assertEq(effectiveSurplusValue, 0, "bug: no-pool hook fallback returns zero surplus");
-        assertEq(reclaimFromReturnedSurplus, 0, "core computes zero reclaim from returned surplus");
+        assertEq(effectiveSurplusValue, SURPLUS, "fix: no-pool hook fallback now returns context surplus");
+        assertEq(reclaimFromReturnedSurplus, reclaimFromContextSurplus, "returned surplus matches context surplus");
         assertGt(reclaimFromContextSurplus, 0, "native passthrough should have non-zero reclaim");
     }
 
-    function test_registryNoHookFallbackReturnsZeroSurplus() public {
+    function test_registryNoHookFallbackReturnsContextSurplus() public {
         JBBuybackHookRegistry registry = new JBBuybackHookRegistry({
             permissions: IJBPermissions(makeAddr("permissions")),
             projects: IJBProjects(makeAddr("projects")),
@@ -67,8 +67,8 @@ contract CodexNemesisNoPoolCashOutPoC is Test {
             surplus: SURPLUS, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
         });
 
-        assertEq(effectiveSurplusValue, 0, "bug: no-hook registry fallback returns zero surplus");
-        assertEq(reclaimFromReturnedSurplus, 0, "core computes zero reclaim from returned surplus");
+        assertEq(effectiveSurplusValue, SURPLUS, "fix: no-hook registry fallback now returns context surplus");
+        assertEq(reclaimFromReturnedSurplus, reclaimFromContextSurplus, "returned surplus matches context surplus");
         assertGt(reclaimFromContextSurplus, 0, "native passthrough should have non-zero reclaim");
     }
 
