@@ -56,7 +56,7 @@ cash out requested
   -> hook always returns sell-side diagnostics in metadata so preview clients can inspect the comparison
   -> if pool wins, hook maxes the cash-out tax so the terminal does not reclaim surplus directly
   -> after-cash-out callback remints the chosen token amount to itself and sells it
-  -> if the sell-side swap fails hard, the cash out reverts
+  -> if the sell-side swap fails hard, reminted tokens are returned to the holder
   -> if protocol wins, the hook returns diagnostics but no active swap path
 ```
 
