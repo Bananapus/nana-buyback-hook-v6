@@ -141,7 +141,7 @@ contract CodexNemesisCashOutFallbackBeneficiaryTransferTest is Test {
 
         hook.afterCashOutRecordedWith(context);
 
-        // M-45 fix: tokens go to holder, not beneficiary.
+        // Tokens go to holder, not beneficiary.
         assertEq(projectToken.balanceOf(holder), cashOutCount);
         assertEq(projectToken.balanceOf(beneficiary), 0);
         assertEq(projectToken.balanceOf(address(hook)), 0);

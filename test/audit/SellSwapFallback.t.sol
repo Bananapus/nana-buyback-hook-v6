@@ -217,14 +217,14 @@ contract SellSwapFallback is Test {
             cashOutCount: cashOutCount, minimumSwapAmountOut: 0, cashOutCountToSell: cashOutCount
         });
 
-        // Expect the SellSwapReverted event (M-45: tokens go to holder, not beneficiary).
+        // Expect the SellSwapReverted event — tokens go to holder, not beneficiary.
         vm.expectEmit(true, true, true, true);
         emit IJBBuybackHook.SellSwapReverted({projectId: projectId, holder: context.holder, amount: cashOutCount});
 
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
-        // The holder should have received the reminted project tokens (M-45 fix).
+        // The holder should have received the reminted project tokens.
         assertEq(projectToken.balanceOf(context.holder), cashOutCount, "holder should receive reminted project tokens");
 
         // The beneficiary should NOT receive tokens on swap failure.
@@ -284,7 +284,7 @@ contract SellSwapFallback is Test {
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
-        // Only the metadata-provided count should be minted and returned (M-45: to holder, not beneficiary).
+        // Only the metadata-provided count should be minted and returned to holder, not beneficiary.
         assertEq(
             projectToken.balanceOf(context.holder),
             cashOutCountToSell,
@@ -311,7 +311,7 @@ contract SellSwapFallback is Test {
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
-        // Pre-existing balance should be untouched; only the reminted tokens should go to holder (M-45).
+        // Pre-existing balance should be untouched; only the reminted tokens should go to holder.
         assertEq(
             projectToken.balanceOf(address(hook)), preExisting, "pre-existing hook balance should remain untouched"
         );
@@ -348,7 +348,7 @@ contract SellSwapFallback is Test {
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
-        // M-45 fix: tokens go to holder, not beneficiary.
+        // Tokens go to holder, not beneficiary.
         assertEq(projectToken.balanceOf(holder), cashOutCount, "holder should receive project tokens on failure");
     }
 }

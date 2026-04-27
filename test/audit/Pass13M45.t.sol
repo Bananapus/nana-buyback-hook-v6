@@ -95,7 +95,7 @@ contract M45Hook is JBBuybackHook {
     }
 }
 
-/// @title Pass 13 — M-45: Sell-side swap failure sends tokens to beneficiary instead of holder
+/// @title Sell-side swap failure should send tokens to holder, not beneficiary
 /// @notice Tests that when a sell-side swap reverts during cashout, reminted tokens go to the holder (not beneficiary).
 contract Pass13M45Test is Test {
     uint256 constant PROJECT_ID = 1;
