@@ -21,17 +21,13 @@ import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Uniswap V4
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
@@ -40,116 +36,8 @@ import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {JBSwapLib} from "src/libraries/JBSwapLib.sol";
 import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
 
-//*********************************************************************//
-// ----------------------------- Helpers ----------------------------- //
-//*********************************************************************//
-
-/// @notice Simple mintable ERC20 for test project tokens.
-contract SlippageProjectToken is ERC20 {
-    constructor() ERC20("SlippageProjectToken", "SPT") {}
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
-
-/// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern.
-contract SlippageLiquidityHelper is IUnlockCallback {
-    IPoolManager public immutable POOL_MANAGER;
-
-    struct AddLiqParams {
-        PoolKey key;
-        int24 tickLower;
-        int24 tickUpper;
-        int256 liquidityDelta;
-    }
-
-    constructor(IPoolManager _poolManager) {
-        POOL_MANAGER = _poolManager;
-    }
-
-    function addLiquidity(
-        PoolKey calldata key,
-        int24 tickLower,
-        int24 tickUpper,
-        int256 liquidityDelta
-    )
-        external
-        payable
-    {
-        bytes memory data = abi.encode(
-            AddLiqParams({key: key, tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta})
-        );
-        POOL_MANAGER.unlock(data);
-    }
-
-    function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        require(msg.sender == address(POOL_MANAGER), "only PM");
-
-        AddLiqParams memory params = abi.decode(data, (AddLiqParams));
-
-        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
-            params.key,
-            ModifyLiquidityParams({
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                liquidityDelta: params.liquidityDelta,
-                salt: bytes32(0)
-            }),
-            ""
-        );
-
-        // Settle negative deltas (caller owes pool).
-        _settleIfNegative(params.key.currency0, callerDelta.amount0());
-        _settleIfNegative(params.key.currency1, callerDelta.amount1());
-
-        // Take positive deltas (pool owes caller). Unlikely when adding liquidity, but handle it.
-        _takeIfPositive(params.key.currency0, callerDelta.amount0());
-        _takeIfPositive(params.key.currency1, callerDelta.amount1());
-
-        return abi.encode(callerDelta);
-    }
-
-    function _settleIfNegative(Currency currency, int128 delta) internal {
-        if (delta >= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(-delta));
-
-        if (currency.isAddressZero()) {
-            POOL_MANAGER.settle{value: amount}();
-        } else {
-            POOL_MANAGER.sync(currency);
-            // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), amount);
-            POOL_MANAGER.settle();
-        }
-    }
-
-    function _takeIfPositive(Currency currency, int128 delta) internal {
-        if (delta <= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(delta));
-        POOL_MANAGER.take(currency, address(this), amount);
-    }
-
-    receive() external payable {}
-}
-
-/// @notice Test harness exposing internal state for fork tests.
-contract ForTest_SlippageBuybackHook is JBBuybackHook {
-    constructor(
-        IJBDirectory directory,
-        IJBPermissions permissions,
-        IJBPrices prices,
-        IJBProjects projects,
-        IJBTokens tokens,
-        IPoolManager poolManager,
-        IHooks oracleHook,
-        address trustedForwarder
-    )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
-    {}
-}
+// Shared fork test helpers
+import {ForkProjectToken, ForkLiquidityHelper, ForTest_BuybackHook} from "../helpers/ForkHelpers.sol";
 
 //*********************************************************************//
 // ----------------------------- Tests ------------------------------- //
@@ -185,8 +73,8 @@ contract V4GeomeanSlippageForkTest is Test {
     //*********************************************************************//
 
     IPoolManager poolManager;
-    SlippageLiquidityHelper liqHelper;
-    ForTest_SlippageBuybackHook hook;
+    ForkLiquidityHelper liqHelper;
+    ForTest_BuybackHook hook;
 
     // Mock JB core (we're testing slippage behavior, not JB core)
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
@@ -215,7 +103,7 @@ contract V4GeomeanSlippageForkTest is Test {
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
         poolManager = IPoolManager(POOL_MANAGER_ADDR);
-        liqHelper = new SlippageLiquidityHelper(poolManager);
+        liqHelper = new ForkLiquidityHelper(poolManager);
 
         // Etch code at mock addresses.
         vm.etch(address(directory), "0x01");
@@ -227,7 +115,7 @@ contract V4GeomeanSlippageForkTest is Test {
         vm.etch(address(terminal), "0x01");
 
         // Deploy the buyback hook with real PoolManager.
-        hook = new ForTest_SlippageBuybackHook({
+        hook = new ForTest_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
@@ -395,7 +283,7 @@ contract V4GeomeanSlippageForkTest is Test {
 
         for (uint256 i = 0; i < twapWindows.length; i++) {
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, SlippageProjectToken projectToken) = _setupProjectWithPool(pid, 10_000 ether);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, 10_000 ether);
 
             // Mock oracle with specific tick delta for this TWAP window.
             _mockOracleWithTickDelta(key, 10_000 ether / 2, twapWindows[i], tickDeltas[i]);
@@ -446,7 +334,7 @@ contract V4GeomeanSlippageForkTest is Test {
 
             for (uint256 o = 0; o < orders.length; o++) {
                 uint256 pid = _nextProjectId();
-                (PoolKey memory key, SlippageProjectToken projectToken) = _setupProjectWithPool(pid, liqs[l]);
+                (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, liqs[l]);
 
                 // Compute slippage and TWAP minimum before the swap.
                 (uint256 slippage,) = _getSlippageForSwap(key, orders[o]);
@@ -513,9 +401,9 @@ contract V4GeomeanSlippageForkTest is Test {
         uint256 liquidityTokenAmount
     )
         internal
-        returns (PoolKey memory key, SlippageProjectToken projectToken)
+        returns (PoolKey memory key, ForkProjectToken projectToken)
     {
-        projectToken = new SlippageProjectToken();
+        projectToken = new ForkProjectToken();
 
         // Native ETH (address(0)) is always currency0 since it's the smallest address.
         key = PoolKey({
@@ -603,7 +491,7 @@ contract V4GeomeanSlippageForkTest is Test {
         );
     }
 
-    function _mockJbCore(uint256 projectId, SlippageProjectToken projectToken) internal {
+    function _mockJbCore(uint256 projectId, ForkProjectToken projectToken) internal {
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
@@ -710,7 +598,7 @@ contract V4GeomeanSlippageForkTest is Test {
     function _executeNativeSwap(
         uint256 projectId,
         PoolKey memory,
-        SlippageProjectToken projectToken,
+        ForkProjectToken projectToken,
         uint256 orderSize
     )
         internal

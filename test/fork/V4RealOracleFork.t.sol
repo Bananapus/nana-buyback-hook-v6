@@ -24,17 +24,13 @@ import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Uniswap V4
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
@@ -44,18 +40,12 @@ import {JBSwapLib} from "src/libraries/JBSwapLib.sol";
 // Mock oracle
 import {MockOracleHook} from "../mock/MockOracleHook.sol";
 
+// Shared fork test helpers
+import {ForkProjectToken, ForkLiquidityHelper, ForTest_BuybackHook} from "../helpers/ForkHelpers.sol";
+
 //*********************************************************************//
 // ----------------------------- Helpers ----------------------------- //
 //*********************************************************************//
-
-/// @notice Simple mintable ERC20 for test project tokens.
-contract OracleProjectToken is ERC20 {
-    constructor() ERC20("OracleProjectToken", "OPT") {}
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
 
 /// @notice Test harness that exposes JBSwapLib.getQuoteFromOracle as a public function.
 /// @dev Since JBSwapLib functions are internal, we need a wrapper contract to call them from tests.
@@ -77,104 +67,6 @@ contract OracleQuoteHarness {
     {
         return JBSwapLib.getQuoteFromOracle(poolManager, key, twapWindow, amountIn, baseToken, quoteToken);
     }
-}
-
-/// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern.
-contract OracleLiquidityHelper is IUnlockCallback {
-    IPoolManager public immutable POOL_MANAGER;
-
-    struct AddLiqParams {
-        PoolKey key;
-        int24 tickLower;
-        int24 tickUpper;
-        int256 liquidityDelta;
-    }
-
-    constructor(IPoolManager _poolManager) {
-        POOL_MANAGER = _poolManager;
-    }
-
-    function addLiquidity(
-        PoolKey calldata key,
-        int24 tickLower,
-        int24 tickUpper,
-        int256 liquidityDelta
-    )
-        external
-        payable
-    {
-        bytes memory data = abi.encode(
-            AddLiqParams({key: key, tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta})
-        );
-        POOL_MANAGER.unlock(data);
-    }
-
-    function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        require(msg.sender == address(POOL_MANAGER), "only PM");
-
-        AddLiqParams memory params = abi.decode(data, (AddLiqParams));
-
-        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
-            params.key,
-            ModifyLiquidityParams({
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                liquidityDelta: params.liquidityDelta,
-                salt: bytes32(0)
-            }),
-            ""
-        );
-
-        // Settle negative deltas (caller owes pool).
-        _settleIfNegative(params.key.currency0, callerDelta.amount0());
-        _settleIfNegative(params.key.currency1, callerDelta.amount1());
-
-        // Take positive deltas (pool owes caller). Unlikely when adding liquidity, but handle it.
-        _takeIfPositive(params.key.currency0, callerDelta.amount0());
-        _takeIfPositive(params.key.currency1, callerDelta.amount1());
-
-        return abi.encode(callerDelta);
-    }
-
-    function _settleIfNegative(Currency currency, int128 delta) internal {
-        if (delta >= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(-delta));
-
-        if (currency.isAddressZero()) {
-            POOL_MANAGER.settle{value: amount}();
-        } else {
-            POOL_MANAGER.sync(currency);
-            // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), amount);
-            POOL_MANAGER.settle();
-        }
-    }
-
-    function _takeIfPositive(Currency currency, int128 delta) internal {
-        if (delta <= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(delta));
-        POOL_MANAGER.take(currency, address(this), amount);
-    }
-
-    receive() external payable {}
-}
-
-/// @notice Test harness exposing internal state for fork tests.
-contract ForTest_OracleBuybackHook is JBBuybackHook {
-    constructor(
-        IJBDirectory directory,
-        IJBPermissions permissions,
-        IJBPrices prices,
-        IJBProjects projects,
-        IJBTokens tokens,
-        IPoolManager poolManager,
-        IHooks oracleHook,
-        address trustedForwarder
-    )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
-    {}
 }
 
 //*********************************************************************//
@@ -223,9 +115,9 @@ contract V4RealOracleForkTest is Test {
     //*********************************************************************//
 
     IPoolManager poolManager;
-    OracleLiquidityHelper liqHelper;
+    ForkLiquidityHelper liqHelper;
     OracleQuoteHarness quoteHarness;
-    ForTest_OracleBuybackHook hook;
+    ForTest_BuybackHook hook;
 
     // Mock JB core (we're testing oracle behavior, not JB core).
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
@@ -254,7 +146,7 @@ contract V4RealOracleForkTest is Test {
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
         poolManager = IPoolManager(POOL_MANAGER_ADDR);
-        liqHelper = new OracleLiquidityHelper(poolManager);
+        liqHelper = new ForkLiquidityHelper(poolManager);
         quoteHarness = new OracleQuoteHarness();
 
         // Deploy MockOracleHook at the chosen hook-flag-compatible address via vm.etch.
@@ -270,7 +162,7 @@ contract V4RealOracleForkTest is Test {
         vm.etch(address(terminal), "0x01");
 
         // Deploy the buyback hook with the mock oracle as ORACLE_HOOK.
-        hook = new ForTest_OracleBuybackHook({
+        hook = new ForTest_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
@@ -307,7 +199,7 @@ contract V4RealOracleForkTest is Test {
         console.log("====== TEST 1: REAL ORACLE RETURNS NON-ZERO QUOTE ======");
         console.log("");
 
-        OracleProjectToken projectToken = new OracleProjectToken();
+        ForkProjectToken projectToken = new ForkProjectToken();
 
         // Configure oracle: tick=0 (1:1 price), with realistic liquidity.
         // tickCumulative delta = 0 -> arithmeticMeanTick = 0.
@@ -322,8 +214,8 @@ contract V4RealOracleForkTest is Test {
 
         MockOracleHook(ORACLE_ADDR)
             .setObserveData({
-                _tickCumulative0: 0, _tickCumulative1: tickCumulativeDelta, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta
-            });
+            _tickCumulative0: 0, _tickCumulative1: tickCumulativeDelta, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta
+        });
 
         // Build a PoolKey pointing to the mock oracle. The pool does not need to exist in V4
         // for the TWAP path, because getQuoteFromOracle with twapWindow > 0 calls the oracle
@@ -386,11 +278,11 @@ contract V4RealOracleForkTest is Test {
 
         MockOracleHook(ORACLE_ADDR)
             .setObserveData({
-                _tickCumulative0: 0,
-                _tickCumulative1: 0, // tick=0 -> 1:1 price
-                _secPerLiq0: 0,
-                _secPerLiq1: secPerLiqDelta
-            });
+            _tickCumulative0: 0,
+            _tickCumulative1: 0, // tick=0 -> 1:1 price
+            _secPerLiq0: 0,
+            _secPerLiq1: secPerLiqDelta
+        });
 
         // Build the beforePay context.
         JBBeforePayRecordedContext memory ctx = JBBeforePayRecordedContext({
@@ -487,17 +379,17 @@ contract V4RealOracleForkTest is Test {
         console.log("");
 
         uint256 projectId = _nextProjectId();
-        (PoolKey memory key, OracleProjectToken projectToken) = _setupProjectWithOraclePool(projectId, 10_000 ether);
+        (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithOraclePool(projectId, 10_000 ether);
 
         // Configure oracle with valid tick cumulatives but zero liquidity delta.
         // secondsPerLiq0 == secondsPerLiq1 => delta = 0 => harmonicMeanLiquidity = 0.
         MockOracleHook(ORACLE_ADDR)
             .setObserveData({
-                _tickCumulative0: 0,
-                _tickCumulative1: 0,
-                _secPerLiq0: 100, // same value
-                _secPerLiq1: 100 // same value => delta = 0
-            });
+            _tickCumulative0: 0,
+            _tickCumulative1: 0,
+            _secPerLiq0: 100, // same value
+            _secPerLiq1: 100 // same value => delta = 0
+        });
 
         // First verify at the library level that harmonicMeanLiquidity is 0.
         (uint256 libAmountOut,, uint128 libHarmonicMeanLiquidity) = quoteHarness.getQuoteFromOracle({
@@ -561,7 +453,7 @@ contract V4RealOracleForkTest is Test {
         console.log("====== TEST 4: ORACLE DIFFERENT TWAP WINDOWS ======");
         console.log("");
 
-        OracleProjectToken projectToken = new OracleProjectToken();
+        ForkProjectToken projectToken = new ForkProjectToken();
 
         // Use a realistic scenario: the pool is at tick=100 (slight premium for project token).
         // Simulate different TWAP windows seeing the same average tick.
@@ -577,8 +469,8 @@ contract V4RealOracleForkTest is Test {
 
         MockOracleHook(ORACLE_ADDR)
             .setObserveData({
-                _tickCumulative0: 0, _tickCumulative1: tickCumDelta5min, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta5min
-            });
+            _tickCumulative0: 0, _tickCumulative1: tickCumDelta5min, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta5min
+        });
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
@@ -615,8 +507,8 @@ contract V4RealOracleForkTest is Test {
 
         MockOracleHook(ORACLE_ADDR)
             .setObserveData({
-                _tickCumulative0: 0, _tickCumulative1: tickCumDelta2hr, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta2hr
-            });
+            _tickCumulative0: 0, _tickCumulative1: tickCumDelta2hr, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta2hr
+        });
 
         (uint256 amountOut2hr, int24 meanTick2hr, uint128 meanLiq2hr) = quoteHarness.getQuoteFromOracle({
             poolManager: poolManager,
@@ -652,11 +544,11 @@ contract V4RealOracleForkTest is Test {
 
         MockOracleHook(ORACLE_ADDR)
             .setObserveData({
-                _tickCumulative0: 0,
-                _tickCumulative1: tickCumDelta5minShift,
-                _secPerLiq0: 0,
-                _secPerLiq1: secPerLiqDelta5min
-            });
+            _tickCumulative0: 0,
+            _tickCumulative1: tickCumDelta5minShift,
+            _secPerLiq0: 0,
+            _secPerLiq1: secPerLiqDelta5min
+        });
 
         (uint256 amountOut5minShift, int24 meanTick5minShift,) = quoteHarness.getQuoteFromOracle({
             poolManager: poolManager,
@@ -669,11 +561,8 @@ contract V4RealOracleForkTest is Test {
 
         MockOracleHook(ORACLE_ADDR)
             .setObserveData({
-                _tickCumulative0: 0,
-                _tickCumulative1: tickCumDelta2hrShift,
-                _secPerLiq0: 0,
-                _secPerLiq1: secPerLiqDelta2hr
-            });
+            _tickCumulative0: 0, _tickCumulative1: tickCumDelta2hrShift, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta2hr
+        });
 
         (uint256 amountOut2hrShift, int24 meanTick2hrShift,) = quoteHarness.getQuoteFromOracle({
             poolManager: poolManager,
@@ -746,9 +635,9 @@ contract V4RealOracleForkTest is Test {
         uint256 liquidityTokenAmount
     )
         internal
-        returns (PoolKey memory key, OracleProjectToken projectToken)
+        returns (PoolKey memory key, ForkProjectToken projectToken)
     {
-        projectToken = new OracleProjectToken();
+        projectToken = new ForkProjectToken();
 
         // Build the pool key with the oracle hook as hooks field.
         // Native ETH (address(0)) is always currency0 since it's the smallest address.
@@ -786,7 +675,7 @@ contract V4RealOracleForkTest is Test {
         hook.setPoolFor(projectId, key, 5 minutes, JBConstants.NATIVE_TOKEN);
     }
 
-    function _mockJbCore(uint256 projectId, OracleProjectToken projectToken) internal {
+    function _mockJbCore(uint256 projectId, ForkProjectToken projectToken) internal {
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))

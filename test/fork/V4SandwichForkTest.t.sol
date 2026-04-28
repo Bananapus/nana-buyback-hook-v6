@@ -24,7 +24,6 @@ import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Uniswap V4
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -34,7 +33,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {ModifyLiquidityParams, SwapParams as V4SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {SwapParams as V4SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
@@ -42,96 +41,12 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
 
+// Shared fork test helpers
+import {ForkProjectToken, ForkLiquidityHelper, ForTest_BuybackHook} from "../helpers/ForkHelpers.sol";
+
 //*********************************************************************//
 // ----------------------------- Helpers ----------------------------- //
 //*********************************************************************//
-
-/// @notice Simple mintable ERC20 for test project tokens.
-contract SandwichProjectToken is ERC20 {
-    constructor() ERC20("SandwichProjectToken", "SPT") {}
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
-
-/// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern.
-contract SandwichLiquidityHelper is IUnlockCallback {
-    IPoolManager public immutable POOL_MANAGER;
-
-    struct AddLiqParams {
-        PoolKey key;
-        int24 tickLower;
-        int24 tickUpper;
-        int256 liquidityDelta;
-    }
-
-    constructor(IPoolManager _poolManager) {
-        POOL_MANAGER = _poolManager;
-    }
-
-    function addLiquidity(
-        PoolKey calldata key,
-        int24 tickLower,
-        int24 tickUpper,
-        int256 liquidityDelta
-    )
-        external
-        payable
-    {
-        bytes memory data = abi.encode(
-            AddLiqParams({key: key, tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta})
-        );
-        POOL_MANAGER.unlock(data);
-    }
-
-    function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        require(msg.sender == address(POOL_MANAGER), "only PM");
-
-        AddLiqParams memory params = abi.decode(data, (AddLiqParams));
-
-        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
-            params.key,
-            ModifyLiquidityParams({
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                liquidityDelta: params.liquidityDelta,
-                salt: bytes32(0)
-            }),
-            ""
-        );
-
-        _settleIfNegative(params.key.currency0, callerDelta.amount0());
-        _settleIfNegative(params.key.currency1, callerDelta.amount1());
-        _takeIfPositive(params.key.currency0, callerDelta.amount0());
-        _takeIfPositive(params.key.currency1, callerDelta.amount1());
-
-        return abi.encode(callerDelta);
-    }
-
-    function _settleIfNegative(Currency currency, int128 delta) internal {
-        if (delta >= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(-delta));
-
-        if (currency.isAddressZero()) {
-            POOL_MANAGER.settle{value: amount}();
-        } else {
-            POOL_MANAGER.sync(currency);
-            require(IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), amount));
-            POOL_MANAGER.settle();
-        }
-    }
-
-    function _takeIfPositive(Currency currency, int128 delta) internal {
-        if (delta <= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(delta));
-        POOL_MANAGER.take(currency, address(this), amount);
-    }
-
-    receive() external payable {}
-}
 
 /// @notice V4 swap executor that simulates an attacker swapping directly through the PoolManager.
 contract SwapHelper is IUnlockCallback {
@@ -223,22 +138,6 @@ contract SwapHelper is IUnlockCallback {
     receive() external payable {}
 }
 
-/// @notice Test harness exposing internal state for fork tests.
-contract ForTest_SandwichBuybackHook is JBBuybackHook {
-    constructor(
-        IJBDirectory directory,
-        IJBPermissions permissions,
-        IJBPrices prices,
-        IJBProjects projects,
-        IJBTokens tokens,
-        IPoolManager poolManager,
-        IHooks oracleHook,
-        address trustedForwarder
-    )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
-    {}
-}
-
 //*********************************************************************//
 // ----------------------------- Tests ------------------------------- //
 //*********************************************************************//
@@ -272,9 +171,9 @@ contract V4SandwichForkTest is Test {
     //*********************************************************************//
 
     IPoolManager poolManager;
-    SandwichLiquidityHelper liqHelper;
+    ForkLiquidityHelper liqHelper;
     SwapHelper swapHelper;
-    ForTest_SandwichBuybackHook hook;
+    ForTest_BuybackHook hook;
 
     // Mock JB core
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
@@ -302,7 +201,7 @@ contract V4SandwichForkTest is Test {
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
         poolManager = IPoolManager(POOL_MANAGER_ADDR);
-        liqHelper = new SandwichLiquidityHelper(poolManager);
+        liqHelper = new ForkLiquidityHelper(poolManager);
         swapHelper = new SwapHelper(poolManager);
 
         // Etch code at mock addresses.
@@ -314,7 +213,7 @@ contract V4SandwichForkTest is Test {
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
 
-        hook = new ForTest_SandwichBuybackHook({
+        hook = new ForTest_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
@@ -360,7 +259,7 @@ contract V4SandwichForkTest is Test {
 
         // Baseline: victim swap with no attack.
         uint256 pid = _nextProjectId();
-        (PoolKey memory key, SandwichProjectToken projectToken) = _setupProjectWithPool(pid, liquidityAmount);
+        (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, liquidityAmount);
         uint256 baselineReceived = _executeNativeSwap(pid, key, projectToken, victimAmount);
         console.log("  Baseline (no attack): %s tokens for 1 ETH", _formatEther(baselineReceived));
         console.log("");
@@ -479,7 +378,7 @@ contract V4SandwichForkTest is Test {
             console.log("  --- Liquidity: %s ---", labels[l]);
 
             uint256 pid = _nextProjectId();
-            (PoolKey memory key, SandwichProjectToken projectToken) = _setupProjectWithPool(pid, liquidities[l]);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, liquidities[l]);
 
             uint256 threshold = 0;
 
@@ -538,7 +437,7 @@ contract V4SandwichForkTest is Test {
         uint256 liquidityAmount = 10_000 ether;
 
         uint256 pid = _nextProjectId();
-        (PoolKey memory key, SandwichProjectToken projectToken) = _setupProjectWithPool(pid, liquidityAmount);
+        (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, liquidityAmount);
 
         // Use an attack so large it will certainly trigger the circuit breaker.
         uint256 attackSize = liquidityAmount / 4; // 25% of pool liquidity.
@@ -633,7 +532,7 @@ contract V4SandwichForkTest is Test {
         uint256 liquidityAmount = 100_000 ether;
 
         uint256 pid = _nextProjectId();
-        (PoolKey memory key, SandwichProjectToken projectToken) = _setupProjectWithPool(pid, liquidityAmount);
+        (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithPool(pid, liquidityAmount);
 
         // Get baseline swap output (no attack) to compute a tight payer quote.
         uint256 snapId = vm.snapshotState();
@@ -702,9 +601,9 @@ contract V4SandwichForkTest is Test {
         uint256 liquidityTokenAmount
     )
         internal
-        returns (PoolKey memory key, SandwichProjectToken projectToken)
+        returns (PoolKey memory key, ForkProjectToken projectToken)
     {
-        projectToken = new SandwichProjectToken();
+        projectToken = new ForkProjectToken();
 
         // Native ETH (address(0)) is always currency0.
         key = PoolKey({
@@ -767,7 +666,7 @@ contract V4SandwichForkTest is Test {
         );
     }
 
-    function _mockJbCore(uint256 projectId, SandwichProjectToken projectToken) internal {
+    function _mockJbCore(uint256 projectId, ForkProjectToken projectToken) internal {
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
@@ -840,7 +739,7 @@ contract V4SandwichForkTest is Test {
     function _executeNativeSwap(
         uint256 projectId,
         PoolKey memory,
-        SandwichProjectToken projectToken,
+        ForkProjectToken projectToken,
         uint256 orderSize
     )
         internal
@@ -903,7 +802,7 @@ contract V4SandwichForkTest is Test {
     function _executeE2eWithMetadata(
         uint256 projectId,
         PoolKey memory,
-        SandwichProjectToken projectToken,
+        ForkProjectToken projectToken,
         uint256 orderSize,
         bytes memory fullMetadata
     )

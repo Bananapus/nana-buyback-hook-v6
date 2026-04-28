@@ -27,17 +27,13 @@ import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Uniswap V4
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
@@ -45,125 +41,13 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
 
-//*********************************************************************//
-// ----------------------------- Helpers ----------------------------- //
-//*********************************************************************//
-
-/// @notice Simple mintable ERC20 for test project tokens.
-contract ForkProjectToken is ERC20 {
-    constructor() ERC20("ForkProjectToken", "FPT") {}
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
-
-/// @notice Simple mintable ERC20 for ERC-20 terminal token tests.
-contract ForkTerminalToken is ERC20 {
-    constructor() ERC20("ForkTerminalToken", "FTT") {}
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
-
-/// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern.
-contract LiquidityHelper is IUnlockCallback {
-    IPoolManager public immutable POOL_MANAGER;
-
-    struct AddLiqParams {
-        PoolKey key;
-        int24 tickLower;
-        int24 tickUpper;
-        int256 liquidityDelta;
-    }
-
-    constructor(IPoolManager _poolManager) {
-        POOL_MANAGER = _poolManager;
-    }
-
-    function addLiquidity(
-        PoolKey calldata key,
-        int24 tickLower,
-        int24 tickUpper,
-        int256 liquidityDelta
-    )
-        external
-        payable
-    {
-        bytes memory data = abi.encode(
-            AddLiqParams({key: key, tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta})
-        );
-        POOL_MANAGER.unlock(data);
-    }
-
-    function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        require(msg.sender == address(POOL_MANAGER), "only PM");
-
-        AddLiqParams memory params = abi.decode(data, (AddLiqParams));
-
-        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
-            params.key,
-            ModifyLiquidityParams({
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                liquidityDelta: params.liquidityDelta,
-                salt: bytes32(0)
-            }),
-            ""
-        );
-
-        // Settle negative deltas (caller owes pool).
-        _settleIfNegative(params.key.currency0, callerDelta.amount0());
-        _settleIfNegative(params.key.currency1, callerDelta.amount1());
-
-        // Take positive deltas (pool owes caller). Unlikely when adding liquidity, but handle it.
-        _takeIfPositive(params.key.currency0, callerDelta.amount0());
-        _takeIfPositive(params.key.currency1, callerDelta.amount1());
-
-        return abi.encode(callerDelta);
-    }
-
-    function _settleIfNegative(Currency currency, int128 delta) internal {
-        if (delta >= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(-delta));
-
-        if (currency.isAddressZero()) {
-            POOL_MANAGER.settle{value: amount}();
-        } else {
-            POOL_MANAGER.sync(currency);
-            // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), amount);
-            POOL_MANAGER.settle();
-        }
-    }
-
-    function _takeIfPositive(Currency currency, int128 delta) internal {
-        if (delta <= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(delta));
-        POOL_MANAGER.take(currency, address(this), amount);
-    }
-
-    receive() external payable {}
-}
-
-/// @notice Test harness exposing internal state for fork tests.
-contract ForTest_ForkBuybackHook is JBBuybackHook {
-    constructor(
-        IJBDirectory directory,
-        IJBPermissions permissions,
-        IJBPrices prices,
-        IJBProjects projects,
-        IJBTokens tokens,
-        IPoolManager poolManager,
-        IHooks oracleHook,
-        address trustedForwarder
-    )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
-    {}
-}
+// Shared fork test helpers
+import {
+    ForkProjectToken,
+    ForkTerminalToken,
+    ForkLiquidityHelper,
+    ForTest_BuybackHook
+} from "../helpers/ForkHelpers.sol";
 
 //*********************************************************************//
 // ----------------------------- Tests ------------------------------- //
@@ -200,8 +84,8 @@ contract V4ForkTest is Test {
     //*********************************************************************//
 
     IPoolManager poolManager;
-    LiquidityHelper liqHelper;
-    ForTest_ForkBuybackHook hook;
+    ForkLiquidityHelper liqHelper;
+    ForTest_BuybackHook hook;
 
     // Mock JB core (we're testing V4 integration, not JB core)
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
@@ -230,7 +114,7 @@ contract V4ForkTest is Test {
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
         poolManager = IPoolManager(POOL_MANAGER_ADDR);
-        liqHelper = new LiquidityHelper(poolManager);
+        liqHelper = new ForkLiquidityHelper(poolManager);
 
         // Etch code at mock addresses.
         vm.etch(address(directory), "0x01");
@@ -242,7 +126,7 @@ contract V4ForkTest is Test {
         vm.etch(address(terminal), "0x01");
 
         // Deploy the buyback hook with real PoolManager.
-        hook = new ForTest_ForkBuybackHook({
+        hook = new ForTest_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,

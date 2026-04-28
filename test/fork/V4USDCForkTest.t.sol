@@ -31,13 +31,10 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Uniswap V4
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
@@ -45,18 +42,12 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
 
+// Shared fork test helpers
+import {ForkProjectToken, ForkLiquidityHelper, ForTest_BuybackHook} from "../helpers/ForkHelpers.sol";
+
 //*********************************************************************//
 // ----------------------------- Helpers ----------------------------- //
 //*********************************************************************//
-
-/// @notice Simple mintable ERC20 for USDC project tokens (always 18 decimals).
-contract USDCProjectToken is ERC20 {
-    constructor() ERC20("USDCProjectToken", "UPT") {}
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
 
 /// @notice Mock USDC with 6 decimals.
 contract MockUSDC is ERC20 {
@@ -69,90 +60,6 @@ contract MockUSDC is ERC20 {
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
     }
-}
-
-/// @notice Helper that adds liquidity to a V4 pool via the unlock/callback pattern (ERC-20 only).
-contract USDCLiquidityHelper is IUnlockCallback {
-    IPoolManager public immutable POOL_MANAGER;
-
-    struct AddLiqParams {
-        PoolKey key;
-        int24 tickLower;
-        int24 tickUpper;
-        int256 liquidityDelta;
-    }
-
-    constructor(IPoolManager _poolManager) {
-        POOL_MANAGER = _poolManager;
-    }
-
-    function addLiquidity(PoolKey calldata key, int24 tickLower, int24 tickUpper, int256 liquidityDelta) external {
-        bytes memory data = abi.encode(
-            AddLiqParams({key: key, tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta})
-        );
-        POOL_MANAGER.unlock(data);
-    }
-
-    function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        require(msg.sender == address(POOL_MANAGER), "only PM");
-
-        AddLiqParams memory params = abi.decode(data, (AddLiqParams));
-
-        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
-            params.key,
-            ModifyLiquidityParams({
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                liquidityDelta: params.liquidityDelta,
-                salt: bytes32(0)
-            }),
-            ""
-        );
-
-        // Settle negative deltas (caller owes pool).
-        _settleIfNegative(params.key.currency0, callerDelta.amount0());
-        _settleIfNegative(params.key.currency1, callerDelta.amount1());
-
-        // Take positive deltas (pool owes caller). Unlikely when adding liquidity, but handle it.
-        _takeIfPositive(params.key.currency0, callerDelta.amount0());
-        _takeIfPositive(params.key.currency1, callerDelta.amount1());
-
-        return abi.encode(callerDelta);
-    }
-
-    function _settleIfNegative(Currency currency, int128 delta) internal {
-        if (delta >= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(-delta));
-
-        // Both tokens are ERC-20 (no native ETH in USDC pools).
-        POOL_MANAGER.sync(currency);
-        require(IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), amount), "transfer failed");
-        POOL_MANAGER.settle();
-    }
-
-    function _takeIfPositive(Currency currency, int128 delta) internal {
-        if (delta <= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount = uint256(uint128(delta));
-        POOL_MANAGER.take(currency, address(this), amount);
-    }
-}
-
-/// @notice Test harness exposing internal state for USDC fork tests.
-contract ForTest_USDCBuybackHook is JBBuybackHook {
-    constructor(
-        IJBDirectory directory,
-        IJBPermissions permissions,
-        IJBPrices prices,
-        IJBProjects projects,
-        IJBTokens tokens,
-        IPoolManager poolManager,
-        IHooks oracleHook,
-        address trustedForwarder
-    )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
-    {}
 }
 
 //*********************************************************************//
@@ -190,8 +97,8 @@ contract V4USDCForkTest is Test {
     //*********************************************************************//
 
     IPoolManager poolManager;
-    USDCLiquidityHelper liqHelper;
-    ForTest_USDCBuybackHook hook;
+    ForkLiquidityHelper liqHelper;
+    ForTest_BuybackHook hook;
 
     // Mock JB core (we're testing V4 integration, not JB core)
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
@@ -220,7 +127,7 @@ contract V4USDCForkTest is Test {
         require(POOL_MANAGER_ADDR.code.length > 0, "PoolManager not deployed at expected address");
 
         poolManager = IPoolManager(POOL_MANAGER_ADDR);
-        liqHelper = new USDCLiquidityHelper(poolManager);
+        liqHelper = new ForkLiquidityHelper(poolManager);
 
         // Etch code at mock addresses.
         vm.etch(address(directory), "0x01");
@@ -232,7 +139,7 @@ contract V4USDCForkTest is Test {
         vm.etch(address(terminal), "0x01");
 
         // Deploy the buyback hook with real PoolManager.
-        hook = new ForTest_USDCBuybackHook({
+        hook = new ForTest_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
@@ -276,7 +183,7 @@ contract V4USDCForkTest is Test {
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
-            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
 
             uint256 received = _executeUsdcSwap(pid, key, projectToken, usdc, orderSizes[i]);
 
@@ -302,7 +209,7 @@ contract V4USDCForkTest is Test {
         for (uint256 i = 0; i < liquidities.length; i++) {
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
-            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, liquidities[i]);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, liquidities[i]);
 
             uint256 received = _executeUsdcSwap(pid, key, projectToken, usdc, 1000e6);
 
@@ -333,7 +240,7 @@ contract V4USDCForkTest is Test {
             for (uint256 o = 0; o < orders.length; o++) {
                 uint256 pid = _nextProjectId();
                 MockUSDC usdc = new MockUSDC();
-                (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, liqs[l]);
+                (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, liqs[l]);
 
                 uint256 received = _executeUsdcSwap(pid, key, projectToken, usdc, orders[o]);
 
@@ -369,7 +276,7 @@ contract V4USDCForkTest is Test {
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
-            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
 
             uint256 received = _executeE2eUsdc(pid, key, projectToken, usdc, orderSizes[i]);
 
@@ -396,7 +303,7 @@ contract V4USDCForkTest is Test {
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
-            (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
 
             uint256 received = _executeE2eNoQuoteUsdc(pid, key, projectToken, usdc, orderSizes[i]);
 
@@ -413,7 +320,7 @@ contract V4USDCForkTest is Test {
 
         uint256 pid = _nextProjectId();
         MockUSDC usdc = new MockUSDC();
-        (PoolKey memory key, USDCProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
+        (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
 
         uint256 proceeds = _executeSellE2eUsdc(pid, key, projectToken, usdc, 1e6);
 
@@ -468,9 +375,9 @@ contract V4USDCForkTest is Test {
         uint256 liquidityUsdcAmount
     )
         internal
-        returns (PoolKey memory key, USDCProjectToken projectToken)
+        returns (PoolKey memory key, ForkProjectToken projectToken)
     {
-        projectToken = new USDCProjectToken();
+        projectToken = new ForkProjectToken();
 
         // Build sorted pool key (both tokens are ERC-20).
         address token0;
@@ -551,7 +458,7 @@ contract V4USDCForkTest is Test {
         );
     }
 
-    function _mockJbCore(uint256 projectId, USDCProjectToken projectToken) internal {
+    function _mockJbCore(uint256 projectId, ForkProjectToken projectToken) internal {
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
@@ -631,7 +538,7 @@ contract V4USDCForkTest is Test {
     function _executeUsdcSwap(
         uint256 projectId,
         PoolKey memory,
-        USDCProjectToken projectToken,
+        ForkProjectToken projectToken,
         MockUSDC usdc,
         uint256 orderSize
     )
@@ -695,7 +602,7 @@ contract V4USDCForkTest is Test {
     function _executeE2eUsdc(
         uint256 projectId,
         PoolKey memory,
-        USDCProjectToken projectToken,
+        ForkProjectToken projectToken,
         MockUSDC usdc,
         uint256 orderSize
     )
@@ -795,7 +702,7 @@ contract V4USDCForkTest is Test {
     function _executeE2eNoQuoteUsdc(
         uint256 projectId,
         PoolKey memory,
-        USDCProjectToken projectToken,
+        ForkProjectToken projectToken,
         MockUSDC usdc,
         uint256 orderSize
     )
@@ -880,7 +787,7 @@ contract V4USDCForkTest is Test {
     function _executeSellE2eUsdc(
         uint256 projectId,
         PoolKey memory,
-        USDCProjectToken projectToken,
+        ForkProjectToken projectToken,
         MockUSDC usdc,
         uint256 cashOutCount
     )
