@@ -20,6 +20,9 @@ contract DefaultHookZeroCheck is Test {
 
     function setUp() public {
         registry = new JBBuybackHookRegistry(permissions, projects, owner, trustedForwarder);
+
+        // Mock PROJECTS.count() so setDefaultHook can snapshot the threshold.
+        vm.mockCall(address(projects), abi.encodeWithSignature("count()"), abi.encode(uint256(0)));
     }
 
     /// @notice Setting address(0) as default hook should revert with JBBuybackHookRegistry_ZeroHook.

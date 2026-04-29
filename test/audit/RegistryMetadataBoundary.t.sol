@@ -86,6 +86,7 @@ contract CodexNemesisRegistryMetadataBoundaryTest is Test {
         });
 
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (PROJECT_ID)), abi.encode(owner));
+        vm.mockCall(address(projects), abi.encodeWithSignature("count()"), abi.encode(uint256(0)));
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (PROJECT_ID)), abi.encode(IJBToken(address(projectToken)))
         );

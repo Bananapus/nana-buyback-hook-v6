@@ -45,7 +45,13 @@ contract CodexRegistryDefaultHookHijackTest is Test {
         });
     }
 
-    function test_DefaultHookOwnerCanRetargetUnlockedProject() external {
+    /// @notice Changing the default hook should NOT retarget existing projects.
+    /// @dev The defaultHookProjectIdThreshold prevents the registry owner from unilaterally granting
+    /// mint permission to existing projects via a new default hook.
+    function test_DefaultHookChangeDoesNotRetargetExistingProject() external {
+        // Set count to 0 so that PROJECT_ID (1) > threshold (0), making the first default apply.
+        projects.setCount(0);
+
         vm.prank(registryOwner);
         registry.setDefaultHook(IJBRulesetDataHook(address(hookA)));
 
@@ -65,12 +71,15 @@ contract CodexRegistryDefaultHookHijackTest is Test {
         assertEq(weightBefore, 111, "initial default hook should be used");
         assertEq(address(registry.hookOf(PROJECT_ID)), address(hookA), "project should resolve to hook A");
 
+        // Now change the default. Threshold moves to current count (still includes PROJECT_ID).
+        projects.setCount(PROJECT_ID);
         vm.prank(registryOwner);
         registry.setDefaultHook(IJBRulesetDataHook(address(hookB)));
 
+        // Existing project should no longer resolve to any hook (threshold blocks it).
         (uint256 weightAfter,) = registry.beforePayRecordedWith(context);
-        assertEq(weightAfter, 222, "owner should be able to retarget unlocked project to hook B");
-        assertEq(address(registry.hookOf(PROJECT_ID)), address(hookB), "project should now resolve to hook B");
+        assertEq(weightAfter, 1, "existing project should passthrough (original weight) after default change");
+        assertEq(address(registry.hookOf(PROJECT_ID)), address(0), "existing project should not resolve to new default");
 
         JBRuleset memory ruleset = JBRuleset({
             cycleNumber: 0,
@@ -86,11 +95,11 @@ contract CodexRegistryDefaultHookHijackTest is Test {
 
         assertFalse(
             registry.hasMintPermissionFor(PROJECT_ID, ruleset, address(hookA)),
-            "old default hook should immediately lose mint privilege"
+            "old default hook should no longer have mint privilege"
         );
-        assertTrue(
+        assertFalse(
             registry.hasMintPermissionFor(PROJECT_ID, ruleset, address(hookB)),
-            "new default hook should immediately gain mint privilege"
+            "new default hook should NOT have mint privilege for existing project"
         );
     }
 }
@@ -103,6 +112,7 @@ contract MockPermissions {
 
 contract MockProjects {
     mapping(uint256 => address) internal _ownerOf;
+    uint256 internal _count;
 
     function setOwner(uint256 projectId, address owner) external {
         _ownerOf[projectId] = owner;
@@ -110,6 +120,14 @@ contract MockProjects {
 
     function ownerOf(uint256 projectId) external view returns (address) {
         return _ownerOf[projectId];
+    }
+
+    function setCount(uint256 c) external {
+        _count = c;
+    }
+
+    function count() external view returns (uint256) {
+        return _count;
     }
 }
 
