@@ -49,7 +49,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @dev When the default hook changes, this is set to the current project count. Only projects with IDs above this
     /// threshold get the new default. This prevents the registry owner from unilaterally changing the hook (and its
     /// mint permission) for existing projects.
-    uint256 public defaultHookProjectIdThreshold;
+    uint256 public override defaultHookProjectIdThreshold;
 
     /// @notice Whether the hook for the given project is locked.
     /// @custom:param projectId The ID of the project to get the locked hook for.
