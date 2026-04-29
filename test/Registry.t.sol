@@ -52,6 +52,9 @@ contract Test_BuybackHookRegistry_Unit is Test {
             address(projects), abi.encodeWithSelector(IERC721.ownerOf.selector, projectId), abi.encode(projectOwner)
         );
 
+        // Mock PROJECTS.count() so setDefaultHook can snapshot the threshold.
+        vm.mockCall(address(projects), abi.encodeWithSignature("count()"), abi.encode(uint256(0)));
+
         // Mock permissions to return true by default (for authorized calls).
         vm.mockCall(
             address(permissions), abi.encodeWithSelector(IJBPermissions.hasPermission.selector), abi.encode(true)

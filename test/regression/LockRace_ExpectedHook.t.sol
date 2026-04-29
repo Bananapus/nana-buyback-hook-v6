@@ -33,6 +33,9 @@ contract LockRace_ExpectedHook is Test {
         // Mock project ownership.
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(projectOwner));
 
+        // Mock PROJECTS.count() so setDefaultHook can snapshot the threshold.
+        vm.mockCall(address(projects), abi.encodeWithSignature("count()"), abi.encode(uint256(0)));
+
         // Mock permissions — allow all.
         vm.mockCall(
             address(permissions),

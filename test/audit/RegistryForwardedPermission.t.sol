@@ -48,6 +48,10 @@ contract CodexProjectsOwnerMock {
     function ownerOf(uint256) external view returns (address) {
         return _owner;
     }
+
+    function count() external pure returns (uint256) {
+        return 0;
+    }
 }
 
 contract RegistryForwardedPermissionPoC is Test {

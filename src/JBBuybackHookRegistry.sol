@@ -45,6 +45,12 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @notice The default hook to use.
     IJBRulesetDataHook public override defaultHook;
 
+    /// @notice The project ID threshold below which the default hook does not apply.
+    /// @dev When the default hook changes, this is set to the current project count. Only projects with IDs above this
+    /// threshold get the new default. This prevents the registry owner from unilaterally changing the hook (and its
+    /// mint permission) for existing projects.
+    uint256 public defaultHookProjectIdThreshold;
+
     /// @notice Whether the hook for the given project is locked.
     /// @custom:param projectId The ID of the project to get the locked hook for.
     mapping(uint256 projectId => bool) public override hasLockedHook;
@@ -128,11 +134,12 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_HOOK
         });
 
-        // Require a non-zero hook before locking. Either the project has one set, or the default exists.
-        IJBRulesetDataHook hook = _hookOf[projectId];
-        if (hook == IJBRulesetDataHook(address(0))) {
-            hook = defaultHook;
-            if (hook == IJBRulesetDataHook(address(0))) revert JBBuybackHookRegistry_HookNotSet(projectId);
+        // Require a non-zero hook before locking. Either the project has one set, or the default applies.
+        IJBRulesetDataHook hook = _resolvedHookOf(projectId);
+        if (hook == IJBRulesetDataHook(address(0))) revert JBBuybackHookRegistry_HookNotSet(projectId);
+
+        // Pin the resolved hook so the project is not affected by future default changes.
+        if (_hookOf[projectId] == IJBRulesetDataHook(address(0))) {
             _hookOf[projectId] = hook;
         }
 
@@ -148,7 +155,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     }
 
     /// @notice Set the default hook.
-    /// @dev Only the owner can set the default hook.
+    /// @dev Only the owner can set the default hook. The new default only applies to projects created after the
+    /// current project count. Existing projects must explicitly opt in via `setHookFor`.
     /// @param hook The hook to set as the default.
     function setDefaultHook(IJBRulesetDataHook hook) external onlyOwner {
         // Prevent setting address(0) as the default hook — it would mark address(0) as allowed,
@@ -157,6 +165,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
         // Set the default hook.
         defaultHook = hook;
+
+        // Only apply the new default to future projects.
+        defaultHookProjectIdThreshold = PROJECTS.count();
 
         // Allow the default hook.
         isHookAllowed[hook] = true;
@@ -209,9 +220,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });
 
-        // Get the hook for the project (falls back to default).
-        IJBRulesetDataHook hook = _hookOf[projectId];
-        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+        // Get the hook for the project (project-specific or default if eligible).
+        IJBRulesetDataHook hook = _resolvedHookOf(projectId);
 
         // Revert if there is no hook to forward to.
         if (address(hook) == address(0)) revert JBBuybackHookRegistry_HookNotSet(projectId);
@@ -249,9 +259,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
         });
 
-        // Get the hook for the project (falls back to default).
-        IJBRulesetDataHook hook = _hookOf[projectId];
-        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+        // Get the hook for the project (project-specific or default if eligible).
+        IJBRulesetDataHook hook = _resolvedHookOf(projectId);
 
         // Revert if there is no hook to forward to.
         if (address(hook) == address(0)) revert JBBuybackHookRegistry_HookNotSet(projectId);
@@ -292,11 +301,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
             JBCashOutHookSpecification[] memory hookSpecifications
         )
     {
-        // Resolve the project-specific hook first.
-        IJBRulesetDataHook hook = _hookOf[context.projectId];
-
-        // Fall back to the default hook when the project has not pinned a specific one.
-        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+        // Resolve the hook: project-specific first, then default (only for eligible projects).
+        IJBRulesetDataHook hook = _resolvedHookOf(context.projectId);
 
         // If no hook is configured at all, leave the terminal's cash-out values untouched.
         if (address(hook) == address(0)) {
@@ -328,11 +334,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         override
         returns (uint256 weight, JBPayHookSpecification[] memory hookSpecifications)
     {
-        // Resolve the project-specific hook first.
-        IJBRulesetDataHook hook = _hookOf[context.projectId];
-
-        // Fall back to the default hook when the project has not pinned a specific one.
-        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+        // Resolve the hook: project-specific first, then default (only for eligible projects).
+        IJBRulesetDataHook hook = _resolvedHookOf(context.projectId);
 
         // If no hook is configured at all, leave the terminal's pay values untouched.
         if (address(hook) == address(0)) {
@@ -362,20 +365,18 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         override
         returns (bool)
     {
-        // Get the hook for the project (falls back to default).
-        IJBRulesetDataHook hook = _hookOf[projectId];
-        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+        // Get the hook for the project (project-specific or default if eligible).
+        IJBRulesetDataHook hook = _resolvedHookOf(projectId);
 
         // Make sure the hook has mint permission.
         return addr == address(hook);
     }
 
-    /// @notice The hook for the given project, or the default hook if none is set.
-    /// @param projectId The ID of the project to get the hook for.
+    /// @notice The hook for the given project, or the default hook if the project was created after the default was
+    /// set. @param projectId The ID of the project to get the hook for.
     /// @return hook The hook for the project.
     function hookOf(uint256 projectId) external view override returns (IJBRulesetDataHook hook) {
-        hook = _hookOf[projectId];
-        if (hook == IJBRulesetDataHook(address(0))) hook = defaultHook;
+        hook = _resolvedHookOf(projectId);
     }
 
     //*********************************************************************//
@@ -390,6 +391,17 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     //*********************************************************************//
     // -------------------------- internal views ------------------------- //
     //*********************************************************************//
+
+    /// @notice Resolve the hook for a project. Returns the project-specific hook if set, otherwise the default hook
+    /// (only if the project was created after the default was set), otherwise address(0).
+    /// @param projectId The ID of the project.
+    /// @return hook The resolved hook, or address(0) if none applies.
+    function _resolvedHookOf(uint256 projectId) internal view returns (IJBRulesetDataHook hook) {
+        hook = _hookOf[projectId];
+        if (hook == IJBRulesetDataHook(address(0)) && projectId > defaultHookProjectIdThreshold) {
+            hook = defaultHook;
+        }
+    }
 
     /// @dev `ERC-2771` specifies the context as being a single address (20 bytes).
     function _contextSuffixLength() internal view override(ERC2771Context, Context) returns (uint256) {

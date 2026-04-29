@@ -34,6 +34,13 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @return The default data hook.
     function defaultHook() external view returns (IJBRulesetDataHook);
 
+    /// @notice The project ID threshold below which the default hook does not apply.
+    /// @dev Set to `PROJECTS.count()` each time the default hook changes. Only projects with IDs above this threshold
+    /// get the default hook, preventing the registry owner from unilaterally granting mint permission to existing
+    /// projects via a new default.
+    /// @return The project ID threshold.
+    function defaultHookProjectIdThreshold() external view returns (uint256);
+
     /// @notice Whether the hook for the given project is locked and cannot be changed.
     /// @param projectId The ID of the project.
     /// @return Whether the hook is locked.
