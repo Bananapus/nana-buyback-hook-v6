@@ -827,7 +827,7 @@ contract V4USDCForkTest is Test {
         }
 
         // Use a real controller so that mintTokensOf actually mints tokens to the hook.
-        // The L-24 FOT fix uses a balance-delta pattern that requires real token movements.
+        // The FOT fix uses a balance-delta pattern that requires real token movements.
         ForkController sellController = new ForkController(projectToken);
         vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (projectId)), abi.encode(sellController));
 

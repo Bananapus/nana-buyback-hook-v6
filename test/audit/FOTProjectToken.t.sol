@@ -25,7 +25,7 @@ import {MockPoolManager} from "../mock/MockPoolManager.sol";
 
 /// @notice ERC20 project token with a 1% fee on transfer (fee-on-transfer).
 /// Minting and burning bypass the fee; only transfers between non-zero addresses are taxed.
-contract L24_FOTProjectToken is ERC20 {
+contract FOTProjectToken is ERC20 {
     uint256 internal constant FEE_DIVISOR = 100; // 1% fee
 
     constructor() ERC20("FOTProjectToken", "FPT") {}
@@ -55,7 +55,7 @@ contract L24_FOTProjectToken is ERC20 {
 }
 
 /// @notice Simple ERC20 terminal token for testing.
-contract L24_TerminalToken is ERC20 {
+contract FOTTerminalToken is ERC20 {
     constructor() ERC20("TerminalToken", "TT") {}
 
     function mint(address to, uint256 amount) external {
@@ -69,12 +69,12 @@ contract L24_TerminalToken is ERC20 {
 /// receive fewer tokens than requested if the mint goes through a transfer path.
 /// However, _mint bypasses the fee, so the controller uses `transfer` to simulate
 /// a realistic scenario where the hook receives tokens via a transfer that triggers FOT.
-contract L24_Controller {
-    L24_FOTProjectToken internal immutable TOKEN;
+contract FOTController {
+    FOTProjectToken internal immutable TOKEN;
 
     uint256 internal _lastMintCount;
 
-    constructor(L24_FOTProjectToken token) {
+    constructor(FOTProjectToken token) {
         TOKEN = token;
     }
 
@@ -108,7 +108,7 @@ contract L24_Controller {
 }
 
 /// @notice Test harness exposing JBBuybackHook internals for pool initialization.
-contract L24_Hook is JBBuybackHook {
+contract FOTHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -135,8 +135,8 @@ contract L24_Hook is JBBuybackHook {
     }
 }
 
-/// @title L24_FOTProjectTokenTest
-/// @notice L-24: When the project token is a fee-on-transfer token, afterCashOutRecordedWith
+/// @title FOTProjectTokenTest
+/// @notice When the project token is a fee-on-transfer token, afterCashOutRecordedWith
 /// should use the actual received balance (not the nominal cashOutCountToSell) for swap input,
 /// fallback transfer, and burn calculations.
 ///
@@ -146,13 +146,13 @@ contract L24_Hook is JBBuybackHook {
 /// 2. `swapFailed` fallback tries to transfer `cashOutCountToSell` -> revert (insufficient balance)
 ///
 /// After fix: the hook snapshots balanceOf before/after mintTokensOf and uses `actualReceived`.
-contract L24_FOTProjectTokenTest is Test {
-    L24_Hook internal hook;
+contract FOTProjectTokenTest is Test {
+    FOTHook internal hook;
     MockPoolManager internal poolManager;
     MockOracleHook internal oracleHook;
-    L24_FOTProjectToken internal projectToken;
-    L24_TerminalToken internal terminalToken;
-    L24_Controller internal controller;
+    FOTProjectToken internal projectToken;
+    FOTTerminalToken internal terminalToken;
+    FOTController internal controller;
 
     IJBDirectory internal directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions internal permissions = IJBPermissions(makeAddr("permissions"));
@@ -169,9 +169,9 @@ contract L24_FOTProjectTokenTest is Test {
     function setUp() public {
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
-        projectToken = new L24_FOTProjectToken();
-        terminalToken = new L24_TerminalToken();
-        controller = new L24_Controller(projectToken);
+        projectToken = new FOTProjectToken();
+        terminalToken = new FOTTerminalToken();
+        controller = new FOTController(projectToken);
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -179,7 +179,7 @@ contract L24_FOTProjectTokenTest is Test {
         vm.etch(address(projects), "0x01");
         vm.etch(address(tokens), "0x01");
 
-        hook = new L24_Hook({
+        hook = new FOTHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
@@ -242,7 +242,7 @@ contract L24_FOTProjectTokenTest is Test {
         });
     }
 
-    /// @notice L-24 swap-failed path: With a FOT project token, the hook receives fewer tokens than
+    /// @notice Swap-failed path: With a FOT project token, the hook receives fewer tokens than
     /// `cashOutCountToSell` from mintTokensOf. When the swap fails, the hook should transfer only the
     /// actual received amount to the holder, not `cashOutCountToSell`.
     ///
@@ -250,7 +250,7 @@ contract L24_FOTProjectTokenTest is Test {
     /// `cashOutCountToSell` but only holds 99% of that.
     ///
     /// After fix: transfers `actualReceived` (99%) to the holder successfully.
-    function test_L24_swapFailed_FOTProjectToken_transfersActualReceived() public {
+    function test_swapFailed_FOTProjectToken_transfersActualReceived() public {
         uint256 cashOutCount = 100 ether;
         uint256 expectedFee = cashOutCount / 100; // 1% = 1 ether
         uint256 expectedNet = cashOutCount - expectedFee; // 99 ether
@@ -277,7 +277,7 @@ contract L24_FOTProjectTokenTest is Test {
         assertEq(projectToken.balanceOf(address(hook)), 0, "hook should not retain any project tokens");
     }
 
-    /// @notice L-24 swap path: With a FOT project token, the hook passes `actualReceived` to
+    /// @notice Swap path: With a FOT project token, the hook passes `actualReceived` to
     /// `_swapExactInput` instead of `cashOutCountToSell`. This prevents the swap from trying
     /// to sell more tokens than the hook actually holds.
     ///
@@ -285,7 +285,7 @@ contract L24_FOTProjectTokenTest is Test {
     /// causing a revert during the pool settlement.
     ///
     /// After fix: the swap uses `actualReceived` (99%) as the input amount, which succeeds.
-    function test_L24_swapSucceeds_FOTProjectToken_usesActualReceived() public {
+    function test_swapSucceeds_FOTProjectToken_usesActualReceived() public {
         uint256 cashOutCount = 100 ether;
         uint256 expectedFee = cashOutCount / 100; // 1%
         uint256 expectedNet = cashOutCount - expectedFee; // 99 ether — what the hook actually receives
@@ -320,10 +320,10 @@ contract L24_FOTProjectTokenTest is Test {
         );
     }
 
-    /// @notice L-24 unsold residue burn: With a FOT project token, the unsold token calculation
+    /// @notice Unsold residue burn: With a FOT project token, the unsold token calculation
     /// should use `actualReceived` instead of `cashOutCountToSell` to avoid burning more tokens
     /// than the hook actually holds.
-    function test_L24_partialSwap_FOTProjectToken_burnsCorrectResidue() public {
+    function test_partialSwap_FOTProjectToken_burnsCorrectResidue() public {
         uint256 cashOutCount = 100 ether;
         uint256 swapConsumed = 50 ether; // Pool only consumes 50 ether of the 99 ether received
         uint256 swapAmountReceived = 40 ether;

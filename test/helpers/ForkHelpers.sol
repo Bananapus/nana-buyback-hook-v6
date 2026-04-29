@@ -126,7 +126,7 @@ contract ForkLiquidityHelper is IUnlockCallback {
 
 /// @notice Minimal controller that actually mints/burns project tokens for fork tests.
 /// @dev Used instead of a blanket `vm.mockCall` so that the hook's balance-delta
-/// accounting in `afterCashOutRecordedWith` (L-24 FOT fix) sees real token movements.
+/// accounting in `afterCashOutRecordedWith` (FOT fix) sees real token movements.
 contract ForkController {
     ForkProjectToken internal immutable TOKEN;
 
