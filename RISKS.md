@@ -22,7 +22,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **The oracle hook is trusted.** TWAP integrity depends on the `hooks` field in the pool key and the configured `ORACLE_HOOK`.
 - **Oracle failure degrades safely.** When `observe()` reverts, oracle-dependent flows return a zero quote and can fall back toward the protocol path.
 - **JB core contracts behave correctly.** The hook trusts `DIRECTORY`, `controller`, and token operations in core.
-- **Registry owner centralization is real.** Changing the default hook silently redirects all unlocked projects.
+- **Registry owner centralization is scoped.** Changing the default hook only affects projects created after the change (`projectId > defaultHookProjectIdThreshold`). Existing projects must explicitly opt in via `setHookFor`.
 
 ## 2. Economic Risks
 
@@ -119,7 +119,7 @@ When `afterCashOutRecordedWith()` attempts to sell reminted project tokens throu
 
 ### 9.7 Unpinned projects fall back to the mutable default hook
 
-Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookOf()` fall back to the mutable `defaultHook`. The registry owner can change `defaultHook`, affecting all projects that have not pinned their hook. Always call `setHookOf(projectId, hook)` to pin your project's hook.
+Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookOf()` fall back to the mutable `defaultHook`, but only if created after the default was set (`projectId > defaultHookProjectIdThreshold`). Changing the default hook does not retroactively affect existing projects. Always call `setHookOf(projectId, hook)` to pin your project's hook.
 
 ### 9.8 Sell-Side AMM Proceeds Are Not Fee-Metered
 
