@@ -392,17 +392,6 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // -------------------------- internal views ------------------------- //
     //*********************************************************************//
 
-    /// @notice Resolve the hook for a project. Returns the project-specific hook if set, otherwise the default hook
-    /// (only if the project was created after the default was set), otherwise address(0).
-    /// @param projectId The ID of the project.
-    /// @return hook The resolved hook, or address(0) if none applies.
-    function _resolvedHookOf(uint256 projectId) internal view returns (IJBRulesetDataHook hook) {
-        hook = _hookOf[projectId];
-        if (hook == IJBRulesetDataHook(address(0)) && projectId > defaultHookProjectIdThreshold) {
-            hook = defaultHook;
-        }
-    }
-
     /// @dev `ERC-2771` specifies the context as being a single address (20 bytes).
     function _contextSuffixLength() internal view override(ERC2771Context, Context) returns (uint256) {
         return super._contextSuffixLength();
@@ -418,5 +407,16 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @return sender The address which sent this call.
     function _msgSender() internal view override(ERC2771Context, Context) returns (address sender) {
         return ERC2771Context._msgSender();
+    }
+
+    /// @notice Resolve the hook for a project. Returns the project-specific hook if set, otherwise the default hook
+    /// (only if the project was created after the default was set), otherwise address(0).
+    /// @param projectId The ID of the project.
+    /// @return hook The resolved hook, or address(0) if none applies.
+    function _resolvedHookOf(uint256 projectId) internal view returns (IJBRulesetDataHook hook) {
+        hook = _hookOf[projectId];
+        if (hook == IJBRulesetDataHook(address(0)) && projectId > defaultHookProjectIdThreshold) {
+            hook = defaultHook;
+        }
     }
 }
