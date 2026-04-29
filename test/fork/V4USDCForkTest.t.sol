@@ -43,7 +43,7 @@ import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
 
 // Shared fork test helpers
-import {ForkProjectToken, ForkLiquidityHelper, ForTest_BuybackHook} from "../helpers/ForkHelpers.sol";
+import {ForkProjectToken, ForkController, ForkLiquidityHelper, ForTest_BuybackHook} from "../helpers/ForkHelpers.sol";
 
 //*********************************************************************//
 // ----------------------------- Helpers ----------------------------- //
@@ -826,7 +826,10 @@ contract V4USDCForkTest is Test {
             specMetadata = specs[0].metadata;
         }
 
-        projectToken.mint(address(hook), cashOutCount);
+        // Use a real controller so that mintTokensOf actually mints tokens to the hook.
+        // The L-24 FOT fix uses a balance-delta pattern that requires real token movements.
+        ForkController sellController = new ForkController(projectToken);
+        vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (projectId)), abi.encode(sellController));
 
         JBAfterCashOutRecordedContext memory afterCtx = JBAfterCashOutRecordedContext({
             holder: payer,

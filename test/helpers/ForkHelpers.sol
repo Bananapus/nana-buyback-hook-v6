@@ -20,12 +20,16 @@ import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 
-/// @notice Simple mintable ERC20 for test project tokens.
+/// @notice Simple mintable/burnable ERC20 for test project tokens.
 contract ForkProjectToken is ERC20 {
     constructor() ERC20("ForkProjectToken", "FPT") {}
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
+    }
+
+    function burn(address from, uint256 amount) external {
+        _burn(from, amount);
     }
 }
 
@@ -118,6 +122,35 @@ contract ForkLiquidityHelper is IUnlockCallback {
     }
 
     receive() external payable {}
+}
+
+/// @notice Minimal controller that actually mints/burns project tokens for fork tests.
+/// @dev Used instead of a blanket `vm.mockCall` so that the hook's balance-delta
+/// accounting in `afterCashOutRecordedWith` (L-24 FOT fix) sees real token movements.
+contract ForkController {
+    ForkProjectToken internal immutable TOKEN;
+
+    constructor(ForkProjectToken token) {
+        TOKEN = token;
+    }
+
+    function mintTokensOf(
+        uint256,
+        uint256 tokenCount,
+        address beneficiary,
+        string memory,
+        bool
+    )
+        external
+        returns (uint256)
+    {
+        TOKEN.mint(beneficiary, tokenCount);
+        return tokenCount;
+    }
+
+    function burnTokensOf(address holder, uint256, uint256 tokenCount, string memory) external {
+        TOKEN.burn(holder, tokenCount);
+    }
 }
 
 /// @notice Test harness exposing internal state for fork tests.
