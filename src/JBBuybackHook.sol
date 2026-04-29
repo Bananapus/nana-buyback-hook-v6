@@ -220,6 +220,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Remint project tokens to this hook so they can be sold into the pool.
         // Uses the metadata-provided count, not context.cashOutCount, to avoid selling fee-portion tokens.
         IJBController controller = IJBController(address(DIRECTORY.controllerOf(context.projectId)));
+
+        // Snapshot balance before minting to handle fee-on-transfer tokens.
+        uint256 preMintBalance = IERC20(projectToken).balanceOf(address(this));
+
         // slither-disable-next-line unused-return
         controller.mintTokensOf({
             projectId: context.projectId,
@@ -229,11 +233,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             useReservedPercent: false
         });
 
+        // Measure actual tokens received (handles fee-on-transfer tokens).
+        uint256 actualReceived = IERC20(projectToken).balanceOf(address(this)) - preMintBalance;
+
         // Sell the reminted project tokens for the terminal token using the configured pool direction.
         // slither-disable-next-line reentrancy-events
         (uint256 amountSpent, uint256 amountReceived, bool swapFailed) = _swapExactInput({
             key: key,
-            amountIn: cashOutCountToSell,
+            amountIn: actualReceived,
             minimumSwapAmountOut: minimumSwapAmountOut,
             zeroForOne: projectToken < terminalToken
         });
@@ -241,8 +248,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // If the pool reverted, return the reminted project tokens to the holder instead of
         // blocking the cash-out entirely. The holder keeps their tokens and can sell manually or retry.
         if (swapFailed) {
-            IERC20(projectToken).safeTransfer({to: context.holder, value: cashOutCountToSell});
-            emit SellSwapReverted({projectId: context.projectId, holder: context.holder, amount: cashOutCountToSell});
+            IERC20(projectToken).safeTransfer({to: context.holder, value: actualReceived});
+            emit SellSwapReverted({projectId: context.projectId, holder: context.holder, amount: actualReceived});
             return;
         }
 
@@ -253,7 +260,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Burn only the reminted residue left unsold by THIS execution.
         // Pre-existing project-token balances on the hook must not be swept into this burn.
-        uint256 unsoldProjectTokenCount = cashOutCountToSell > amountSpent ? cashOutCountToSell - amountSpent : 0;
+        uint256 unsoldProjectTokenCount = actualReceived > amountSpent ? actualReceived - amountSpent : 0;
         if (unsoldProjectTokenCount != 0) {
             controller.burnTokensOf({
                 holder: address(this), projectId: context.projectId, tokenCount: unsoldProjectTokenCount, memo: ""

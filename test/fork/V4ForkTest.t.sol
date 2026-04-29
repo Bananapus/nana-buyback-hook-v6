@@ -46,6 +46,7 @@ import {
     ForkProjectToken,
     ForkTerminalToken,
     ForkLiquidityHelper,
+    ForkController,
     ForTest_BuybackHook
 } from "../helpers/ForkHelpers.sol";
 
@@ -1046,7 +1047,10 @@ contract V4ForkTest is Test {
             specMetadata = specs[0].metadata;
         }
 
-        projectToken.mint(address(hook), cashOutCount);
+        // Use a real controller so that mintTokensOf actually mints tokens to the hook.
+        // The FOT fix uses a balance-delta pattern that requires real token movements.
+        ForkController sellController = new ForkController(projectToken);
+        vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (projectId)), abi.encode(sellController));
 
         JBAfterCashOutRecordedContext memory afterCtx = JBAfterCashOutRecordedContext({
             holder: payer,
