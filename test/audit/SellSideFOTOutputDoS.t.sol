@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBFeeTerminal} from "@bananapus/core-v6/src/interfaces/IJBFeeTerminal.sol";
 import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
 import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
@@ -151,6 +152,7 @@ contract CodexSellSideFOTOutputDoSTest is Test {
             abi.encode(true)
         );
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(address(this)));
+        vm.mockCall(terminal, abi.encodeCall(IJBFeeTerminal.FEE, ()), abi.encode(uint256(25)));
         vm.mockCall(address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(address(projectToken)));
         vm.mockCall(
             address(permissions),
