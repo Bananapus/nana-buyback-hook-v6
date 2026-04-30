@@ -760,8 +760,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 netDirectCashOutAmount = directCashOutAmount;
         if (!context.beneficiaryIsFeeless) {
             netDirectCashOutAmount -= JBFees.feeAmountFrom({
-                amountBeforeFee: directCashOutAmount,
-                feePercent: IJBFeeTerminal(context.terminal).FEE()
+                amountBeforeFee: directCashOutAmount, feePercent: IJBFeeTerminal(context.terminal).FEE()
             });
         }
 

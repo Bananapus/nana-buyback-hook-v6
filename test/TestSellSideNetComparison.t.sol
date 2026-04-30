@@ -215,9 +215,7 @@ contract TestSellSideNetComparison is Test {
             metadata: meta.packRulesetMetadata()
         });
         vm.mockCall(
-            address(controller),
-            abi.encodeCall(IJBController.currentRulesetOf, (projectId)),
-            abi.encode(ruleset, meta)
+            address(controller), abi.encodeCall(IJBController.currentRulesetOf, (projectId)), abi.encode(ruleset, meta)
         );
     }
 
@@ -258,8 +256,7 @@ contract TestSellSideNetComparison is Test {
         uint256 ammQuote = 0.49 ether;
         JBBeforeCashOutRecordedContext memory context = _buildContext(ammQuote, false);
 
-        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
-            hook.beforeCashOutRecordedWith(context);
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "should route to AMM");
         assertFalse(specs[0].noop, "should not be noop when AMM beats net reclaim");
@@ -271,8 +268,7 @@ contract TestSellSideNetComparison is Test {
         uint256 ammQuote = 0.48 ether;
         JBBeforeCashOutRecordedContext memory context = _buildContext(ammQuote, false);
 
-        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
-            hook.beforeCashOutRecordedWith(context);
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, 0, "should keep original tax rate for terminal path");
         assertTrue(specs[0].noop, "should noop when AMM loses to net reclaim");
@@ -285,14 +281,13 @@ contract TestSellSideNetComparison is Test {
         uint256 ammQuote = 0.49 ether;
         JBBeforeCashOutRecordedContext memory context = _buildContext(ammQuote, true);
 
-        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
-            hook.beforeCashOutRecordedWith(context);
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         assertEq(cashOutTaxRate, 0, "feeless beneficiary should keep original tax rate");
         assertTrue(specs[0].noop, "feeless beneficiary should compare against gross, so noop");
 
         // Metadata should encode gross (no fee deduction for feeless).
-        (, , uint256 minimumProtocolAmountOut,,,) =
+        (,, uint256 minimumProtocolAmountOut,,,) =
             abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumProtocolAmountOut, GROSS, "feeless metadata should encode gross reclaim");
     }
