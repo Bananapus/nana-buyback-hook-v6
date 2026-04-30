@@ -5,6 +5,7 @@ import {JBPermissioned} from "@bananapus/core-v6/src/abstract/JBPermissioned.sol
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBCashOutHook} from "@bananapus/core-v6/src/interfaces/IJBCashOutHook.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBFeeTerminal} from "@bananapus/core-v6/src/interfaces/IJBFeeTerminal.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
 import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
 import {IJBPermissioned} from "@bananapus/core-v6/src/interfaces/IJBPermissioned.sol";
@@ -15,6 +16,7 @@ import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDa
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {JBCashOuts} from "@bananapus/core-v6/src/libraries/JBCashOuts.sol";
+import {JBFees} from "@bananapus/core-v6/src/libraries/JBFees.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
@@ -754,7 +756,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        bool noop = minimumSwapAmountOut <= directCashOutAmount;
+        // Deduct the terminal's fee from the direct cash-out amount so we compare against net reclaim.
+        uint256 netDirectCashOutAmount = directCashOutAmount;
+        if (!context.beneficiaryIsFeeless) {
+            netDirectCashOutAmount -= JBFees.feeAmountFrom({
+                amountBeforeFee: directCashOutAmount, feePercent: IJBFeeTerminal(context.terminal).FEE()
+            });
+        }
+
+        bool noop = minimumSwapAmountOut <= netDirectCashOutAmount;
 
         // Return sell-side routing metadata in both cases so preview clients can inspect the route comparison without
         // forcing the terminal to execute `afterCashOutRecordedWith`.
@@ -766,7 +776,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             metadata: abi.encode(
                 minimumSwapAmountOut,
                 context.cashOutCount,
-                directCashOutAmount,
+                netDirectCashOutAmount,
                 twapTick,
                 twapLiquidity,
                 poolId,
