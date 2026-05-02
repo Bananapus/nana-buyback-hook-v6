@@ -10,11 +10,8 @@ import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
-import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
-import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
 import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
-import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
@@ -27,7 +24,7 @@ import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {MockOracleHook} from "test/mock/MockOracleHook.sol";
 import {MockPoolManager} from "test/mock/MockPoolManager.sol";
 
-contract CodexSellSideProjectToken is ERC20 {
+contract DerivedMinProjectToken is ERC20 {
     constructor() ERC20("ProjectToken", "PT") {}
 
     function mint(address to, uint256 amount) external {
@@ -39,8 +36,9 @@ contract CodexSellSideProjectToken is ERC20 {
     }
 }
 
-contract CodexSellSideFeeOnTransferToken is ERC20 {
-    uint256 internal constant FEE_BPS = 100; // 1%
+contract DerivedMinTerminalToken is ERC20 {
+    uint256 internal constant FEE_BPS = 500;
+    uint256 internal constant BPS_DENOMINATOR = 10_000;
 
     constructor() ERC20("FeeOnTransferToken", "FOT") {}
 
@@ -54,17 +52,17 @@ contract CodexSellSideFeeOnTransferToken is ERC20 {
             return;
         }
 
-        uint256 fee = value / FEE_BPS;
+        uint256 fee = value * FEE_BPS / BPS_DENOMINATOR;
         uint256 net = value - fee;
         super._update(from, address(0xBEEF), fee);
         super._update(from, to, net);
     }
 }
 
-contract CodexSellSideController {
-    CodexSellSideProjectToken internal immutable TOKEN;
+contract DerivedMinController {
+    DerivedMinProjectToken internal immutable TOKEN;
 
-    constructor(CodexSellSideProjectToken token) {
+    constructor(DerivedMinProjectToken token) {
         TOKEN = token;
     }
 
@@ -87,7 +85,7 @@ contract CodexSellSideController {
     }
 }
 
-contract CodexSellSideHook is JBBuybackHook {
+contract DerivedMinFOTSellSideHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -102,13 +100,13 @@ contract CodexSellSideHook is JBBuybackHook {
     {}
 }
 
-contract CodexSellSideFOTOutputDoSTest is Test {
-    CodexSellSideHook internal hook;
+contract DerivedMinSellSideFOTDoSTest is Test {
+    DerivedMinFOTSellSideHook internal hook;
     MockPoolManager internal poolManager;
     MockOracleHook internal oracleHook;
-    CodexSellSideProjectToken internal projectToken;
-    CodexSellSideFeeOnTransferToken internal terminalToken;
-    CodexSellSideController internal controller;
+    DerivedMinProjectToken internal projectToken;
+    DerivedMinTerminalToken internal terminalToken;
+    DerivedMinController internal controller;
 
     IJBDirectory internal directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions internal permissions = IJBPermissions(makeAddr("permissions"));
@@ -116,17 +114,21 @@ contract CodexSellSideFOTOutputDoSTest is Test {
     IJBProjects internal projects = IJBProjects(makeAddr("projects"));
     IJBTokens internal tokens = IJBTokens(makeAddr("tokens"));
 
-    uint256 internal projectId = 101;
-    uint256 internal twapWindow = 600;
+    uint256 internal constant PROJECT_ID = 202;
+    uint256 internal constant TWAP_WINDOW = 600;
+    uint256 internal constant CASH_OUT_COUNT = 10 ether;
+    uint256 internal constant SURPLUS = 96 ether;
+    uint256 internal constant TOTAL_SUPPLY = 100 ether;
+    uint128 internal constant TWAP_LIQUIDITY = 1_000_000 ether;
+
     address internal terminal = makeAddr("terminal");
-    address payable internal beneficiary = payable(makeAddr("beneficiary"));
 
     function setUp() public {
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
-        projectToken = new CodexSellSideProjectToken();
-        terminalToken = new CodexSellSideFeeOnTransferToken();
-        controller = new CodexSellSideController(projectToken);
+        projectToken = new DerivedMinProjectToken();
+        terminalToken = new DerivedMinTerminalToken();
+        controller = new DerivedMinController(projectToken);
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -134,7 +136,7 @@ contract CodexSellSideFOTOutputDoSTest is Test {
         vm.etch(address(projects), "0x01");
         vm.etch(address(tokens), "0x01");
 
-        hook = new CodexSellSideHook({
+        hook = new DerivedMinFOTSellSideHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
@@ -145,15 +147,15 @@ contract CodexSellSideFOTOutputDoSTest is Test {
             trustedForwarder: address(0)
         });
 
-        vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (projectId)), abi.encode(controller));
+        vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (PROJECT_ID)), abi.encode(controller));
         vm.mockCall(
             address(directory),
-            abi.encodeCall(directory.isTerminalOf, (projectId, IJBTerminal(terminal))),
+            abi.encodeCall(directory.isTerminalOf, (PROJECT_ID, IJBTerminal(terminal))),
             abi.encode(true)
         );
-        vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(address(this)));
+        vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (PROJECT_ID)), abi.encode(address(this)));
         vm.mockCall(terminal, abi.encodeCall(IJBFeeTerminal.FEE, ()), abi.encode(uint256(25)));
-        vm.mockCall(address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(address(projectToken)));
+        vm.mockCall(address(tokens), abi.encodeCall(tokens.tokenOf, (PROJECT_ID)), abi.encode(address(projectToken)));
         vm.mockCall(
             address(permissions),
             abi.encodeWithSignature("hasPermission(address,address,uint256,uint256,bool,bool)"),
@@ -173,82 +175,66 @@ contract CodexSellSideFOTOutputDoSTest is Test {
             currency0: currency0, currency1: currency1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(oracleHook))
         });
 
-        oracleHook.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
-        poolManager.setSlot0(key.toId(), 79_228_162_514_264_337_593_543_950_336, 0, 3000); // sqrtPriceX96 at tick 0
-        poolManager.setLiquidity(key.toId(), 1_000_000 ether);
+        uint160 secondsPerLiquidityDelta = uint160((uint256(TWAP_WINDOW) << 128) / uint256(TWAP_LIQUIDITY));
+        oracleHook.setObserveData(0, 0, 0, secondsPerLiquidityDelta);
+        poolManager.setSlot0(key.toId(), 79_228_162_514_264_337_593_543_950_336, 0, 3000);
+        poolManager.setLiquidity(key.toId(), TWAP_LIQUIDITY);
         hook.setPoolFor({
-            projectId: projectId, poolKey: key, twapWindow: twapWindow, terminalToken: address(terminalToken)
+            projectId: PROJECT_ID, poolKey: key, twapWindow: TWAP_WINDOW, terminalToken: address(terminalToken)
         });
-    }
-
-    function test_afterCashOut_revertsWhenOutputTokenTaxesPoolTransfer() public {
-        uint256 cashOutCount = 10 ether;
-        uint256 quotedAmountOut = 12 ether;
 
         if (address(projectToken) < address(terminalToken)) {
             // token0 in, token1 out
             // forge-lint: disable-next-line(unsafe-typecast)
-            poolManager.setMockDeltas(-int128(uint128(cashOutCount)), int128(uint128(quotedAmountOut)));
+            poolManager.setMockDeltas(-int128(uint128(CASH_OUT_COUNT)), int128(uint128(CASH_OUT_COUNT)));
         } else {
             // token1 in, token0 out
             // forge-lint: disable-next-line(unsafe-typecast)
-            poolManager.setMockDeltas(int128(uint128(quotedAmountOut)), -int128(uint128(cashOutCount)));
+            poolManager.setMockDeltas(int128(uint128(CASH_OUT_COUNT)), -int128(uint128(CASH_OUT_COUNT)));
         }
 
-        terminalToken.mint(address(poolManager), quotedAmountOut);
-
-        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
-            holder: makeAddr("holder"),
-            projectId: projectId,
-            rulesetId: 1,
-            cashOutCount: cashOutCount,
-            reclaimedAmount: JBTokenAmount({
-                token: address(terminalToken), value: 0, decimals: 18, currency: uint32(uint160(address(terminalToken)))
-            }),
-            forwardedAmount: JBTokenAmount({
-                token: address(terminalToken), value: 0, decimals: 18, currency: uint32(uint160(address(terminalToken)))
-            }),
-            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
-            beneficiary: beneficiary,
-            hookMetadata: abi.encode(quotedAmountOut, cashOutCount),
-            cashOutMetadata: ""
-        });
-
-        vm.expectRevert();
-        vm.prank(terminal);
-        hook.afterCashOutRecordedWith(context);
+        terminalToken.mint(address(poolManager), CASH_OUT_COUNT);
     }
 
-    function test_beforeCashOut_canStillSelectSellPath_withExplicitMinimumForFeeOnTransferTerminalToken() public {
-        uint256 quotedAmountOut = 12 ether;
-        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
-        bytes memory metadata = JBMetadataResolver.addToMetadata({
-            originalMetadata: bytes(""), idToAdd: metadataId, dataToAdd: abi.encode(quotedAmountOut)
-        });
-
-        JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
+    function test_protocolDerivedMinimumUsesDirectCashOutForERC20OutputToken() public {
+        JBBeforeCashOutRecordedContext memory beforeContext = JBBeforeCashOutRecordedContext({
             terminal: terminal,
             holder: makeAddr("holder"),
-            projectId: projectId,
+            projectId: PROJECT_ID,
             rulesetId: 1,
-            cashOutCount: 10 ether,
-            totalSupply: 100 ether,
+            cashOutCount: CASH_OUT_COUNT,
+            totalSupply: TOTAL_SUPPLY,
             surplus: JBTokenAmount({
                 token: address(terminalToken),
-                value: 5 ether,
+                value: SURPLUS,
                 decimals: 18,
                 currency: uint32(uint160(address(terminalToken)))
             }),
             useTotalSurplus: false,
             cashOutTaxRate: 0,
             beneficiaryIsFeeless: false,
-            metadata: metadata
+            metadata: ""
         });
 
-        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+        (
+            uint256 cashOutTaxRate,
+            uint256 cashOutCount,
+            uint256 totalSupply,
+            uint256 surplusValue,
+            JBCashOutHookSpecification[] memory specs
+        ) = hook.beforeCashOutRecordedWith(beforeContext);
 
-        assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "hook should choose the sell path");
-        assertEq(specs.length, 1, "hook should return one specification");
-        assertFalse(specs[0].noop, "sell path should be active");
+        assertEq(cashOutTaxRate, 0, "ERC20 output should use the direct cash-out path without explicit metadata");
+        assertEq(cashOutCount, CASH_OUT_COUNT, "cash-out count should stay unchanged");
+        assertEq(totalSupply, TOTAL_SUPPLY, "total supply should stay unchanged");
+        assertEq(surplusValue, SURPLUS, "surplus should stay available to the terminal");
+        assertEq(specs.length, 1, "hook should return one sell-side specification");
+        assertTrue(specs[0].noop, "protocol-derived sell-side hook should stay inactive");
+
+        (uint256 minimumSwapAmountOut,,,,,, uint256 rawSwapQuote) =
+            abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, bytes32, uint256));
+
+        assertEq(rawSwapQuote, 0, "metadata-less ERC20 output should not get an untaxed TWAP quote");
+        assertEq(minimumSwapAmountOut, 0, "metadata-less ERC20 output should not get an AMM floor");
     }
 }
