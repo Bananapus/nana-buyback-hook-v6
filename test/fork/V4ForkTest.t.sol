@@ -365,7 +365,7 @@ contract V4ForkTest is Test {
     //*********************************************************************//
 
     /// @notice Verify buybacks work for callers that provide NO quote metadata.
-    /// @dev Without the spot-price fallback, this would always mint (twapMinimum = 0).
+    /// @dev Uses the TWAP oracle route when the oracle is warm; no unsafe spot fallback is used.
     function test_fork_e2e_noPayerQuote() public onlyFork {
         console.log("");
         console.log("====== FORK E2E: NO PAYER QUOTE (programmatic caller) ======");
@@ -381,7 +381,7 @@ contract V4ForkTest is Test {
 
             console.log("  No-quote %s ETH -> %s tokens received", _formatEther(orderSizes[i]), _formatEther(received));
 
-            assertGt(received, 0, "No-quote E2E should still trigger buyback via spot fallback");
+            assertGt(received, 0, "No-quote E2E should still trigger buyback via TWAP");
         }
     }
 
@@ -927,7 +927,7 @@ contract V4ForkTest is Test {
     }
 
     /// @notice Full E2E with NO payer quote — simulates a programmatic caller.
-    /// @dev The hook must use the spot-price fallback to decide swap-vs-mint.
+    /// @dev The hook must use the TWAP oracle to decide swap-vs-mint.
     function _executeE2eNoQuote(
         uint256 projectId,
         PoolKey memory,
@@ -960,7 +960,7 @@ contract V4ForkTest is Test {
 
             (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
-            assertEq(weight, 0, "No-quote: weight should be 0 (swap path chosen via spot fallback)");
+            assertEq(weight, 0, "No-quote: weight should be 0 (swap path chosen via TWAP)");
             assertEq(specs.length, 1, "No-quote: should have 1 hook specification");
             specAmount = specs[0].amount;
             specMetadata = specs[0].metadata;

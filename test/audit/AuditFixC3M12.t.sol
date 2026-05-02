@@ -370,7 +370,7 @@ contract AuditFixC3M12Test is Test {
 
     /// @notice When an explicit minimumSwapAmountOut is provided via metadata but is less than
     /// the direct reclaim, the noop path should still return the correct surplus value.
-    function test_C3_noopPathWithExplicitMinimumStillReturnsSurplus() public {
+    function test_C3_noopPathWithExplicitMinimumStillReturnsSurplus() public view {
         uint256 surplusValue = 20 ether;
         uint256 cashOutCount = 5 ether;
         uint256 totalSupplyValue = 50 ether;

@@ -998,6 +998,50 @@ contract V4BuybackHookTest is Test {
         assertEq(minOut, badPayerQuote, "explicit payer quote should be honored");
     }
 
+    /// @notice A quote metadata item with a zero minimum behaves like a programmatic no-quote call.
+    /// @dev Contracts can set `amountToSwapWith` without relying on an offchain quote; the hook derives its floor from
+    ///      TWAP and marks the metadata as non-explicit.
+    function test_zeroMinimumQuoteMetadataUsesTwap() public {
+        vm.prank(owner);
+        hook.setPoolFor(projectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
+
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+
+        uint256 amountToSwapWith = 1 ether;
+        bytes memory quoteMetadata = abi.encode(amountToSwapWith, uint256(0));
+        bytes4 metadataId = JBMetadataResolver.getId("quote", address(hook));
+        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
+
+        JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
+            terminal: address(terminal),
+            payer: payer,
+            amount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                value: amountToSwapWith
+            }),
+            projectId: projectId,
+            rulesetId: 1,
+            beneficiary: beneficiary,
+            weight: 1,
+            reservedPercent: 0,
+            metadata: fullMetadata
+        });
+
+        (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
+
+        assertEq(weight, 0, "zero-minimum quote metadata should allow the TWAP swap path");
+        assertEq(specs.length, 1, "programmatic quote metadata should return a hook spec");
+        assertFalse(specs[0].noop, "TWAP-derived route should be active when it beats minting");
+
+        (,, uint256 minimumSwapAmountOut, bool hasExplicitQuote,) =
+            abi.decode(specs[0].metadata, (bool, uint256, uint256, bool, IJBController));
+
+        assertGt(minimumSwapAmountOut, 0, "TWAP should derive a non-zero minimum");
+        assertFalse(hasExplicitQuote, "zero minimum should not be treated as an explicit quote");
+    }
+
     /// @notice Test that setPoolFor rejects TWAP windows shorter than the new 5-minute minimum.
     function test_minTwapWindow5Minutes() public {
         assertEq(hook.MIN_TWAP_WINDOW(), 5 minutes, "MIN_TWAP_WINDOW should be 5 minutes");

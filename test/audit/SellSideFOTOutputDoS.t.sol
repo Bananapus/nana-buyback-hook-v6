@@ -173,6 +173,7 @@ contract CodexSellSideFOTOutputDoSTest is Test {
             currency0: currency0, currency1: currency1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(oracleHook))
         });
 
+        // forge-lint: disable-next-line(unsafe-typecast)
         oracleHook.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
         poolManager.setSlot0(key.toId(), 79_228_162_514_264_337_593_543_950_336, 0, 3000); // sqrtPriceX96 at tick 0
         poolManager.setLiquidity(key.toId(), 1_000_000 ether);

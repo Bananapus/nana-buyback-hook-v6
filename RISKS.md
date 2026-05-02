@@ -96,6 +96,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 ### 9.1 Oracle warmup forces a mint-only period for no-quote flows
 
 New pools lack enough observation history at first. During that period, oracle-dependent flows fall back to minting. This is intentional because the previous spot-price fallback was too easy to sandwich.
+Programmatic callers do not need an offchain quote after the oracle is warm: they can omit quote metadata, or pass a zero minimum in quote metadata, and the hook will derive the route from TWAP.
 
 ### 9.2 Pool immutability prevents migration to better liquidity
 

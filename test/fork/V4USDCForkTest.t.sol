@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
@@ -72,9 +72,9 @@ contract MockUSDC is ERC20 {
 ///         using a 6-decimal USDC-like ERC-20 as the terminal token.
 ///         Mirrors V4ForkTest.t.sol but validates non-18-decimal terminal token handling.
 ///
-///         Run with: FOUNDRY_PROFILE=fork forge test --match-contract V4USDCForkTest -vvv --skip "script/*"
+///         Run with: FOUNDRY_PROFILE=fork forge test --match-contract V4USDCFork -vvv --skip "script/*"
 ///         Requires RPC_ETHEREUM_MAINNET in .env
-contract V4USDCForkTest is Test {
+abstract contract V4USDCForkTestBase is Test {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
@@ -174,22 +174,14 @@ contract V4USDCForkTest is Test {
     //*********************************************************************//
 
     /// @notice Test swaps at 5 different USDC order sizes against a medium-depth pool.
-    function test_fork_usdc_varyingOrderSizes() public onlyFork {
-        console.log("");
-        console.log("====== FORK TEST: USDC VARYING ORDER SIZES (100K USDC liq) ======");
-        console.log("");
-
-        uint256[5] memory orderSizes = [uint256(10e6), 100e6, 1000e6, 10_000e6, 100_000e6];
-        string[5] memory labels = ["10 USDC", "100 USDC", "1K USDC", "10K USDC", "100K USDC"];
-
-        for (uint256 i = 0; i < orderSizes.length; i++) {
+    function _test_fork_usdc_varyingOrderSizes() internal {
+        for (uint256 i; i < 5; i++) {
+            uint256 orderSize = _usdcOrderSizeAt(i);
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
             (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
 
-            uint256 received = _executeUsdcSwap(pid, key, projectToken, usdc, orderSizes[i]);
-
-            console.log("  Order: %s -> %s tokens received", labels[i], _formatEther(received));
+            uint256 received = _executeUsdcSwap(pid, key, projectToken, usdc, orderSize);
 
             assertGt(received, 0, "Should receive tokens from USDC swap");
         }
@@ -200,22 +192,14 @@ contract V4USDCForkTest is Test {
     //*********************************************************************//
 
     /// @notice Test the same USDC order size across 4 different liquidity depths.
-    function test_fork_usdc_varyingLiquidity() public onlyFork {
-        console.log("");
-        console.log("====== FORK TEST: USDC VARYING LIQUIDITY (1K USDC order) ======");
-        console.log("");
-
-        uint256[4] memory liquidities = [uint256(1000e6), 10_000e6, 100_000e6, 1_000_000e6];
-        string[4] memory labels = ["1K", "10K", "100K", "1M"];
-
-        for (uint256 i = 0; i < liquidities.length; i++) {
+    function _test_fork_usdc_varyingLiquidity() internal {
+        for (uint256 i; i < 4; i++) {
+            uint256 liquidity = _usdcLiquidityAt(i);
             uint256 pid = _nextProjectId();
             MockUSDC usdc = new MockUSDC();
-            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, liquidities[i]);
+            (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, liquidity);
 
             uint256 received = _executeUsdcSwap(pid, key, projectToken, usdc, 1000e6);
-
-            console.log("  Liquidity: %s USDC -> %s tokens for 1K USDC", labels[i], _formatEther(received));
 
             assertGt(received, 0, "Should receive tokens from USDC swap");
         }
@@ -226,38 +210,24 @@ contract V4USDCForkTest is Test {
     //*********************************************************************//
 
     /// @notice Cross-product: 3 USDC order sizes x 3 liquidity depths.
-    function test_fork_usdc_orderSizeByLiquidity() public onlyFork {
-        console.log("");
-        console.log("====== FORK TEST: USDC ORDER SIZE x LIQUIDITY MATRIX ======");
-        console.log("");
+    function _test_fork_usdc_orderSizeByLiquidity() internal {
+        for (uint256 l; l < 3; l++) {
+            uint256 liquidity = _matrixLiquidityAt(l);
 
-        uint256[3] memory orders = [uint256(100e6), 1000e6, 10_000e6];
-        uint256[3] memory liqs = [uint256(10_000e6), 100_000e6, 1_000_000e6];
-        string[3] memory orderLabels = ["100 USDC", "1K USDC", "10K USDC"];
-        string[3] memory liqLabels = ["10K", "100K", "1M"];
-
-        for (uint256 l = 0; l < liqs.length; l++) {
-            console.log("  --- Liquidity: %s USDC ---", liqLabels[l]);
-
-            for (uint256 o = 0; o < orders.length; o++) {
+            for (uint256 o; o < 3; o++) {
+                uint256 orderSize = _matrixOrderSizeAt(o);
                 uint256 pid = _nextProjectId();
                 MockUSDC usdc = new MockUSDC();
-                (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, liqs[l]);
+                (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, liquidity);
 
-                uint256 received = _executeUsdcSwap(pid, key, projectToken, usdc, orders[o]);
+                uint256 received = _executeUsdcSwap(pid, key, projectToken, usdc, orderSize);
 
                 // Compute effective rate (scale USDC to 18 decimals for comparison).
-                uint256 orderIn18 = orders[o] * 1e12;
+                uint256 orderIn18 = orderSize * 1e12;
                 uint256 rateBps = received > 0 ? (received * 10_000) / orderIn18 : 0;
 
-                console.log(
-                    "    %s -> %s tokens (rate: %s bps of par)",
-                    orderLabels[o],
-                    _formatEther(received),
-                    _toString(rateBps)
-                );
-
                 assertGt(received, 0, "Should receive tokens");
+                assertGt(rateBps, 0, "Should produce a nonzero rate");
             }
         }
     }
@@ -267,13 +237,8 @@ contract V4USDCForkTest is Test {
     //*********************************************************************//
 
     /// @notice End-to-end: beforePayRecordedWith -> afterPayRecordedWith with USDC terminal token.
-    function test_fork_usdc_e2e_fullFlow() public onlyFork {
-        console.log("");
-        console.log("====== FORK E2E: USDC FULL FLOW (beforePay -> afterPay) ======");
-        console.log("");
-
+    function _test_fork_usdc_e2e_fullFlow() internal {
         uint256[3] memory orderSizes = [uint256(100e6), 1000e6, 10_000e6];
-        string[3] memory labels = ["100 USDC", "1K USDC", "10K USDC"];
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
@@ -281,8 +246,6 @@ contract V4USDCForkTest is Test {
             (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
 
             uint256 received = _executeE2eUsdc(pid, key, projectToken, usdc, orderSizes[i]);
-
-            console.log("  E2E %s -> %s tokens received", labels[i], _formatEther(received));
 
             assertGt(received, 0, "E2E USDC should complete swap");
         }
@@ -293,14 +256,9 @@ contract V4USDCForkTest is Test {
     //*********************************************************************//
 
     /// @notice Verify buybacks work for callers that provide NO quote metadata with USDC terminal.
-    /// @dev Without the spot-price fallback, this would always mint (twapMinimum = 0).
-    function test_fork_usdc_e2e_noPayerQuote() public onlyFork {
-        console.log("");
-        console.log("====== FORK E2E: USDC NO PAYER QUOTE (programmatic caller) ======");
-        console.log("");
-
+    /// @dev Uses the TWAP oracle route when the oracle is warm; no unsafe spot fallback is used.
+    function _test_fork_usdc_e2e_noPayerQuote() internal {
         uint256[3] memory orderSizes = [uint256(100e6), 1000e6, 10_000e6];
-        string[3] memory labels = ["100 USDC", "1K USDC", "10K USDC"];
 
         for (uint256 i = 0; i < orderSizes.length; i++) {
             uint256 pid = _nextProjectId();
@@ -309,28 +267,21 @@ contract V4USDCForkTest is Test {
 
             uint256 received = _executeE2eNoQuoteUsdc(pid, key, projectToken, usdc, orderSizes[i]);
 
-            console.log("  No-quote %s -> %s tokens received", labels[i], _formatEther(received));
-
-            assertGt(received, 0, "No-quote USDC E2E should still trigger buyback via spot fallback");
+            assertGt(received, 0, "No-quote USDC E2E should still trigger buyback via TWAP");
         }
     }
 
-    function test_fork_usdc_sellSide_e2e() public onlyFork {
-        console.log("");
-        console.log("====== FORK E2E: SELL SIDE (USDC) ======");
-        console.log("");
-
+    function _test_fork_usdc_sellSide_e2e() internal {
         uint256 pid = _nextProjectId();
         MockUSDC usdc = new MockUSDC();
         (PoolKey memory key, ForkProjectToken projectToken) = _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
 
         uint256 proceeds = _executeSellE2eUsdc(pid, key, projectToken, usdc, 1e6);
 
-        console.log("  Sell 1.0 project tokens -> %s USDC received", _formatUsdc(proceeds));
         assertGt(proceeds, 0, "Sell-side USDC E2E should complete swap");
     }
 
-    function test_fork_usdc_sellSide_noopWhenProtocolBetter() public onlyFork {
+    function _test_fork_usdc_sellSide_noopWhenProtocolBetter() internal {
         uint256 pid = _nextProjectId();
         MockUSDC usdc = new MockUSDC();
         _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
@@ -700,7 +651,7 @@ contract V4USDCForkTest is Test {
     }
 
     /// @notice Full E2E with NO payer quote -- simulates a programmatic caller with USDC terminal.
-    /// @dev The hook must use the spot-price fallback to decide swap-vs-mint.
+    /// @dev The hook must use the TWAP oracle to decide swap-vs-mint.
     function _executeE2eNoQuoteUsdc(
         uint256 projectId,
         PoolKey memory,
@@ -735,7 +686,7 @@ contract V4USDCForkTest is Test {
 
             (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
-            assertEq(weight, 0, "No-quote USDC: weight should be 0 (swap path chosen via spot fallback)");
+            assertEq(weight, 0, "No-quote USDC: weight should be 0 (swap path chosen via TWAP)");
             assertEq(specs.length, 1, "No-quote USDC: should have 1 hook specification");
             specAmount = specs[0].amount;
             specMetadata = specs[0].metadata;
@@ -860,35 +811,64 @@ contract V4USDCForkTest is Test {
     // ----------------------------- Helpers ----------------------------- //
     //*********************************************************************//
 
-    function _formatEther(uint256 weiAmount) internal pure returns (string memory) {
-        uint256 whole = weiAmount / 1e18;
-        uint256 frac = (weiAmount % 1e18) / 1e16;
-        if (frac < 10) return string(abi.encodePacked(_toString(whole), ".0", _toString(frac)));
-        return string(abi.encodePacked(_toString(whole), ".", _toString(frac)));
+    function _matrixLiquidityAt(uint256 index) internal pure returns (uint256) {
+        if (index == 0) return 10_000e6;
+        if (index == 1) return 100_000e6;
+        return 1_000_000e6;
     }
 
-    function _formatUsdc(uint256 amount) internal pure returns (string memory) {
-        uint256 whole = amount / 1e6;
-        uint256 frac = (amount % 1e6) / 1e4;
-        if (frac < 10) return string(abi.encodePacked(_toString(whole), ".0", _toString(frac)));
-        return string(abi.encodePacked(_toString(whole), ".", _toString(frac)));
+    function _matrixOrderSizeAt(uint256 index) internal pure returns (uint256) {
+        if (index == 0) return 100e6;
+        if (index == 1) return 1000e6;
+        return 10_000e6;
     }
 
-    function _toString(uint256 value) internal pure returns (string memory) {
-        if (value == 0) return "0";
-        uint256 temp = value;
-        uint256 digits;
-        while (temp != 0) {
-            digits++;
-            temp /= 10;
-        }
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits--;
-            // forge-lint: disable-next-line(unsafe-typecast)
-            buffer[digits] = bytes1(uint8(48 + value % 10));
-            value /= 10;
-        }
-        return string(buffer);
+    function _usdcLiquidityAt(uint256 index) internal pure returns (uint256) {
+        if (index == 0) return 1000e6;
+        if (index == 1) return 10_000e6;
+        if (index == 2) return 100_000e6;
+        return 1_000_000e6;
+    }
+
+    function _usdcOrderSizeAt(uint256 index) internal pure returns (uint256) {
+        if (index == 0) return 10e6;
+        if (index == 1) return 100e6;
+        if (index == 2) return 1000e6;
+        if (index == 3) return 10_000e6;
+        return 100_000e6;
+    }
+}
+
+contract V4USDCForkQuoteTest is V4USDCForkTestBase {
+    function test_fork_usdc_varyingOrderSizes() public onlyFork {
+        _test_fork_usdc_varyingOrderSizes();
+    }
+
+    function test_fork_usdc_varyingLiquidity() public onlyFork {
+        _test_fork_usdc_varyingLiquidity();
+    }
+
+    function test_fork_usdc_orderSizeByLiquidity() public onlyFork {
+        _test_fork_usdc_orderSizeByLiquidity();
+    }
+}
+
+contract V4USDCForkE2ETest is V4USDCForkTestBase {
+    function test_fork_usdc_e2e_fullFlow() public onlyFork {
+        _test_fork_usdc_e2e_fullFlow();
+    }
+
+    function test_fork_usdc_e2e_noPayerQuote() public onlyFork {
+        _test_fork_usdc_e2e_noPayerQuote();
+    }
+}
+
+contract V4USDCForkSellSideTest is V4USDCForkTestBase {
+    function test_fork_usdc_sellSide_e2e() public onlyFork {
+        _test_fork_usdc_sellSide_e2e();
+    }
+
+    function test_fork_usdc_sellSide_noopWhenProtocolBetter() public onlyFork {
+        _test_fork_usdc_sellSide_noopWhenProtocolBetter();
     }
 }
