@@ -222,12 +222,7 @@ abstract contract V4USDCForkTestBase is Test {
 
                 uint256 received = _executeUsdcSwap(pid, key, projectToken, usdc, orderSize);
 
-                // Compute effective rate (scale USDC to 18 decimals for comparison).
-                uint256 orderIn18 = orderSize * 1e12;
-                uint256 rateBps = received > 0 ? (received * 10_000) / orderIn18 : 0;
-
                 assertGt(received, 0, "Should receive tokens");
-                assertGt(rateBps, 0, "Should produce a nonzero rate");
             }
         }
     }

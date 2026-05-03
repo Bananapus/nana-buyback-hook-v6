@@ -170,9 +170,6 @@ contract DerivedMinBuySideFOTDoSTest is Test {
             address(tokens), abi.encodeCall(tokens.tokenOf, (PROJECT_ID)), abi.encode(IJBToken(address(projectToken)))
         );
         vm.mockCall(
-            address(tokens), abi.encodeWithSignature("TOKEN()"), abi.encode(makeAddr("standardTokenImplementation"))
-        );
-        vm.mockCall(
             address(permissions),
             abi.encodeWithSignature("hasPermission(address,address,uint256,uint256,bool,bool)"),
             abi.encode(true)
@@ -250,7 +247,7 @@ contract DerivedMinBuySideFOTDoSTest is Test {
         terminalToken.mint(terminal, AMOUNT_IN);
     }
 
-    function test_protocolDerivedMinimumUsesDirectMintForCustomFOTProjectToken() public {
+    function test_protocolDerivedMinimumSupportsCustomProjectTokens() public {
         JBBeforePayRecordedContext memory beforeContext = JBBeforePayRecordedContext({
             terminal: terminal,
             payer: makeAddr("payer"),
@@ -270,10 +267,10 @@ contract DerivedMinBuySideFOTDoSTest is Test {
 
         (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeContext);
 
-        assertEq(weight, DIRECT_MINT_WEIGHT, "custom project token should use direct mint weight");
+        assertEq(weight, 0, "custom project token should be eligible for TWAP buyback routing");
         assertEq(specs.length, 1, "hook should return one pay-hook specification");
-        assertTrue(specs[0].noop, "protocol-derived swap path should stay inactive");
-        assertEq(specs[0].amount, 0, "no tokens should be forwarded into the hook");
+        assertFalse(specs[0].noop, "protocol-derived swap path should be active when it beats minting");
+        assertEq(specs[0].amount, AMOUNT_IN, "tokens should be forwarded into the hook");
 
         (
             ,
@@ -290,6 +287,6 @@ contract DerivedMinBuySideFOTDoSTest is Test {
         assertFalse(hasExplicitQuote, "metadata-less path should not be explicit");
         assertEq(tokenCountWithoutHook, 9.6 ether, "direct mint path should still be computed");
         assertEq(weightRatio, 1 ether, "weight ratio should stay encoded for explicit follow-up routes");
-        assertEq(minimumSwapAmountOut, 0, "custom project tokens should not get an untaxed derived AMM floor");
+        assertGt(minimumSwapAmountOut, tokenCountWithoutHook, "custom project token should get a derived AMM floor");
     }
 }

@@ -746,7 +746,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (hasUserSpecifiedMinimumSwapAmountOut) {
             // Only compute poolId from storage when skipping _getQuote (which would return it).
             poolId = _poolKeyOf[context.projectId][terminalToken].toId();
-        } else if (terminalToken == address(0)) {
+        } else {
             (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
                 projectId: context.projectId,
                 amountIn: context.cashOutCount,
@@ -754,11 +754,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 quoteToken: terminalToken,
                 terminalToken: terminalToken
             });
-        } else {
-            // ERC-20 output tokens can levy transfer taxes that the TWAP quote cannot infer. Leave protocol-derived
-            // no-metadata ERC-20 sell routing on the direct cash-out path; callers can still opt into AMM routing by
-            // supplying an explicit minimum that accounts for the token's delivery behavior.
-            poolId = _poolKeyOf[context.projectId][terminalToken].toId();
         }
 
         // Deduct the terminal's fee from the direct cash-out amount so we compare against net reclaim.
@@ -883,7 +878,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (hasUserSpecifiedQuote) {
             // Only compute poolId from storage when skipping _getQuote (which would return it).
             poolId = _poolKeyOf[context.projectId][terminalToken].toId();
-        } else if (_projectTokenSupportsDerivedPayQuote(projectToken)) {
+        } else {
             (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
                 projectId: context.projectId,
                 amountIn: amountToSwapWith,
@@ -891,10 +886,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 quoteToken: projectToken,
                 terminalToken: terminalToken
             });
-        } else {
-            // Custom project tokens can tax transfers from the pool to this hook. Do not let the protocol-derived
-            // no-metadata quote activate the AMM path unless the project token is the standard JBTokens clone.
-            poolId = _poolKeyOf[context.projectId][terminalToken].toId();
         }
 
         uint256 minimumBeneficiaryTokenCount;
@@ -1169,23 +1160,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         poolKey = PoolKey({
             currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: ORACLE_HOOK
         });
-    }
-
-    /// @notice Determine whether protocol-derived pay quotes are safe for the project's output token.
-    /// @dev Standard `JBTokens.deployERC20For(...)` clones are lossless on transfer. Custom project tokens may be
-    /// fee-on-transfer tokens, so they require an explicit caller quote/minimum to activate AMM routing.
-    function _projectTokenSupportsDerivedPayQuote(address projectToken) internal view returns (bool) {
-        (bool success, bytes memory data) = address(TOKENS).staticcall(abi.encodeWithSignature("TOKEN()"));
-
-        // Nonstandard token registries in tests or downstream forks keep the prior behavior.
-        if (!success || data.length < 32) return true;
-
-        address tokenImplementation = abi.decode(data, (address));
-        bytes32 expectedCloneCodeHash = keccak256(
-            abi.encodePacked(hex"363d3d373d3d3d363d73", tokenImplementation, hex"5af43d82803e903d91602b57fd5bf3")
-        );
-
-        return projectToken.codehash == expectedCloneCodeHash;
     }
 
     /// @dev `ERC-2771` specifies the context as being a single address (20 bytes).

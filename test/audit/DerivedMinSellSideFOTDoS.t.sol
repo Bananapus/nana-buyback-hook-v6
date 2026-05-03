@@ -10,6 +10,7 @@ import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
+import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
@@ -196,7 +197,7 @@ contract DerivedMinSellSideFOTDoSTest is Test {
         terminalToken.mint(address(poolManager), CASH_OUT_COUNT);
     }
 
-    function test_protocolDerivedMinimumUsesDirectCashOutForERC20OutputToken() public {
+    function test_protocolDerivedMinimumSupportsERC20OutputTokens() public {
         JBBeforeCashOutRecordedContext memory beforeContext = JBBeforeCashOutRecordedContext({
             terminal: terminal,
             holder: makeAddr("holder"),
@@ -224,17 +225,19 @@ contract DerivedMinSellSideFOTDoSTest is Test {
             JBCashOutHookSpecification[] memory specs
         ) = hook.beforeCashOutRecordedWith(beforeContext);
 
-        assertEq(cashOutTaxRate, 0, "ERC20 output should use the direct cash-out path without explicit metadata");
+        assertEq(
+            cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "ERC20 output should be eligible for TWAP sell routing"
+        );
         assertEq(cashOutCount, CASH_OUT_COUNT, "cash-out count should stay unchanged");
         assertEq(totalSupply, TOTAL_SUPPLY, "total supply should stay unchanged");
-        assertEq(surplusValue, SURPLUS, "surplus should stay available to the terminal");
+        assertEq(surplusValue, 0, "surplus should be zeroed for hook-executed sell routing");
         assertEq(specs.length, 1, "hook should return one sell-side specification");
-        assertTrue(specs[0].noop, "protocol-derived sell-side hook should stay inactive");
+        assertFalse(specs[0].noop, "protocol-derived sell-side hook should be active when it beats reclaim");
 
         (uint256 minimumSwapAmountOut,,,,,, uint256 rawSwapQuote) =
             abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, bytes32, uint256));
 
-        assertEq(rawSwapQuote, 0, "metadata-less ERC20 output should not get an untaxed TWAP quote");
-        assertEq(minimumSwapAmountOut, 0, "metadata-less ERC20 output should not get an AMM floor");
+        assertGt(rawSwapQuote, 0, "metadata-less ERC20 output should get a TWAP quote");
+        assertGt(minimumSwapAmountOut, 0, "metadata-less ERC20 output should get an AMM floor");
     }
 }
