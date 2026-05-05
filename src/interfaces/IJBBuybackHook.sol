@@ -14,7 +14,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     /// @notice Emitted when project tokens are reminted and sold during a cash out.
-    /// @param projectId The ID of the project whose tokens are being sold.
+    /// @param projectId The ID of the project whose tokens were sold.
     /// @param cashOutCount The amount of project tokens reminted and sold.
     /// @param poolId The ID of the Uniswap V4 pool used.
     /// @param amountReceived The amount of terminal tokens received from the swap.
@@ -24,14 +24,14 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     );
 
     /// @notice Emitted when leftover terminal tokens are minted as project tokens.
-    /// @param projectId The ID of the project whose tokens are being minted.
+    /// @param projectId The ID of the project whose tokens were minted.
     /// @param leftoverAmount The amount of terminal tokens used for minting.
     /// @param tokenCount The number of project tokens minted.
     /// @param caller The address that triggered the mint.
     event Mint(uint256 indexed projectId, uint256 leftoverAmount, uint256 tokenCount, address caller);
 
     /// @notice Emitted when a pool is added for a project and terminal token pair.
-    /// @param projectId The ID of the project the pool is being added for.
+    /// @param projectId The ID of the project the pool was added for.
     /// @param terminalToken The address of the terminal token.
     /// @param poolId The ID of the Uniswap V4 pool.
     /// @param caller The address that added the pool.
@@ -45,7 +45,7 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     event SellSwapReverted(uint256 indexed projectId, address indexed holder, uint256 amount);
 
     /// @notice Emitted when terminal tokens are swapped for project tokens via the Uniswap V4 pool.
-    /// @param projectId The ID of the project whose tokens are being swapped for.
+    /// @param projectId The ID of the project whose tokens were swapped for.
     /// @param amountToSwapWith The amount of terminal tokens used for the swap.
     /// @param poolId The ID of the Uniswap V4 pool used.
     /// @param amountReceived The amount of project tokens received from the swap.
@@ -59,7 +59,7 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     );
 
     /// @notice Emitted when the TWAP window for a project/terminal token pair is changed.
-    /// @param projectId The ID of the project whose TWAP window is being changed.
+    /// @param projectId The ID of the project whose TWAP window was changed.
     /// @param terminalToken The terminal token address the TWAP window applies to.
     /// @param oldWindow The previous TWAP window in seconds.
     /// @param newWindow The new TWAP window in seconds.
@@ -119,7 +119,7 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
 
     /// @notice Set the pool to use for a given project and terminal token.
     /// @param projectId The ID of the project to set the pool for.
-    /// @param poolKey The V4 pool key for the pool being set.
+    /// @param poolKey The V4 pool key for the pool to set.
     /// @param twapWindow The period of time over which the TWAP is computed.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
     function setPoolFor(

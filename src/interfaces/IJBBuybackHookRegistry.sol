@@ -9,11 +9,11 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @param hook The hook that was allowed.
     event JBBuybackHookRegistry_AllowHook(IJBRulesetDataHook hook);
 
-    /// @notice Emitted when a hook is disallowed from being used by projects.
+    /// @notice Emitted when a hook is disallowed from use by projects.
     /// @param hook The hook that was disallowed.
     event JBBuybackHookRegistry_DisallowHook(IJBRulesetDataHook hook);
 
-    /// @notice Emitted when a project's hook is locked, preventing it from being changed.
+    /// @notice Emitted when a project's hook is locked, preventing future changes.
     /// @param projectId The ID of the project whose hook was locked.
     event JBBuybackHookRegistry_LockHook(uint256 projectId);
 
@@ -26,11 +26,11 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @param hook The hook that was set.
     event JBBuybackHookRegistry_SetHook(uint256 indexed projectId, IJBRulesetDataHook hook);
 
-    /// @notice The project registry.
+    /// @notice The JBProjects ERC-721 contract used to verify project ownership.
     /// @return The projects contract.
     function PROJECTS() external view returns (IJBProjects);
 
-    /// @notice The default hook used when a project has not set a specific hook.
+    /// @notice The default buyback hook used when a project hasn't registered a specific one.
     /// @return The default data hook.
     function defaultHook() external view returns (IJBRulesetDataHook);
 
@@ -56,21 +56,21 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @return Whether the hook is allowed.
     function isHookAllowed(IJBRulesetDataHook hook) external view returns (bool);
 
-    /// @notice Allow a hook to be used by projects.
+    /// @notice Allow a buyback hook implementation to be used by projects.
     /// @param hook The hook to allow.
     function allowHook(IJBRulesetDataHook hook) external;
 
-    /// @notice Disallow a hook from being used by projects.
+    /// @notice Disallow a buyback hook implementation from use by projects.
     /// @param hook The hook to disallow.
     function disallowHook(IJBRulesetDataHook hook) external;
 
-    /// @notice Lock the hook for a project, preventing it from being changed.
+    /// @notice Permanently lock the buyback hook for a project, preventing future changes.
     /// @param projectId The ID of the project to lock the hook for.
     /// @param expectedHook The hook the caller expects to lock. Prevents race conditions where the hook changes
     /// between transaction submission and execution.
     function lockHookFor(uint256 projectId, IJBRulesetDataHook expectedHook) external;
 
-    /// @notice Set the default hook used when a project has not set a specific hook.
+    /// @notice Set the default buyback hook used for projects that haven't configured a project-specific one.
     /// @param hook The hook to set as the default.
     function setDefaultHook(IJBRulesetDataHook hook) external;
 
