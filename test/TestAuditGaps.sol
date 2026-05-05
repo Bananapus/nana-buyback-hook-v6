@@ -16,6 +16,7 @@ import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
@@ -517,6 +518,11 @@ contract TestAuditGaps is Test {
         vm.prank(owner);
         hook.setPoolFor({projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: address(usdc)});
 
+        bytes4 minReclaimedId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory metadata = JBMetadataResolver.addToMetadata({
+            originalMetadata: bytes(""), idToAdd: minReclaimedId, dataToAdd: abi.encode(uint256(10e6))
+        });
+
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
             terminal: address(terminal),
             holder: payer,
@@ -530,7 +536,7 @@ contract TestAuditGaps is Test {
             useTotalSurplus: false,
             cashOutTaxRate: 0,
             beneficiaryIsFeeless: false,
-            metadata: ""
+            metadata: metadata
         });
 
         (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);

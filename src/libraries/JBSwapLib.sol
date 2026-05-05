@@ -2,16 +2,16 @@
 pragma solidity 0.8.28;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IGeomeanOracle} from "../interfaces/IGeomeanOracle.sol";
 
 /// @notice Shared library for oracle queries, slippage tolerance, and price calculations
-/// used by both JBBuybackHook and JBSwapTerminal.
+/// used by the buyback hook and its routing helpers.
 library JBSwapLib {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;

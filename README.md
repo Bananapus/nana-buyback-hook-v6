@@ -72,8 +72,8 @@ npm install @bananapus/buyback-hook-v6
 
 ```bash
 npm install
-forge build
-forge test
+forge build --deny notes
+forge test --deny notes
 ```
 
 Useful scripts:
@@ -106,6 +106,7 @@ script/
 
 - TWAP quality depends on the oracle hook having enough history and liquidity to be meaningful
 - route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima
+- programmatic callers can omit quote metadata, or provide a zero minimum, and let the hook derive its route from TWAP
 - hook configuration should usually be locked after validation, and pool choices should be treated as sticky once set
 - fee-on-transfer and partial-fill behaviors are part of the main threat model
 

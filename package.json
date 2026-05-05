@@ -1,11 +1,22 @@
 {
   "name": "@bananapus/buyback-hook-v6",
-  "version": "0.0.35",
+  "version": "0.0.36",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Bananapus/nana-buyback-hook-v6"
   },
+  "files": [
+    "CHANGELOG.md",
+    "foundry.lock",
+    "foundry.toml",
+    "references/",
+    "remappings.txt",
+    "script/Deploy.s.sol",
+    "script/helpers/",
+    "sphinx.lock",
+    "src/"
+  ],
   "engines": {
     "node": ">=20.0.0"
   },
@@ -18,15 +29,14 @@
     "artifacts": "source ./.env && npx sphinx artifacts --org-id 'ea165b21-7cdc-4d7b-be59-ecdd4c26bee4' --project-name 'nana-buyback-hook-v6'"
   },
   "dependencies": {
-    "@bananapus/core-v6": "^0.0.36",
-    "@bananapus/permission-ids-v6": "^0.0.19",
-    "@bananapus/univ4-router-v6": "^0.0.20",
-    "@openzeppelin/contracts": "^5.6.1",
-    "@uniswap/v4-core": "^1.0.2",
-    "@uniswap/v4-periphery": "^1.0.3",
-    "hookmate": "^0.5.1"
+    "@bananapus/core-v6": "0.0.39",
+    "@bananapus/permission-ids-v6": "0.0.22",
+    "@bananapus/univ4-router-v6": "0.0.22",
+    "@openzeppelin/contracts": "5.6.1",
+    "@prb/math": "4.1.1",
+    "@uniswap/v4-core": "1.0.2"
   },
   "devDependencies": {
-    "@sphinx-labs/plugins": "^0.33.2"
+    "@sphinx-labs/plugins": "0.33.3"
   }
 }

@@ -94,7 +94,7 @@ contract FOTController {
         // Mint to controller first (no fee on mint).
         TOKEN.mint(address(this), tokenCount);
         // Transfer to beneficiary triggers FOT fee — beneficiary receives 99%.
-        TOKEN.transfer(beneficiary, tokenCount);
+        require(TOKEN.transfer(beneficiary, tokenCount));
         return tokenCount;
     }
 
