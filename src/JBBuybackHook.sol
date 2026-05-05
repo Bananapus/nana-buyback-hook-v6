@@ -51,12 +51,11 @@ import {JBSwapLib} from "./libraries/JBSwapLib.sol";
 import {SwapCallbackData} from "./structs/SwapCallbackData.sol";
 
 /// @custom:benediction DEVS BENEDICAT ET PROTEGAT CONTRACTVS MEAM
-/// @notice The buyback hook allows beneficiaries of a payment to a project to either:
-/// - Get tokens by paying the project through its terminal OR
-/// - Buy tokens from the configured Uniswap V4 pool.
-/// Depending on which route would yield more tokens for the beneficiary. The project's reserved rate applies to either
-/// route.
-/// @dev Compatible with any `JBTerminal` and any project token that can be pooled on Uniswap V4.
+/// @notice Automatically buys project tokens from a Uniswap V4 pool when the pool price is better than minting, and
+/// sells project tokens into the pool during cash-outs when the pool offers more than the bonding curve reclaim. The
+/// project's reserved rate is applied regardless of which route wins.
+/// @dev Acts as both a pay hook (buy-side) and cash-out hook (sell-side). Uses a TWAP oracle for manipulation
+/// resistance and falls back to minting/direct-reclaim when the pool is unavailable or offers worse rates.
 contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBuybackHook {
     // A library that parses the packed ruleset metadata into a friendlier format.
     using JBRulesetMetadataResolver for JBRuleset;
@@ -181,8 +180,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
-    /// @notice Remint the burned project tokens to this hook and sell them into the configured pool for the
-    /// beneficiary.
+    /// @notice Sells project tokens into the configured Uniswap V4 pool and sends the proceeds to the beneficiary.
+    /// Called by the terminal after `beforeCashOutRecordedWith` determined that the pool route beats direct reclaim.
     /// @dev This is called by the terminal after the buyback hook's data-hook path has chosen pool execution over the
     /// protocol cash out path.
     /// @dev The terminal has already burned the holder's project tokens by the time this callback runs, so this hook
@@ -286,7 +285,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
     }
 
-    /// @notice Swap terminal tokens for project tokens, using any leftover terminal tokens to mint from the project.
+    /// @notice Buys project tokens from the Uniswap V4 pool, then mints any leftover at the issuance rate. The swap
+    /// fills only while the pool price beats the mint rate — leftover input is returned to the project's terminal.
     /// @dev The swap uses the issuance rate as its price limit: it fills while the pool offers a better rate than
     /// minting, and any unswapped tokens are minted at the issuance rate. The combined output (swap + leftover mint)
     /// must meet the user's specified minimum, otherwise the transaction reverts. If the swap reverts entirely (due to
@@ -675,7 +675,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
-    /// @notice Determine whether a cash out should use the protocol reclaim path or the configured pool sell path.
+    /// @notice Compares the expected output from selling project tokens in the pool against the bonding-curve reclaim
+    /// amount. If the pool offers more (net of fees), routes the cash-out through the pool via
+    /// `afterCashOutRecordedWith`.
     /// @dev Returns the protocol cash-out values unchanged unless selling the burned project tokens into the
     /// configured pool is expected to return more of the terminal token than the direct reclaim path.
     /// @dev If the sell path wins, the hook returns an active cash-out hook specification (`noop = false`) and
@@ -798,8 +800,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         return (JBConstants.MAX_CASH_OUT_TAX_RATE, context.cashOutCount, context.totalSupply, 0, hookSpecifications);
     }
 
-    /// @notice The `IJBRulesetDataHook` implementation which determines whether tokens should be minted from the
-    /// project or bought from the pool.
+    /// @notice Compares the pool swap rate against the project's mint rate and chooses the better one. If the pool
+    /// wins, returns weight=0 so all tokens come from the swap executed in `afterPayRecordedWith`.
     /// @param context Payment context passed to the data hook by `terminalStore.recordPaymentFrom(...)`.
     /// `context.metadata` can specify a Uniswap quote and specify how much of the payment should be used to swap.
     /// If `context.metadata` does not specify a quote, one will be calculated based on the TWAP.
@@ -930,7 +932,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
     }
 
-    /// @notice Required by the `IJBRulesetDataHook` interfaces. Return false to not leak any permissions.
+    /// @notice Always returns false — the buyback hook never claims mint permission directly. Minting is handled
+    /// via the controller in `afterPayRecordedWith`/`afterCashOutRecordedWith` using permission from the registry.
     function hasMintPermissionFor(uint256, JBRuleset memory, address) external pure override returns (bool) {
         return false;
     }
@@ -1027,7 +1030,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
     }
 
-    /// @notice Swap the terminal token to receive project tokens via V4.
+    /// @notice Executes the buy-side swap: exchanges terminal tokens for project tokens through the V4 pool, then burns
+    /// them so the controller can re-mint with the reserved rate applied.
     /// @param context The `afterPayRecordedContext` passed in by the terminal.
     /// @param projectTokenIs0 Whether the project token is currency0 in the pool.
     /// @param minimumSwapAmountOut The token count used to derive the swap's price limit via
@@ -1167,7 +1171,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         return super._contextSuffixLength();
     }
 
-    /// @notice Get a quote based on the oracle hook TWAP or spot price.
+    /// @notice Queries the TWAP oracle for a price quote and applies sigmoid-based slippage to produce the minimum
+    /// acceptable swap output. Returns 0 if the oracle is unavailable or liquidity is insufficient.
     /// @param projectId The ID of the project.
     /// @param amountIn The number of input tokens being used to swap.
     /// @param baseToken The token being swapped in.

@@ -10,8 +10,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IGeomeanOracle} from "../interfaces/IGeomeanOracle.sol";
 
-/// @notice Shared library for oracle queries, slippage tolerance, and price calculations
-/// used by the buyback hook and its routing helpers.
+/// @notice Shared math library for the buyback hook: queries TWAP oracles, calculates sigmoid-based slippage
+/// tolerances from estimated price impact, converts ticks to token amounts, and derives V4 sqrt price limits.
 library JBSwapLib {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;

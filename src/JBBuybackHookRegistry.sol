@@ -19,6 +19,12 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IJBBuybackHook} from "./interfaces/IJBBuybackHook.sol";
 import {IJBBuybackHookRegistry} from "./interfaces/IJBBuybackHookRegistry.sol";
 
+/// @notice A registry that maps projects to their buyback hook implementation. Projects can set a specific hook or
+/// inherit the protocol default. Hooks can be locked to prevent changes. Acts as the data hook for the terminal —
+/// it resolves the correct buyback hook for each project and forwards `beforePayRecordedWith` /
+/// `beforeCashOutRecordedWith` calls to it.
+/// @dev The default hook only applies to projects created AFTER the default was set (threshold-gated), preventing the
+/// registry owner from unilaterally granting mint permission to existing projects.
 contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPermissioned, Ownable {
     //*********************************************************************//
     // --------------------------- custom errors ------------------------- //
@@ -92,7 +98,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
-    /// @notice Allow a hook.
+    /// @notice Adds a buyback hook implementation to the allowlist so projects can select it.
     /// @dev Only the owner can allow a hook.
     // By design — allowing address(0) provides a mechanism for authorized operators to clear a
     // project's hook assignment via setHookFor, returning to the default hook. This is the intended way to "unset" a
@@ -105,8 +111,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         emit JBBuybackHookRegistry_AllowHook(hook);
     }
 
-    /// @notice Disallow a hook.
-    /// @dev Only the owner can disallow a hook.
+    /// @notice Removes a buyback hook implementation from the allowlist, preventing new projects from selecting it.
+    /// @dev Only the owner can disallow a hook. Cannot disallow the current default (would break existing projects).
     /// @param hook The hook to disallow.
     function disallowHook(IJBRulesetDataHook hook) external onlyOwner {
         // Revert if the hook is the current default — disallowing it would break payments
@@ -119,7 +125,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         emit JBBuybackHookRegistry_DisallowHook(hook);
     }
 
-    /// @notice Lock a hook for a project.
+    /// @notice Permanently locks a project's buyback hook assignment, preventing future changes. Once locked, the
+    /// project is also immune to default-hook changes.
     /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
     /// owner can lock a hook for a project.
     // By design — atomic set-and-lock (calling setHookFor then lockHookFor in one transaction) is a
@@ -351,7 +358,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         return hook.beforePayRecordedWith(context);
     }
 
-    /// @notice Make sure the hook has mint permission.
+    /// @notice Returns true only if `addr` is the resolved hook for the project — this grants the hook (and only the
+    /// hook) permission to mint tokens on the project's behalf.
     /// @param projectId The ID of the project to check the mint permission for.
     /// @param addr The address to check the mint permission for.
     /// @return Whether the address has mint permission.
@@ -372,8 +380,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         return addr == address(hook);
     }
 
-    /// @notice The hook for the given project, or the default hook if the project was created after the default was
-    /// set. @param projectId The ID of the project to get the hook for.
+    /// @notice Returns the resolved hook for a project: the project-specific hook if set, or the default hook if the
+    /// project was created after the default was configured.
+    /// @param projectId The ID of the project to get the hook for.
     /// @return hook The hook for the project.
     function hookOf(uint256 projectId) external view override returns (IJBRulesetDataHook hook) {
         hook = _resolvedHookOf(projectId);
