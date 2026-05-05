@@ -161,9 +161,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         emit JBBuybackHookRegistry_LockHook(projectId);
     }
 
-    /// @notice Set the default hook.
-    /// @dev Only the owner can set the default hook. The new default only applies to projects created after the
-    /// current project count. Existing projects must explicitly opt in via `setHookFor`.
+    /// @notice Sets the protocol-wide default buyback hook. Only affects projects created AFTER this call — existing
+    /// projects keep their current hook unless they explicitly call `setHookFor`.
+    /// @dev Only the owner can set the default hook.
     /// @param hook The hook to set as the default.
     function setDefaultHook(IJBRulesetDataHook hook) external onlyOwner {
         // Prevent setting address(0) as the default hook — it would mark address(0) as allowed,
@@ -182,9 +182,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         emit JBBuybackHookRegistry_SetDefaultHook(hook);
     }
 
-    /// @notice Set the hook for a project.
+    /// @notice Assigns a specific buyback hook implementation to a project, overriding the default.
     /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
-    /// owner can set the hook for a project.
+    /// owner can set the hook for a project. Reverts if the hook is not on the allowlist or is already locked.
     /// @param projectId The ID of the project to set the hook for.
     /// @param hook The hook to set for the project.
     function setHookFor(uint256 projectId, IJBRulesetDataHook hook) external {

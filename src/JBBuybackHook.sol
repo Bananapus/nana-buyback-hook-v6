@@ -950,6 +950,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         return _poolKeyOf[projectId][terminalToken];
     }
 
+    /// @notice Indicates which interfaces this contract implements (ERC-165).
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
         return interfaceId == type(IJBRulesetDataHook).interfaceId || interfaceId == type(IJBPayHook).interfaceId
             || interfaceId == type(IJBCashOutHook).interfaceId || interfaceId == type(IJBBuybackHook).interfaceId
