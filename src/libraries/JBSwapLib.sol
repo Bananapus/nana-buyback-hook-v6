@@ -42,8 +42,8 @@ library JBSwapLib {
     /// @param key The pool key (whose `hooks` field points to the oracle hook).
     /// @param twapWindow The TWAP window in seconds.
     /// @param amountIn The amount of base tokens to get a quote for.
-    /// @param baseToken The base token address (the token being swapped in).
-    /// @param quoteToken The quote token address (the token being swapped out).
+    /// @param baseToken The base token address (the token to swap in).
+    /// @param quoteToken The quote token address (the token to swap out).
     /// @return amountOut The quoted amount of quote tokens for `amountIn` base tokens.
     /// @return arithmeticMeanTick The TWAP tick over the window.
     /// @return harmonicMeanLiquidity The harmonic mean liquidity over the window.
@@ -155,7 +155,7 @@ library JBSwapLib {
     /// @notice Estimate the price impact of a swap, scaled by IMPACT_PRECISION.
     /// @dev Uses 1e18 precision to capture sub-basis-point impacts for small swaps in deep pools.
     ///      Returns 0 only when liquidity or sqrtP is 0 (truly no data).
-    /// @param amountIn The amount of tokens being swapped in.
+    /// @param amountIn The amount of tokens to swap in.
     /// @param liquidity The pool's in-range liquidity.
     /// @param sqrtP The sqrt price in Q96 format.
     /// @param zeroForOne Whether the swap is token0 → token1.
@@ -227,7 +227,7 @@ library JBSwapLib {
     /// @notice Compute a sqrtPriceLimitX96 from input/output amounts so the swap stops
     ///         if the execution price would be worse than the minimum acceptable rate.
     /// @dev When `minimumAmountOut == 0`, returns extreme values (no limit, current behaviour).
-    /// @param amountIn The amount of tokens being swapped in.
+    /// @param amountIn The amount of tokens to swap in.
     /// @param minimumAmountOut The minimum acceptable output (from payer quote or TWAP).
     /// @param zeroForOne True when selling token0 for token1 (price decreases).
     /// @return sqrtPriceLimit The V4-compatible sqrtPriceLimitX96.

@@ -9,11 +9,11 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @param hook The hook that was allowed.
     event JBBuybackHookRegistry_AllowHook(IJBRulesetDataHook hook);
 
-    /// @notice Emitted when a hook is disallowed from being used by projects.
+    /// @notice Emitted when a hook is disallowed from use by projects.
     /// @param hook The hook that was disallowed.
     event JBBuybackHookRegistry_DisallowHook(IJBRulesetDataHook hook);
 
-    /// @notice Emitted when a project's hook is locked, preventing it from being changed.
+    /// @notice Emitted when a project's hook is locked, preventing future changes.
     /// @param projectId The ID of the project whose hook was locked.
     event JBBuybackHookRegistry_LockHook(uint256 projectId);
 
@@ -60,11 +60,11 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @param hook The hook to allow.
     function allowHook(IJBRulesetDataHook hook) external;
 
-    /// @notice Disallow a buyback hook implementation from being used by projects.
+    /// @notice Disallow a buyback hook implementation from use by projects.
     /// @param hook The hook to disallow.
     function disallowHook(IJBRulesetDataHook hook) external;
 
-    /// @notice Permanently lock the buyback hook for a project, preventing it from being changed.
+    /// @notice Permanently lock the buyback hook for a project, preventing future changes.
     /// @param projectId The ID of the project to lock the hook for.
     /// @param expectedHook The hook the caller expects to lock. Prevents race conditions where the hook changes
     /// between transaction submission and execution.

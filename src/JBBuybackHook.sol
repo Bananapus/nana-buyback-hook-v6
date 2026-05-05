@@ -1175,9 +1175,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Queries the TWAP oracle for a price quote and applies sigmoid-based slippage to produce the minimum
     /// acceptable swap output. Returns 0 if the oracle is unavailable or liquidity is insufficient.
     /// @param projectId The ID of the project.
-    /// @param amountIn The number of input tokens being used to swap.
-    /// @param baseToken The token being swapped in.
-    /// @param quoteToken The token being swapped out.
+    /// @param amountIn The number of input tokens to swap.
+    /// @param baseToken The token to swap in.
+    /// @param quoteToken The token to swap out.
     /// @param terminalToken The terminal token address (already normalized: address(0) for native). Passed by the
     /// caller to avoid a redundant `projectTokenOf` SLOAD that would otherwise be needed to derive it.
     /// @return rawAmountOut The raw oracle quote before slippage adjustment.
