@@ -41,14 +41,14 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // -------------------- public immutable properties ------------------ //
     //*********************************************************************//
 
-    /// @notice The project registry.
+    /// @notice The Juicebox project registry used to verify project existence and ownership.
     IJBProjects public immutable override PROJECTS;
 
     //*********************************************************************//
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
-    /// @notice The default hook to use.
+    /// @notice The default buyback hook used when a project hasn't set a project-specific one.
     IJBRulesetDataHook public override defaultHook;
 
     /// @notice The project ID threshold below which the default hook does not apply.
