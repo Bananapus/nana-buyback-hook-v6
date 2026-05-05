@@ -7,13 +7,11 @@ on:
     branches:
       - main
 jobs:
-  forge-test:
+  forge-fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
-      - name: Check linting
+      - name: Check formatting
         run: forge fmt --check

@@ -87,5 +87,5 @@ The registry governs which hook configuration a project uses.
 ## Verification
 
 - `npm install`
-- `forge build`
-- `forge test`
+- `forge build --deny notes`
+- `forge test --deny notes`

@@ -17,7 +17,7 @@ This file describes the verified change from `nana-buyback-hook-v5` to the curre
 - The buyback path is now built around Uniswap v4-era infrastructure rather than the v5 Uniswap v3 model.
 - `JBBuybackHook` is no longer only about the pay path. The v6 interface also includes cash-out-hook responsibilities.
 - The registry is stricter than before. The current repo includes explicit zero-hook and hook-mismatch protections, plus a more opinionated locking flow.
-- Shared swap logic now lives in `JBSwapLib`, which makes this repo and the router terminal part of the same routing vocabulary.
+- Shared swap logic now lives in `JBSwapLib`, which makes this repo and the Uniswap V4 router hook part of the same routing vocabulary.
 - The repo moved to Solidity `0.8.28`.
 
 ## Verified deltas
