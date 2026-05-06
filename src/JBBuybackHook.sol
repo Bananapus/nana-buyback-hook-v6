@@ -274,10 +274,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         } else {
             // Measure the actual delivery to guard against fee-on-transfer tokens.
             uint256 balBefore = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary);
-            IERC20(context.reclaimedAmount.token).safeTransfer(context.beneficiary, amountReceived);
+            IERC20(context.reclaimedAmount.token).safeTransfer({to: context.beneficiary, value: amountReceived});
             uint256 delivered = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary) - balBefore;
             if (delivered < minimumSwapAmountOut) {
-                revert JBBuybackHook_SpecifiedSlippageExceeded(delivered, minimumSwapAmountOut);
+                revert JBBuybackHook_SpecifiedSlippageExceeded({amount: delivered, minimum: minimumSwapAmountOut});
             }
         }
 
