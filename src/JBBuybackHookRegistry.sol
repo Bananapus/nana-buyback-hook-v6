@@ -5,6 +5,7 @@ import {JBPermissioned} from "@bananapus/core-v6/src/abstract/JBPermissioned.sol
 import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
+import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
 import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
@@ -353,7 +354,34 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // projects from selecting it via setHookFor; it does not override existing assignments.
         // The registry admin should not be able to unilaterally degrade a project's payment flow.
 
-        // Forward the call to the hook.
+        // Remap any metadata addressed to the registry into metadata addressed to the resolved hook.
+        // This lets payers scope their quote to the registry address while the underlying hook receives
+        // it under its own ID.
+        bytes4 registryQuoteId = JBMetadataResolver.getId("quote", address(this));
+        (bool found, bytes memory quoteData) = JBMetadataResolver.getDataFor(registryQuoteId, context.metadata);
+
+        if (found) {
+            // Build rekeyed metadata with the hook-scoped quote ID.
+            bytes4 hookQuoteId = JBMetadataResolver.getId("quote", address(hook));
+            bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata(context.metadata, hookQuoteId, quoteData);
+
+            // Forward a context copy with the rekeyed metadata via staticcall (view-safe).
+            JBBeforePayRecordedContext memory modifiedContext = JBBeforePayRecordedContext({
+                terminal: context.terminal,
+                payer: context.payer,
+                amount: context.amount,
+                projectId: context.projectId,
+                rulesetId: context.rulesetId,
+                beneficiary: context.beneficiary,
+                weight: context.weight,
+                reservedPercent: context.reservedPercent,
+                metadata: rekeyedMetadata
+            });
+            // slither-disable-next-line unused-return
+            return hook.beforePayRecordedWith(modifiedContext);
+        }
+
+        // Forward the call to the hook unchanged.
         // slither-disable-next-line unused-return
         return hook.beforePayRecordedWith(context);
     }
