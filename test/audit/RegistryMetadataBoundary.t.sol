@@ -164,7 +164,7 @@ contract CodexNemesisRegistryMetadataBoundaryTest is Test {
         registry.setDefaultHook(hook);
     }
 
-    function test_registryKeyedQuoteIsIgnoredByResolvedHook() public view {
+    function test_registryKeyedQuoteIsReroutedToResolvedHook() public view {
         bytes memory registryKeyedMetadata = _metadataFor(address(registry), 1 ether, 2 ether);
         (uint256 registryWeight, JBPayHookSpecification[] memory registrySpecs) =
             registry.beforePayRecordedWith(_context(registryKeyedMetadata));
@@ -173,12 +173,13 @@ contract CodexNemesisRegistryMetadataBoundaryTest is Test {
         (uint256 hookWeight, JBPayHookSpecification[] memory hookSpecs) =
             registry.beforePayRecordedWith(_context(hookKeyedMetadata));
 
-        assertEq(registryWeight, 1e18, "registry-keyed explicit quote is ignored, so the call noops into minting");
-        assertEq(registrySpecs.length, 1, "diagnostic noop spec is still returned");
-        assertTrue(registrySpecs[0].noop, "ignored quote leaves no active swap path");
+        // Registry-keyed metadata is now rerouted to the underlying hook, so both paths produce the same result.
+        assertEq(registryWeight, hookWeight, "registry-keyed and hook-keyed quotes produce the same weight");
+        assertEq(registrySpecs.length, hookSpecs.length, "same number of hook specs");
+        assertEq(registrySpecs[0].noop, hookSpecs[0].noop, "same noop status");
+        assertEq(registrySpecs[0].amount, hookSpecs[0].amount, "same swap amount");
 
-        assertEq(hookWeight, 0, "hook-keyed explicit quote is honored and selects the swap path");
-        assertEq(hookSpecs.length, 1, "active hook spec is returned");
+        assertEq(hookWeight, 0, "hook-keyed explicit quote selects the swap path");
         assertFalse(hookSpecs[0].noop, "hook-keyed quote activates the swap path");
         assertEq(hookSpecs[0].amount, 1 ether, "hook-keyed quote forwards the requested swap amount");
     }
