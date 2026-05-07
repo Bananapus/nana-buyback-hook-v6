@@ -1,8 +1,8 @@
-# Audit Instructions
+# Review Guide
 
-This repo routes Juicebox payments or cash outs toward a Uniswap V4 market when the market is better than native protocol pricing. Audit it as an economic-routing primitive with fallback behavior.
+This repo routes Juicebox payments or cash outs toward a Uniswap V4 market when the market is better than native protocol pricing. Review it as an economic-routing primitive with fallback behavior.
 
-## Audit Objective
+## Review Objective
 
 Find issues that:
 

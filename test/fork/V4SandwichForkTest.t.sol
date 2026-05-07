@@ -365,7 +365,7 @@ contract V4SandwichForkTest is Test {
     function test_fork_sandwich_circuitBreakerThreshold() public onlyFork {
         console.log("");
         console.log("====== CIRCUIT BREAKER THRESHOLD BY LIQUIDITY ======");
-        console.log("Finding attack size that triggers mint fallback for 1 ETH victim.");
+        console.log("Searching for attack size that triggers mint fallback for 1 ETH victim.");
         console.log("");
 
         uint256[4] memory liquidities = [uint256(1000 ether), 10_000 ether, 100_000 ether, 1_000_000 ether];

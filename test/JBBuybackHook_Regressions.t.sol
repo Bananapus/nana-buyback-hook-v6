@@ -37,14 +37,14 @@ contract MockExternalToken is IJBToken {
 
 /// @notice JBTokens prevents token migration, so the projectTokenOf cache can never become stale.
 ///
-/// The nemesis auditor claimed that projectTokenOf[projectId] cached in setPoolFor()
+/// The regression regressionor claimed that projectTokenOf[projectId] cached in setPoolFor()
 /// could become stale if the project migrates its token via setTokenFor or deployERC20For.
 ///
 /// This test deploys a REAL JBTokens contract (not a mock) and demonstrates that once a
 /// project has an ERC-20 token, BOTH setTokenFor() and deployERC20For() revert with
 /// JBTokens_ProjectAlreadyHasToken. Therefore the projectTokenOf cache in JBBuybackHook
 /// can NEVER become stale.
-contract JBBuybackHook_FalsePositives is Test {
+contract JBBuybackHook_Regressions is Test {
     JBTokens tokensContract;
     JBERC20 tokenImpl;
     IJBDirectory directory;
@@ -74,7 +74,7 @@ contract JBBuybackHook_FalsePositives is Test {
     }
 
     /// @notice JBTokens prevents token migration, so projectTokenOf is guaranteed stable.
-    /// The nemesis auditor assumed setTokenFor could succeed after a token is set,
+    /// The regression regressionor assumed setTokenFor could succeed after a token is set,
     /// but both deployERC20For and setTokenFor revert with JBTokens_ProjectAlreadyHasToken.
     /// Therefore projectTokenOf cache in JBBuybackHook can never become stale.
     function test_tokenMigrationIsImpossible_FP2() public {

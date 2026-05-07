@@ -14,8 +14,8 @@
 | Registry and per-project hook selection | [`src/JBBuybackHookRegistry.sol`](./src/JBBuybackHookRegistry.sol) |
 | Runtime invariants and config gotchas | [`references/runtime.md`](./references/runtime.md), [`references/operations.md`](./references/operations.md) |
 | Swap and slippage helpers | [`src/libraries/`](./src/libraries/), [`src/interfaces/`](./src/interfaces/), [`src/structs/`](./src/structs/) |
-| Execution-path, oracle, and MEV coverage | [`test/V4BuybackHook.t.sol`](./test/V4BuybackHook.t.sol), [`test/TestOracleRevertBehavior.t.sol`](./test/TestOracleRevertBehavior.t.sol), [`test/MEVScenarios.t.sol`](./test/MEVScenarios.t.sol), [`test/JBBuybackHook_FalsePositives.t.sol`](./test/JBBuybackHook_FalsePositives.t.sol) |
-| Registry, math, and edge-case coverage | [`test/Registry.t.sol`](./test/Registry.t.sol), [`test/JBSwapLib.t.sol`](./test/JBSwapLib.t.sol), [`test/CrossCurrency_Unit.t.sol`](./test/CrossCurrency_Unit.t.sol), [`test/TestBuybackFOT.t.sol`](./test/TestBuybackFOT.t.sol), [`test/TestAuditGaps.sol`](./test/TestAuditGaps.sol) |
+| Execution-path, oracle, and MEV coverage | [`test/V4BuybackHook.t.sol`](./test/V4BuybackHook.t.sol), [`test/TestOracleRevertBehavior.t.sol`](./test/TestOracleRevertBehavior.t.sol), [`test/MEVScenarios.t.sol`](./test/MEVScenarios.t.sol), [`test/JBBuybackHook_Regressions.t.sol`](./test/JBBuybackHook_Regressions.t.sol) |
+| Registry, math, and edge-case coverage | [`test/Registry.t.sol`](./test/Registry.t.sol), [`test/JBSwapLib.t.sol`](./test/JBSwapLib.t.sol), [`test/CrossCurrency_Unit.t.sol`](./test/CrossCurrency_Unit.t.sol), [`test/TestBuybackFOT.t.sol`](./test/TestBuybackFOT.t.sol), [`test/TestRegressionGaps.sol`](./test/TestRegressionGaps.sol) |
 
 ## Repo Map
 

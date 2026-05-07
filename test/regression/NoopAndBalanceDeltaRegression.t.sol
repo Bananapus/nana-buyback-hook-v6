@@ -43,7 +43,7 @@ import {MockPoolManager} from "test/mock/MockPoolManager.sol";
 import {MockOracleHook} from "test/mock/MockOracleHook.sol";
 
 /// @notice Simple project token for testing.
-contract AuditFixProjectToken is ERC20 {
+contract RegressionFixProjectToken is ERC20 {
     constructor() ERC20("ProjectToken", "PT") {}
 
     function mint(address to, uint256 amount) external {
@@ -52,7 +52,7 @@ contract AuditFixProjectToken is ERC20 {
 }
 
 /// @notice Fee-on-transfer token that deducts 2% on every transfer.
-contract AuditFixFOTToken is ERC20 {
+contract RegressionFixFOTToken is ERC20 {
     uint256 public constant FEE_BPS = 200; // 2%
     uint256 public constant BPS_DENOM = 10_000;
 
@@ -81,7 +81,7 @@ contract AuditFixFOTToken is ERC20 {
 }
 
 /// @notice Test harness exposing JBBuybackHook internals for pool configuration.
-contract AuditFixHook is JBBuybackHook {
+contract RegressionFixHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -111,18 +111,18 @@ contract AuditFixHook is JBBuybackHook {
     }
 }
 
-/// @title AuditFixC3M12Test
-/// @notice Tests for audit findings C-3 and M-12:
-///   C-3: beforeCashOutRecordedWith noop path returns context.surplus.value as effectiveSurplusValue.
-///   M-12: unlockCallback uses balance-delta accounting for swap output (handles fee-on-transfer).
-contract AuditFixC3M12Test is Test {
+/// @title NoopAndBalanceDeltaRegressionTest
+/// @notice Tests for regressions and
+///   beforeCashOutRecordedWith noop path returns context.surplus.value as effectiveSurplusValue.
+///   unlockCallback uses balance-delta accounting for swap output (handles fee-on-transfer).
+contract NoopAndBalanceDeltaRegressionTest is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
-    AuditFixHook hook;
+    RegressionFixHook hook;
     MockPoolManager mockPm;
     MockOracleHook mockOracle;
-    AuditFixProjectToken projectToken;
+    RegressionFixProjectToken projectToken;
 
     // Mock JB core contracts
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
@@ -145,7 +145,7 @@ contract AuditFixC3M12Test is Test {
     function setUp() public {
         mockPm = new MockPoolManager();
         mockOracle = new MockOracleHook();
-        projectToken = new AuditFixProjectToken();
+        projectToken = new RegressionFixProjectToken();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -156,7 +156,7 @@ contract AuditFixC3M12Test is Test {
         vm.etch(address(terminal), "0x01");
         vm.mockCall(address(terminal), abi.encodeCall(IJBFeeTerminal.FEE, ()), abi.encode(uint256(25)));
 
-        hook = new AuditFixHook({
+        hook = new RegressionFixHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
@@ -253,13 +253,13 @@ contract AuditFixC3M12Test is Test {
     }
 
     //*********************************************************************//
-    // ---------- C-3: Noop path returns surplus as effectiveSurplusValue -- //
+    // ---------- Noop path returns surplus as effectiveSurplusValue -- //
     //*********************************************************************//
 
     /// @notice When the swap is not worthwhile (noop=true), beforeCashOutRecordedWith must return
     /// context.surplus.value as effectiveSurplusValue so the terminal computes a proper bonding
     /// curve reclaim. Before the fix, it returned 0, causing zero reclaim.
-    function test_C3_noopPathReturnsSurplusValue() public {
+    function test_noopPathReturnsSurplusValue() public {
         // Oracle returns a weak TWAP quote (tick=0 means 1:1 price, giving cashOutCount worth of output).
         // With cashOutCount=1 ether, totalSupply=100 ether, surplus=10 ether, cashOutTaxRate=0:
         // directCashOut = 10 * 1 / 100 = 0.1 ether
@@ -304,11 +304,11 @@ contract AuditFixC3M12Test is Test {
         assertEq(specs.length, 1, "should return one hook spec");
         assertTrue(specs[0].noop, "should be noop when oracle reverts (swap not worthwhile)");
 
-        // C-3 FIX: effectiveSurplusValue must equal context.surplus.value, NOT zero.
+        // FIX: effectiveSurplusValue must equal context.surplus.value, NOT zero.
         assertEq(
             effectiveSurplusValue,
             surplusValue,
-            "C-3: noop path must return surplus value so terminal computes proper reclaim"
+            "noop path must return surplus value so terminal computes proper reclaim"
         );
 
         // Other values pass through unchanged.
@@ -319,8 +319,8 @@ contract AuditFixC3M12Test is Test {
 
     /// @notice Verify the user gets a proper bonding curve reclaim when the noop path is used.
     /// The terminal uses effectiveSurplusValue in JBCashOuts.cashOutFrom to compute reclaim.
-    /// With the C-3 fix, effectiveSurplusValue = surplus.value, yielding correct reclaim.
-    function test_C3_noopPathYieldsCorrectBondingCurveReclaim() public {
+    /// With the fix, effectiveSurplusValue = surplus.value, yielding correct reclaim.
+    function test_noopPathYieldsCorrectBondingCurveReclaim() public {
         // Make oracle revert to force noop path.
         mockOracle.setShouldRevert(true);
 
@@ -358,19 +358,19 @@ contract AuditFixC3M12Test is Test {
             cashOutTaxRate: cashOutTaxRate
         });
 
-        // Without the C-3 fix, effectiveSurplusValue would be 0, giving reclaim = 0.
+        // Without the fix, effectiveSurplusValue would be 0, giving reclaim = 0.
         // With the fix, effectiveSurplusValue = 50 ether, giving a non-zero bonding curve reclaim.
-        assertGt(expectedReclaim, 0, "C-3: reclaim must be non-zero when surplus is non-zero");
+        assertGt(expectedReclaim, 0, "reclaim must be non-zero when surplus is non-zero");
 
         // Verify the exact value: base = 50 * 10 / 100 = 5 ether
         // With 50% tax: reclaim = 5 * [(10000 - 5000) + 5000 * (10/100)] / 10000
         //             = 5 * [5000 + 500] / 10000 = 5 * 5500 / 10000 = 2.75 ether
-        assertEq(expectedReclaim, 2.75 ether, "C-3: reclaim should match bonding curve formula");
+        assertEq(expectedReclaim, 2.75 ether, "reclaim should match bonding curve formula");
     }
 
     /// @notice When an explicit minimumSwapAmountOut is provided via metadata but is less than
     /// the direct reclaim, the noop path should still return the correct surplus value.
-    function test_C3_noopPathWithExplicitMinimumStillReturnsSurplus() public view {
+    function test_noopPathWithExplicitMinimumStillReturnsSurplus() public view {
         uint256 surplusValue = 20 ether;
         uint256 cashOutCount = 5 ether;
         uint256 totalSupplyValue = 50 ether;
@@ -404,18 +404,16 @@ contract AuditFixC3M12Test is Test {
             hook.beforeCashOutRecordedWith(context);
 
         assertTrue(specs[0].noop, "should be noop when explicit minimum is below direct reclaim");
-        assertEq(
-            effectiveSurplusValue, surplusValue, "C-3: noop path with explicit minimum must still return surplus value"
-        );
+        assertEq(effectiveSurplusValue, surplusValue, "noop path with explicit minimum must still return surplus value");
     }
 
     //*********************************************************************//
-    // ---------- M-12: Balance-delta accounting in unlockCallback --------- //
+    // ---------- Balance-delta accounting in unlockCallback --------- //
     //*********************************************************************//
 
     /// @notice For a normal (non-FOT) token, the balance-delta accounting in unlockCallback returns
     /// the same amount as reported by the pool since there is no transfer fee.
-    function test_M12_balanceDeltaReturnsCorrectAmountForNormalToken() public {
+    function test_balanceDeltaReturnsCorrectAmountForNormalToken() public {
         // Project token is the output of the swap (zeroForOne = true: ETH in, project token out).
         uint256 amountIn = 1 ether;
         uint256 expectedOut = 500e18;
@@ -440,14 +438,14 @@ contract AuditFixC3M12Test is Test {
 
         (uint256 returnedInput, uint256 returnedOutput) = abi.decode(result, (uint256, uint256));
 
-        assertEq(returnedInput, amountIn, "M-12: input amount should match delta");
-        assertEq(returnedOutput, expectedOut, "M-12: output amount should equal pool-reported amount for normal tokens");
+        assertEq(returnedInput, amountIn, "input amount should match delta");
+        assertEq(returnedOutput, expectedOut, "output amount should equal pool-reported amount for normal tokens");
     }
 
     /// @notice For a fee-on-transfer token, the balance-delta accounting in unlockCallback returns
     /// the actual received amount (less than pool-reported) based on balance before/after the take.
-    function test_M12_balanceDeltaAccountsForFeeOnTransfer() public {
-        AuditFixFOTToken fotToken = new AuditFixFOTToken();
+    function test_balanceDeltaAccountsForFeeOnTransfer() public {
+        RegressionFixFOTToken fotToken = new RegressionFixFOTToken();
 
         // Set up a new pool with FOT token as currency1 (output currency for zeroForOne swap).
         // We need fotToken address > address(0) for currency1.
@@ -484,18 +482,18 @@ contract AuditFixC3M12Test is Test {
 
         (uint256 returnedInput, uint256 returnedOutput) = abi.decode(result, (uint256, uint256));
 
-        assertEq(returnedInput, amountIn, "M-12: input amount should match delta");
+        assertEq(returnedInput, amountIn, "input amount should match delta");
         assertEq(
             returnedOutput,
             expectedActualOut,
-            "M-12: output must reflect actual received after FOT deduction, not pool-reported amount"
+            "output must reflect actual received after FOT deduction, not pool-reported amount"
         );
         // The key assertion: the returned output is LESS than what the pool reported.
-        assertLt(returnedOutput, poolReportedOut, "M-12: FOT token output must be less than pool-reported amount");
+        assertLt(returnedOutput, poolReportedOut, "FOT token output must be less than pool-reported amount");
     }
 
     /// @notice Verify balance-delta accounting works for the oneForZero direction (project token in, ETH out).
-    function test_M12_balanceDeltaWorksForOneForZeroDirection() public {
+    function test_balanceDeltaWorksForOneForZeroDirection() public {
         // oneForZero: project token (currency1) is input, ETH (currency0) is output.
         uint256 amountIn = 500e18;
         uint256 expectedOut = 2 ether;
@@ -528,7 +526,7 @@ contract AuditFixC3M12Test is Test {
 
         (uint256 returnedInput, uint256 returnedOutput) = abi.decode(result, (uint256, uint256));
 
-        assertEq(returnedInput, amountIn, "M-12: input should be project token amount");
-        assertEq(returnedOutput, expectedOut, "M-12: output should be ETH amount from balance delta");
+        assertEq(returnedInput, amountIn, "input should be project token amount");
+        assertEq(returnedOutput, expectedOut, "output should be ETH amount from balance delta");
     }
 }

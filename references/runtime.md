@@ -28,4 +28,4 @@
 - [`test/MEVScenarios.t.sol`](../test/MEVScenarios.t.sol) for market-manipulation pressure.
 - [`test/TestBuybackFOT.t.sol`](../test/TestBuybackFOT.t.sol) for fee-on-transfer behavior.
 - [`test/invariant/BuybackHookInvariant.t.sol`](../test/invariant/BuybackHookInvariant.t.sol) for route-level invariants.
-- [`test/JBBuybackHook_FalsePositives.t.sol`](../test/JBBuybackHook_FalsePositives.t.sol), [`test/audit/CashOutMetadataInflation.t.sol`](../test/audit/CashOutMetadataInflation.t.sol), [`test/audit/RegistryForwardedPermission.t.sol`](../test/audit/RegistryForwardedPermission.t.sol), and [`test/TestAuditGaps.sol`](../test/TestAuditGaps.sol) for broader safety checks.
+- [`test/JBBuybackHook_Regressions.t.sol`](../test/JBBuybackHook_Regressions.t.sol), [`test/regression/CashOutMetadataInflation.t.sol`](../test/regression/CashOutMetadataInflation.t.sol), [`test/regression/RegistryForwardedPermission.t.sol`](../test/regression/RegistryForwardedPermission.t.sol), and [`test/TestRegressionGaps.sol`](../test/TestRegressionGaps.sol) for broader safety checks.

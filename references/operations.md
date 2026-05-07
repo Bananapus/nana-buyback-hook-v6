@@ -28,5 +28,5 @@
 - [`test/CrossCurrency_Unit.t.sol`](../test/CrossCurrency_Unit.t.sol) for denomination-sensitive behavior.
 - [`test/JBSwapLib.t.sol`](../test/JBSwapLib.t.sol) for library math assumptions.
 - [`test/invariant/BuybackHookInvariant.t.sol`](../test/invariant/BuybackHookInvariant.t.sol) for route-level invariants.
-- [`test/audit/CashOutMetadataInflation.t.sol`](../test/audit/CashOutMetadataInflation.t.sol) and [`test/audit/RegistryForwardedPermission.t.sol`](../test/audit/RegistryForwardedPermission.t.sol) for the easiest governance and sell-side mistakes to reintroduce.
-- [`test/TestAuditGaps.sol`](../test/TestAuditGaps.sol) for pinned edge cases worth preserving.
+- [`test/regression/CashOutMetadataInflation.t.sol`](../test/regression/CashOutMetadataInflation.t.sol) and [`test/regression/RegistryForwardedPermission.t.sol`](../test/regression/RegistryForwardedPermission.t.sol) for the easiest governance and sell-side mistakes to reintroduce.
+- [`test/TestRegressionGaps.sol`](../test/TestRegressionGaps.sol) for pinned edge cases worth preserving.

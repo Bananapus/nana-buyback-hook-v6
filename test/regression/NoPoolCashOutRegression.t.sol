@@ -18,7 +18,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
 
-contract CodexNemesisNoPoolCashOutPoC is Test {
+contract RegressionNoPoolCashOutRegression is Test {
     uint256 internal constant PROJECT_ID = 1;
     uint256 internal constant CASH_OUT_COUNT = 10 ether;
     uint256 internal constant TOTAL_SUPPLY = 100 ether;

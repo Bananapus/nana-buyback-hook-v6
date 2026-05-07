@@ -16,7 +16,7 @@ import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 
 import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
 
-contract CodexRegistryDefaultHookHijackTest is Test {
+contract RegressionRegistryDefaultHookHijackTest is Test {
     uint256 internal constant PROJECT_ID = 1;
 
     address internal registryOwner = makeAddr("registryOwner");

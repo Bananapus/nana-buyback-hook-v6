@@ -77,11 +77,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max);
     error JBBuybackHook_PoolAlreadySet(PoolId poolId);
     error JBBuybackHook_PoolNotInitialized(PoolId poolId);
-    error JBBuybackHook_PoolNotSet();
+    error JBBuybackHook_PoolNotSet(uint256 projectId, address terminalToken);
     error JBBuybackHook_SpecifiedSlippageExceeded(uint256 amount, uint256 minimum);
     error JBBuybackHook_TerminalTokenIsProjectToken(address terminalToken, address projectToken);
     error JBBuybackHook_Unauthorized(address caller);
-    error JBBuybackHook_ZeroProjectToken();
+    error JBBuybackHook_ZeroProjectToken(uint256 projectId);
 
     //*********************************************************************//
     // ------------------------- public constants ------------------------- //
@@ -225,7 +225,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Snapshot balance before minting to handle fee-on-transfer tokens.
         uint256 preMintBalance = IERC20(projectToken).balanceOf(address(this));
 
-        // slither-disable-next-line unused-return
         controller.mintTokensOf({
             projectId: context.projectId,
             tokenCount: cashOutCountToSell,
@@ -238,7 +237,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 actualReceived = IERC20(projectToken).balanceOf(address(this)) - preMintBalance;
 
         // Sell the reminted project tokens for the terminal token using the configured pool direction.
-        // slither-disable-next-line reentrancy-events
         (uint256 amountSpent, uint256 amountReceived, bool swapFailed) = _swapExactInput({
             key: key,
             amountIn: actualReceived,
@@ -345,7 +343,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // The price limit is set to the issuance rate (tokenCountWithoutHook / amountIn), so the swap
         // fills only while the pool offers a better rate than minting. Any unconsumed input tokens
         // remain in this contract and are minted at the issuance rate below.
-        // slither-disable-next-line reentrancy-events
         (uint256 exactSwapAmountOut, bool swapFailed) = _swap({
             context: context,
             projectTokenIs0: projectTokenIs0,
@@ -364,7 +361,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // If the token paid in wasn't the native token, grant the terminal permission to pull them back.
             if (!isNativeToken) {
                 terminalBalanceBeforeAdd = IERC20(context.forwardedAmount.token).balanceOf(msg.sender);
-                // slither-disable-next-line unused-return
                 IERC20(context.forwardedAmount.token)
                     .forceApprove({spender: msg.sender, value: leftoverAmountInThisContract});
             }
@@ -378,7 +374,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // Note: `leftoverAmountInThisContract` is already a measured balance delta (line 314), so it
             // reflects the real tokens held. The terminal's `_acceptFundsFor` independently measures
             // its own balance delta, so fee-on-transfer tokens are correctly accounted for on both sides.
-            // slither-disable-next-line arbitrary-send-eth
             IJBMultiTerminal(msg.sender).addToBalanceOf{value: payValue}({
                 projectId: context.projectId,
                 token: context.forwardedAmount.token,
@@ -427,7 +422,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Skip if there are no tokens to mint (e.g. weight=0 and swap failed).
         uint256 totalTokensToMint = exactSwapAmountOut + partialMintTokenCount;
         if (totalTokensToMint != 0) {
-            // slither-disable-next-line unused-return
             controller.mintTokensOf({
                 projectId: context.projectId,
                 tokenCount: totalTokensToMint,
@@ -467,7 +461,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
 
         // Initialize pool in PoolManager if not already initialized.
-        // slither-disable-next-line unused-return,reentrancy-no-eth,reentrancy-benign,reentrancy-events
         try POOL_MANAGER.initialize({key: poolKey, sqrtPriceX96: sqrtPriceX96}) {} catch {}
 
         _setPoolFor({
@@ -577,7 +570,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         address normalizedTerminalToken = terminalToken == JBConstants.NATIVE_TOKEN ? address(0) : terminalToken;
 
         // Make sure a pool has been configured for this project/terminal token pair.
-        if (!_poolIsSet[projectId][normalizedTerminalToken]) revert JBBuybackHook_PoolNotSet();
+        if (!_poolIsSet[projectId][normalizedTerminalToken]) {
+            revert JBBuybackHook_PoolNotSet({projectId: projectId, terminalToken: normalizedTerminalToken});
+        }
 
         uint256 oldWindow = twapWindowOf[projectId][normalizedTerminalToken];
         twapWindowOf[projectId][normalizedTerminalToken] = newWindow;
@@ -646,13 +641,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Settle the input (we owe the PoolManager).
         if (inputCurrency.isAddressZero()) {
             // Native ETH: settle with value.
-            // slither-disable-next-line unused-return
             POOL_MANAGER.settle{value: inputAmount}();
         } else {
             // ERC-20: sync → transfer → settle.
             POOL_MANAGER.sync(inputCurrency);
             IERC20(Currency.unwrap(inputCurrency)).safeTransfer({to: address(POOL_MANAGER), value: inputAmount});
-            // slither-disable-next-line unused-return
             POOL_MANAGER.settle();
         }
 
@@ -856,7 +849,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         IJBController controller = IJBController(address(DIRECTORY.controllerOf(context.projectId)));
 
         // Get a reference to the ruleset.
-        // slither-disable-next-line unused-return
         (JBRuleset memory ruleset,) = controller.currentRulesetOf(context.projectId);
 
         // If the hook should base its weight on a currency other than the terminal's currency, determine the factor.
@@ -994,7 +986,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // Make sure the project has issued a token.
-        if (projectToken == address(0)) revert JBBuybackHook_ZeroProjectToken();
+        if (projectToken == address(0)) revert JBBuybackHook_ZeroProjectToken(projectId);
 
         // Make sure the terminal token is not the project token.
         if (normalizedTerminalToken == projectToken) {
@@ -1003,7 +995,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Validate the pool is initialized in the PoolManager.
         PoolId poolId = poolKey.toId();
-        // slither-disable-next-line unused-return
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
         if (sqrtPriceX96 == 0) revert JBBuybackHook_PoolNotInitialized(poolId);
 
@@ -1076,7 +1067,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         );
 
         // Try the V4 unlock/callback swap. On failure, fall back to minting.
-        // slither-disable-next-line reentrancy-events
         try POOL_MANAGER.unlock(callbackData) returns (bytes memory result) {
             (, amountReceived) = abi.decode(result, (uint256, uint256));
         } catch {
@@ -1243,7 +1233,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Get the actual LP fee from slot0 (key.fee may differ for dynamic-fee pools).
         // V4 fees are in hundredths of a bip, so divide by 100 to get basis points.
-        // slither-disable-next-line unused-return
         (,,, uint24 lpFee) = POOL_MANAGER.getSlot0(poolId);
         uint256 poolFeeBps = uint256(lpFee) / 100;
 

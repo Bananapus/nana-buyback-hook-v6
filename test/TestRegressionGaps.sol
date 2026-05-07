@@ -71,7 +71,7 @@ contract MockProjectToken18 is ERC20 {
 }
 
 /// @notice Test harness that exposes JBBuybackHook internals for direct pool configuration.
-contract ForTest_AuditGaps_BuybackHook is JBBuybackHook {
+contract ForTest_RegressionGaps_BuybackHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -101,9 +101,9 @@ contract ForTest_AuditGaps_BuybackHook is JBBuybackHook {
     }
 }
 
-/// @title TestAuditGaps
-/// @notice Tests for audit gaps: non-18-decimal tokens, multi-pool projects, and concurrent payments.
-contract TestAuditGaps is Test {
+/// @title TestRegressionGaps
+/// @notice Tests for regression gaps: non-18-decimal tokens, multi-pool projects, and concurrent payments.
+contract TestRegressionGaps is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
@@ -111,7 +111,7 @@ contract TestAuditGaps is Test {
     // ----------------------------- state ------------------------------ //
     //*********************************************************************//
 
-    ForTest_AuditGaps_BuybackHook hook;
+    ForTest_RegressionGaps_BuybackHook hook;
     MockPoolManager mockPm;
     MockOracleHook mockOracle;
 
@@ -155,7 +155,7 @@ contract TestAuditGaps is Test {
         vm.label(address(mockOracle), "MockOracleHook");
 
         // Deploy hook.
-        hook = new ForTest_AuditGaps_BuybackHook({
+        hook = new ForTest_RegressionGaps_BuybackHook({
             directory: directory,
             permissions: permissions,
             prices: prices,
