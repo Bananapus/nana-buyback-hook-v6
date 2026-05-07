@@ -9,7 +9,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 - projects that want market-aware routing on buys and sells
 - operators selecting and locking a project's hook and pool configuration
 - traders or supporters whose route may go through Juicebox or UniV4 depending on price
-- reviewers reviewing comparison logic, minima, and pool-selection governance
+- auditors reviewing comparison logic, minima, and pool-selection governance
 
 ## Key Surfaces
 
@@ -94,7 +94,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 
 ## Journey 4: Operate Oracle And Pool Assumptions Safely
 
-**Actor:** operator or reviewer.
+**Actor:** operator or auditor.
 
 **Intent:** keep route-comparison assumptions valid after deployment.
 
