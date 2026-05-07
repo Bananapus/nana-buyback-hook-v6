@@ -12,6 +12,8 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
+/// @notice A ruleset data hook that can route payments and cash outs through a configured Uniswap V4 pool when doing
+/// so improves the outcome for the project or token holder.
 interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     /// @notice Emitted when project tokens are reminted and sold during a cash out.
     /// @param projectId The ID of the project whose tokens were sold.

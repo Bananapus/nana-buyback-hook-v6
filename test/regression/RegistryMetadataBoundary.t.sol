@@ -31,9 +31,9 @@ import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
 import {MockOracleHook} from "test/mock/MockOracleHook.sol";
 import {MockPoolManager} from "test/mock/MockPoolManager.sol";
 
-contract CodexNemesisProjectToken {}
+contract RegressionProjectToken {}
 
-contract CodexNemesisRegistryMetadataBoundaryTest is Test {
+contract RegressionRegistryMetadataBoundaryTest is Test {
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
     uint256 internal constant PROJECT_ID = 919;
@@ -52,7 +52,7 @@ contract CodexNemesisRegistryMetadataBoundaryTest is Test {
 
     MockPoolManager internal poolManager;
     MockOracleHook internal oracleHook;
-    CodexNemesisProjectToken internal projectToken;
+    RegressionProjectToken internal projectToken;
     IJBController internal controller = IJBController(makeAddr("controller"));
 
     JBBuybackHook internal hook;
@@ -61,7 +61,7 @@ contract CodexNemesisRegistryMetadataBoundaryTest is Test {
     function setUp() public {
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
-        projectToken = new CodexNemesisProjectToken();
+        projectToken = new RegressionProjectToken();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");

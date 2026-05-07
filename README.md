@@ -96,7 +96,7 @@ src/
   libraries/
   structs/
 test/
-  unit, fork, invariant, audit, FOT, oracle, and regression coverage
+  unit, fork, invariant, review, FOT, oracle, and regression coverage
 script/
   Deploy.s.sol
   helpers/

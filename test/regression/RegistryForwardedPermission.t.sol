@@ -18,7 +18,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
 
-contract CodexDenyAllPermissions is IJBPermissions {
+contract RegressionDenyAllPermissions is IJBPermissions {
     function WILDCARD_PROJECT_ID() external pure returns (uint256) {
         return 0;
     }
@@ -38,7 +38,7 @@ contract CodexDenyAllPermissions is IJBPermissions {
     function setPermissionsFor(address, JBPermissionsData calldata) external {}
 }
 
-contract CodexProjectsOwnerMock {
+contract RegressionProjectsOwnerMock {
     address internal immutable _owner;
 
     constructor(address owner) {
@@ -54,7 +54,7 @@ contract CodexProjectsOwnerMock {
     }
 }
 
-contract RegistryForwardedPermissionPoC is Test {
+contract RegistryForwardedPermissionRegression is Test {
     uint256 internal constant PROJECT_ID = 77;
 
     address internal admin = makeAddr("admin");
@@ -62,14 +62,14 @@ contract RegistryForwardedPermissionPoC is Test {
     address internal trustedForwarder = makeAddr("trustedForwarder");
     address internal terminalToken = makeAddr("terminalToken");
 
-    CodexDenyAllPermissions internal permissions;
-    CodexProjectsOwnerMock internal projects;
+    RegressionDenyAllPermissions internal permissions;
+    RegressionProjectsOwnerMock internal projects;
     JBBuybackHook internal hook;
     JBBuybackHookRegistry internal registry;
 
     function setUp() public {
-        permissions = new CodexDenyAllPermissions();
-        projects = new CodexProjectsOwnerMock(projectOwner);
+        permissions = new RegressionDenyAllPermissions();
+        projects = new RegressionProjectsOwnerMock(projectOwner);
 
         address directory = makeAddr("directory");
         address prices = makeAddr("prices");

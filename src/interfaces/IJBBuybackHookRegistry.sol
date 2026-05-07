@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 
+/// @notice Stores the buyback hook each project should use and resolves the default hook for newly created projects.
 interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @notice Emitted when a hook is allowed for use by projects.
     /// @param hook The hook that was allowed.

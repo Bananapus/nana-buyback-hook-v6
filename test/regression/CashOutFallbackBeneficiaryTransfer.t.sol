@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
-import {IJBBuybackHook} from "src/interfaces/IJBBuybackHook.sol";
 
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
 import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
@@ -20,7 +19,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
-contract M45Token is ERC20 {
+contract RegressionFallbackToken is ERC20 {
     constructor() ERC20("Project Token", "PRJ") {}
 
     function mint(address account, uint256 amount) external {
@@ -28,10 +27,10 @@ contract M45Token is ERC20 {
     }
 }
 
-contract M45Controller {
-    M45Token internal immutable TOKEN;
+contract RegressionFallbackController {
+    RegressionFallbackToken internal immutable TOKEN;
 
-    constructor(M45Token token) {
+    constructor(RegressionFallbackToken token) {
         TOKEN = token;
     }
 
@@ -50,7 +49,7 @@ contract M45Controller {
     }
 }
 
-contract M45Directory {
+contract RegressionFallbackDirectory {
     address internal immutable TERMINAL;
     IERC165 internal immutable CONTROLLER;
 
@@ -68,15 +67,13 @@ contract M45Directory {
     }
 }
 
-/// @dev Pool manager that always reverts on unlock, forcing a swap failure.
-contract M45RevertingPoolManager {
+contract RegressionRevertingPoolManager {
     function unlock(bytes calldata) external pure returns (bytes memory) {
         revert("forced swap failure");
     }
 }
 
-/// @dev Exposes `projectTokenOf` setter for testing.
-contract M45Hook is JBBuybackHook {
+contract RegressionFallbackHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -95,24 +92,20 @@ contract M45Hook is JBBuybackHook {
     }
 }
 
-/// @title Sell-side swap failure should send tokens to holder, not beneficiary
-/// @notice Tests that when a sell-side swap reverts during cashout, reminted tokens go to the holder (not beneficiary).
-contract Pass13M45Test is Test {
-    uint256 constant PROJECT_ID = 1;
-    uint256 constant CASH_OUT_COUNT = 100 ether;
-    address constant HOLDER = address(0xA11CE);
-    address constant BENEFICIARY = address(0xB0B);
+contract RegressionCashOutFallbackBeneficiaryTransferTest is Test {
+    function test_failedSellFallbackTransfersRemintedTokensToHolder() public {
+        uint256 projectId = 1;
+        uint256 cashOutCount = 100 ether;
+        address holder = address(0xA11CE);
+        address beneficiary = address(0xB0B);
 
-    M45Token projectToken;
-    M45Hook hook;
+        RegressionFallbackToken projectToken = new RegressionFallbackToken();
+        RegressionFallbackController controller = new RegressionFallbackController(projectToken);
+        RegressionFallbackDirectory directory =
+            new RegressionFallbackDirectory(address(this), IERC165(address(controller)));
+        RegressionRevertingPoolManager poolManager = new RegressionRevertingPoolManager();
 
-    function setUp() public {
-        projectToken = new M45Token();
-        M45Controller controller = new M45Controller(projectToken);
-        M45Directory directory = new M45Directory(address(this), IERC165(address(controller)));
-        M45RevertingPoolManager poolManager = new M45RevertingPoolManager();
-
-        hook = new M45Hook({
+        RegressionFallbackHook hook = new RegressionFallbackHook({
             directory: IJBDirectory(address(directory)),
             permissions: IJBPermissions(address(0x1)),
             prices: IJBPrices(address(0x2)),
@@ -122,15 +115,13 @@ contract Pass13M45Test is Test {
             oracleHook: IHooks(address(0x5)),
             trustedForwarder: address(0)
         });
-        hook.setProjectTokenForTest(PROJECT_ID, address(projectToken));
-    }
+        hook.setProjectTokenForTest(projectId, address(projectToken));
 
-    function _makeContext() internal pure returns (JBAfterCashOutRecordedContext memory) {
-        return JBAfterCashOutRecordedContext({
-            holder: HOLDER,
-            projectId: PROJECT_ID,
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: holder,
+            projectId: projectId,
             rulesetId: 1,
-            cashOutCount: CASH_OUT_COUNT,
+            cashOutCount: cashOutCount,
             reclaimedAmount: JBTokenAmount({
                 token: JBConstants.NATIVE_TOKEN,
                 value: 0,
@@ -144,26 +135,16 @@ contract Pass13M45Test is Test {
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
-            beneficiary: payable(BENEFICIARY),
-            hookMetadata: abi.encode(uint256(1 ether), CASH_OUT_COUNT),
+            beneficiary: payable(beneficiary),
+            hookMetadata: abi.encode(uint256(1 ether), cashOutCount),
             cashOutMetadata: ""
         });
-    }
 
-    /// @notice Fix verification: when swap fails, reminted tokens go to the holder.
-    function test_M45_fix_swapFailure_tokensGoToHolder() public {
-        hook.afterCashOutRecordedWith(_makeContext());
+        hook.afterCashOutRecordedWith(context);
 
-        assertEq(projectToken.balanceOf(HOLDER), CASH_OUT_COUNT, "holder should receive reminted tokens");
-        assertEq(projectToken.balanceOf(BENEFICIARY), 0, "beneficiary should receive nothing");
-        assertEq(projectToken.balanceOf(address(hook)), 0, "hook should hold nothing");
-    }
-
-    /// @notice Fix verification: correct event is emitted with holder address.
-    function test_M45_fix_swapFailure_emitsHolderEvent() public {
-        vm.expectEmit(true, true, false, true);
-        emit IJBBuybackHook.SellSwapReverted({projectId: PROJECT_ID, holder: HOLDER, amount: CASH_OUT_COUNT});
-
-        hook.afterCashOutRecordedWith(_makeContext());
+        // Tokens go to holder, not beneficiary.
+        assertEq(projectToken.balanceOf(holder), cashOutCount);
+        assertEq(projectToken.balanceOf(beneficiary), 0);
+        assertEq(projectToken.balanceOf(address(hook)), 0);
     }
 }

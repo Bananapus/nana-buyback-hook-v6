@@ -31,12 +31,12 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    error JBBuybackHookRegistry_CannotDisallowDefaultHook();
+    error JBBuybackHookRegistry_CannotDisallowDefaultHook(IJBRulesetDataHook hook);
     error JBBuybackHookRegistry_HookLocked(uint256 projectId);
     error JBBuybackHookRegistry_HookMismatch(IJBRulesetDataHook currentHook, IJBRulesetDataHook expectedHook);
     error JBBuybackHookRegistry_HookNotAllowed(IJBRulesetDataHook hook);
     error JBBuybackHookRegistry_HookNotSet(uint256 projectId);
-    error JBBuybackHookRegistry_ZeroHook();
+    error JBBuybackHookRegistry_ZeroHook(IJBRulesetDataHook hook);
 
     //*********************************************************************//
     // -------------------- public immutable properties ------------------ //
@@ -109,7 +109,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Allow the hook.
         isHookAllowed[hook] = true;
 
-        emit JBBuybackHookRegistry_AllowHook(hook);
+        emit JBBuybackHookRegistry_AllowHook({hook: hook});
     }
 
     /// @notice Removes a buyback hook implementation from the allowlist, preventing new projects from selecting it.
@@ -118,12 +118,12 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     function disallowHook(IJBRulesetDataHook hook) external onlyOwner {
         // Revert if the hook is the current default — disallowing it would break payments
         // for projects that rely on the default hook (beforePayRecordedWith calls methods on it).
-        if (defaultHook == hook) revert JBBuybackHookRegistry_CannotDisallowDefaultHook();
+        if (defaultHook == hook) revert JBBuybackHookRegistry_CannotDisallowDefaultHook(hook);
 
         // Disallow the hook.
         isHookAllowed[hook] = false;
 
-        emit JBBuybackHookRegistry_DisallowHook(hook);
+        emit JBBuybackHookRegistry_DisallowHook({hook: hook});
     }
 
     /// @notice Permanently locks a project's buyback hook assignment, preventing future changes. Once locked, the
@@ -153,13 +153,13 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
         // Verify the resolved hook matches what the caller expects to lock.
         if (hook != expectedHook) {
-            revert JBBuybackHookRegistry_HookMismatch(hook, expectedHook);
+            revert JBBuybackHookRegistry_HookMismatch({currentHook: hook, expectedHook: expectedHook});
         }
 
         // Set the hook to locked.
         hasLockedHook[projectId] = true;
 
-        emit JBBuybackHookRegistry_LockHook(projectId);
+        emit JBBuybackHookRegistry_LockHook({projectId: projectId});
     }
 
     /// @notice Sets the protocol-wide default buyback hook. Only affects projects created AFTER this call — existing
@@ -169,7 +169,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     function setDefaultHook(IJBRulesetDataHook hook) external onlyOwner {
         // Prevent setting address(0) as the default hook — it would mark address(0) as allowed,
         // causing payments to revert when projects without a specific hook try to use the default.
-        if (address(hook) == address(0)) revert JBBuybackHookRegistry_ZeroHook();
+        if (address(hook) == address(0)) revert JBBuybackHookRegistry_ZeroHook(hook);
 
         // Set the default hook.
         defaultHook = hook;
@@ -180,7 +180,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Allow the default hook.
         isHookAllowed[hook] = true;
 
-        emit JBBuybackHookRegistry_SetDefaultHook(hook);
+        emit JBBuybackHookRegistry_SetDefaultHook({hook: hook});
     }
 
     /// @notice Assigns a specific buyback hook implementation to a project, overriding the default.
@@ -324,7 +324,6 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         }
 
         // Forward the full cash-out context to the resolved hook.
-        // slither-disable-next-line unused-return
         return hook.beforeCashOutRecordedWith(context);
     }
 
@@ -377,12 +376,10 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
                 reservedPercent: context.reservedPercent,
                 metadata: rekeyedMetadata
             });
-            // slither-disable-next-line unused-return
             return hook.beforePayRecordedWith(modifiedContext);
         }
 
         // Forward the call to the hook unchanged.
-        // slither-disable-next-line unused-return
         return hook.beforePayRecordedWith(context);
     }
 
@@ -420,6 +417,9 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // -------------------------- public views --------------------------- //
     //*********************************************************************//
 
+    /// @notice Indicates whether this registry supports an interface.
+    /// @param interfaceId The interface ID to check.
+    /// @return Whether the interface is supported.
     function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
         return interfaceId == type(IJBBuybackHookRegistry).interfaceId
             || interfaceId == type(IJBRulesetDataHook).interfaceId || interfaceId == type(IERC165).interfaceId;

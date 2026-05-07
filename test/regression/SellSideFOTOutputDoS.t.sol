@@ -27,7 +27,7 @@ import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {MockOracleHook} from "test/mock/MockOracleHook.sol";
 import {MockPoolManager} from "test/mock/MockPoolManager.sol";
 
-contract CodexSellSideProjectToken is ERC20 {
+contract RegressionSellSideProjectToken is ERC20 {
     constructor() ERC20("ProjectToken", "PT") {}
 
     function mint(address to, uint256 amount) external {
@@ -39,7 +39,7 @@ contract CodexSellSideProjectToken is ERC20 {
     }
 }
 
-contract CodexSellSideFeeOnTransferToken is ERC20 {
+contract RegressionSellSideFeeOnTransferToken is ERC20 {
     uint256 internal constant FEE_BPS = 100; // 1%
 
     constructor() ERC20("FeeOnTransferToken", "FOT") {}
@@ -61,10 +61,10 @@ contract CodexSellSideFeeOnTransferToken is ERC20 {
     }
 }
 
-contract CodexSellSideController {
-    CodexSellSideProjectToken internal immutable TOKEN;
+contract RegressionSellSideController {
+    RegressionSellSideProjectToken internal immutable TOKEN;
 
-    constructor(CodexSellSideProjectToken token) {
+    constructor(RegressionSellSideProjectToken token) {
         TOKEN = token;
     }
 
@@ -87,7 +87,7 @@ contract CodexSellSideController {
     }
 }
 
-contract CodexSellSideHook is JBBuybackHook {
+contract RegressionSellSideHook is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -102,13 +102,13 @@ contract CodexSellSideHook is JBBuybackHook {
     {}
 }
 
-contract CodexSellSideFOTOutputDoSTest is Test {
-    CodexSellSideHook internal hook;
+contract RegressionSellSideFOTOutputDoSTest is Test {
+    RegressionSellSideHook internal hook;
     MockPoolManager internal poolManager;
     MockOracleHook internal oracleHook;
-    CodexSellSideProjectToken internal projectToken;
-    CodexSellSideFeeOnTransferToken internal terminalToken;
-    CodexSellSideController internal controller;
+    RegressionSellSideProjectToken internal projectToken;
+    RegressionSellSideFeeOnTransferToken internal terminalToken;
+    RegressionSellSideController internal controller;
 
     IJBDirectory internal directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions internal permissions = IJBPermissions(makeAddr("permissions"));
@@ -124,9 +124,9 @@ contract CodexSellSideFOTOutputDoSTest is Test {
     function setUp() public {
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
-        projectToken = new CodexSellSideProjectToken();
-        terminalToken = new CodexSellSideFeeOnTransferToken();
-        controller = new CodexSellSideController(projectToken);
+        projectToken = new RegressionSellSideProjectToken();
+        terminalToken = new RegressionSellSideFeeOnTransferToken();
+        controller = new RegressionSellSideController(projectToken);
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -134,7 +134,7 @@ contract CodexSellSideFOTOutputDoSTest is Test {
         vm.etch(address(projects), "0x01");
         vm.etch(address(tokens), "0x01");
 
-        hook = new CodexSellSideHook({
+        hook = new RegressionSellSideHook({
             directory: directory,
             permissions: permissions,
             prices: prices,

@@ -72,7 +72,7 @@ On the buy side, the hook uses the controller preview path to preserve beneficia
 - buy and sell routing are not mirror images
 - explicit user minima and oracle-derived minima are not equivalent
 - sell-side routing suppresses direct protocol reclaim only when the market path wins
-- reserved-rate preservation is a primary audit target on the buy side
+- reserved-rate preservation is a primary review target on the buy side
 
 ## Safe Change Guide
 
@@ -87,7 +87,7 @@ On the buy side, the hook uses the controller preview path to preserve beneficia
 - buy-side failure fallback and mint degradation:
   `test/regression/SwapFailureMintFallback.t.sol`
 - sell-side metadata and callback safety:
-  `test/audit/CashOutMetadataInflation.t.sol`
+  `test/regression/CashOutMetadataInflation.t.sol`
 - routing invariants across configurations:
   `test/invariant/BuybackHookInvariant.t.sol`
 
@@ -97,5 +97,5 @@ On the buy side, the hook uses the controller preview path to preserve beneficia
 - `src/JBBuybackHookRegistry.sol`
 - `src/libraries/JBSwapLib.sol`
 - `test/regression/SwapFailureMintFallback.t.sol`
-- `test/audit/CashOutMetadataInflation.t.sol`
+- `test/regression/CashOutMetadataInflation.t.sol`
 - `test/invariant/BuybackHookInvariant.t.sol`

@@ -52,7 +52,11 @@ contract DisallowDefaultHook is Test {
 
         // Attempt to disallow hookA (the current default) — should revert.
         vm.prank(registryOwner);
-        vm.expectRevert(JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector, hookA
+            )
+        );
         registry.disallowHook(hookA);
 
         // Verify the default hook was NOT cleared.
@@ -92,7 +96,11 @@ contract DisallowDefaultHook is Test {
 
         // Attempt to disallow hookA — reverts (fix).
         vm.prank(registryOwner);
-        vm.expectRevert(JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector, hookA
+            )
+        );
         registry.disallowHook(hookA);
 
         // Build a pay context for a project that uses the default hook.

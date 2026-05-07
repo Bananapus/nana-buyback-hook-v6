@@ -1710,7 +1710,7 @@ contract V4BuybackHookTest is Test {
         assertEq(beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive swap proceeds");
     }
 
-    /// @notice H-3: When a wrapper splits cashOutCount into fee and non-fee tranches, the metadata-sourced count
+    /// @notice When a wrapper splits cashOutCount into fee and non-fee tranches, the metadata-sourced count
     /// should be used for reminting/selling, NOT context.cashOutCount.
     function test_afterCashOutRecordedWith_usesMetadataCountNotContextCount() public {
         vm.prank(owner);
