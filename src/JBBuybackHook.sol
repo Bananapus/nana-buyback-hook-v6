@@ -195,7 +195,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     function afterCashOutRecordedWith(JBAfterCashOutRecordedContext calldata context) external payable override {
         // Make sure only payment terminals of the project can trigger the sell-side hook.
         if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
-            revert JBBuybackHook_CallerNotTerminal(msg.sender);
+            revert JBBuybackHook_CallerNotTerminal({caller: msg.sender});
         }
 
         // Normalize the native token address so it matches how pool keys are stored.
@@ -254,7 +254,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Re-check the minimum to fail closed if the pool returned less than expected.
         if (amountReceived < minimumSwapAmountOut) {
-            revert JBBuybackHook_SpecifiedSlippageExceeded(amountReceived, minimumSwapAmountOut);
+            revert JBBuybackHook_SpecifiedSlippageExceeded({amount: amountReceived, minimum: minimumSwapAmountOut});
         }
 
         // Burn only the reminted residue left unsold by THIS execution.
@@ -300,7 +300,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable override {
         // Make sure only the project's payment terminals can access this function.
         if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
-            revert JBBuybackHook_Unauthorized(msg.sender);
+            revert JBBuybackHook_Unauthorized({caller: msg.sender});
         }
 
         // Parse the metadata forwarded from the data hook.
@@ -410,9 +410,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // still degrade to mint-only fallback without reverting.
         bool shouldEnforceMinimum = hasExplicitMinimumSwapAmountOut || !swapFailed;
         if (shouldEnforceMinimum && exactSwapAmountOut + partialMintTokenCount < minimumSwapAmountOut) {
-            revert JBBuybackHook_SpecifiedSlippageExceeded(
-                exactSwapAmountOut + partialMintTokenCount, minimumSwapAmountOut
-            );
+            revert JBBuybackHook_SpecifiedSlippageExceeded({
+                amount: exactSwapAmountOut + partialMintTokenCount, minimum: minimumSwapAmountOut
+            });
         }
 
         // Add the amount to mint to the leftover mint amount.
@@ -563,7 +563,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Make sure the specified window is within reasonable bounds.
         if (newWindow < MIN_TWAP_WINDOW || newWindow > MAX_TWAP_WINDOW) {
-            revert JBBuybackHook_InvalidTwapWindow(newWindow, MIN_TWAP_WINDOW, MAX_TWAP_WINDOW);
+            revert JBBuybackHook_InvalidTwapWindow({value: newWindow, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
         }
 
         // Normalize the terminal token — use address(0) for native.
@@ -977,12 +977,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     {
         // Make sure this pool hasn't already been set for this project/token pair.
         if (_poolIsSet[projectId][normalizedTerminalToken]) {
-            revert JBBuybackHook_PoolAlreadySet(_poolKeyOf[projectId][normalizedTerminalToken].toId());
+            revert JBBuybackHook_PoolAlreadySet({poolId: _poolKeyOf[projectId][normalizedTerminalToken].toId()});
         }
 
         // Make sure the provided TWAP window is within reasonable bounds.
         if (twapWindow < MIN_TWAP_WINDOW || twapWindow > MAX_TWAP_WINDOW) {
-            revert JBBuybackHook_InvalidTwapWindow(twapWindow, MIN_TWAP_WINDOW, MAX_TWAP_WINDOW);
+            revert JBBuybackHook_InvalidTwapWindow({value: twapWindow, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
         }
 
         // Make sure the project has issued a token.
@@ -990,7 +990,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Make sure the terminal token is not the project token.
         if (normalizedTerminalToken == projectToken) {
-            revert JBBuybackHook_TerminalTokenIsProjectToken(normalizedTerminalToken, projectToken);
+            revert JBBuybackHook_TerminalTokenIsProjectToken({
+                terminalToken: normalizedTerminalToken, projectToken: projectToken
+            });
         }
 
         // Validate the pool is initialized in the PoolManager.

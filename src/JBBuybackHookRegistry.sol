@@ -109,7 +109,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Allow the hook.
         isHookAllowed[hook] = true;
 
-        emit JBBuybackHookRegistry_AllowHook(hook);
+        emit JBBuybackHookRegistry_AllowHook({hook: hook});
     }
 
     /// @notice Removes a buyback hook implementation from the allowlist, preventing new projects from selecting it.
@@ -123,7 +123,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Disallow the hook.
         isHookAllowed[hook] = false;
 
-        emit JBBuybackHookRegistry_DisallowHook(hook);
+        emit JBBuybackHookRegistry_DisallowHook({hook: hook});
     }
 
     /// @notice Permanently locks a project's buyback hook assignment, preventing future changes. Once locked, the
@@ -153,13 +153,13 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
         // Verify the resolved hook matches what the caller expects to lock.
         if (hook != expectedHook) {
-            revert JBBuybackHookRegistry_HookMismatch(hook, expectedHook);
+            revert JBBuybackHookRegistry_HookMismatch({currentHook: hook, expectedHook: expectedHook});
         }
 
         // Set the hook to locked.
         hasLockedHook[projectId] = true;
 
-        emit JBBuybackHookRegistry_LockHook(projectId);
+        emit JBBuybackHookRegistry_LockHook({projectId: projectId});
     }
 
     /// @notice Sets the protocol-wide default buyback hook. Only affects projects created AFTER this call — existing
@@ -180,7 +180,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Allow the default hook.
         isHookAllowed[hook] = true;
 
-        emit JBBuybackHookRegistry_SetDefaultHook(hook);
+        emit JBBuybackHookRegistry_SetDefaultHook({hook: hook});
     }
 
     /// @notice Assigns a specific buyback hook implementation to a project, overriding the default.

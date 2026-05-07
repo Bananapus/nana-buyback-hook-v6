@@ -28,7 +28,11 @@ contract DefaultHookZeroCheck is Test {
     /// @notice Setting address(0) as default hook should revert with JBBuybackHookRegistry_ZeroHook.
     function test_setDefaultHook_revertsOnZeroAddress() public {
         vm.prank(owner);
-        vm.expectRevert(JBBuybackHookRegistry.JBBuybackHookRegistry_ZeroHook.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHookRegistry.JBBuybackHookRegistry_ZeroHook.selector, IJBRulesetDataHook(address(0))
+            )
+        );
         registry.setDefaultHook(IJBRulesetDataHook(address(0)));
     }
 
