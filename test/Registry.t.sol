@@ -431,7 +431,11 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Disallow hookA — should revert because it is the current default.
         vm.prank(owner);
-        vm.expectRevert(JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector, hookA
+            )
+        );
         registry.disallowHook(hookA);
 
         // Default hook should remain unchanged.
@@ -476,7 +480,11 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         // Attempting to disallow the default hook should revert, protecting the lock flow.
         vm.prank(owner);
-        vm.expectRevert(JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHookRegistry.JBBuybackHookRegistry_CannotDisallowDefaultHook.selector, hookA
+            )
+        );
         registry.disallowHook(hookA);
 
         // Default remains, so lock should still work.
