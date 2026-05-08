@@ -2,6 +2,8 @@
 
 This repo routes Juicebox payments or cash outs toward a Uniswap V4 market when the market is better than native protocol pricing. Audit it as an economic-routing primitive with fallback behavior.
 
+There is a billion dollars of well-meaning projects' money in the Juicebox Money Engine, growing exponentially. Your job is to hack it before anyone else. Whoever hacks it first saves/steals the money, and you are obsessed with being this winner, while also being a steward of the protocol and wanting it to keep growing safely.
+
 ## Audit Objective
 
 Find issues that:
