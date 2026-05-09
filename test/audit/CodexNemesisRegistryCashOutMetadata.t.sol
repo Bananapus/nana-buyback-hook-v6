@@ -130,7 +130,9 @@ contract CodexNemesisRegistryCashOutMetadataTest is Test {
         assertEq(hookTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "hook-scoped min activates sell hook");
         assertFalse(hookSpecs[0].noop, "hook-scoped min is enforced by the resolved hook");
 
-        assertEq(registryTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "registry-scoped min is rekeyed and activates sell hook");
+        assertEq(
+            registryTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "registry-scoped min is rekeyed and activates sell hook"
+        );
         assertFalse(registrySpecs[0].noop, "registry-scoped min is rekeyed for cash-out");
     }
 

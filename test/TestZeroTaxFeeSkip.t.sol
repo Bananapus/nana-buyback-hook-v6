@@ -277,8 +277,7 @@ contract TestZeroTaxFeeSkip is Test {
     /// @notice cashOutTaxRate=MAX → JBCashOuts returns 0 (no reclaim), so net is 0.
     function test_maxTaxRate_zeroReclaim() public {
         _mockRuleset(JBConstants.MAX_CASH_OUT_TAX_RATE);
-        JBBeforeCashOutRecordedContext memory context =
-            _buildContext(JBConstants.MAX_CASH_OUT_TAX_RATE, false, 1 ether);
+        JBBeforeCashOutRecordedContext memory context = _buildContext(JBConstants.MAX_CASH_OUT_TAX_RATE, false, 1 ether);
 
         (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 

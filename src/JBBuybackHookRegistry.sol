@@ -323,14 +323,14 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
             );
         }
 
-        // Remap any cashOutMinReclaimed metadata addressed to the registry into metadata addressed to the resolved hook.
+        // Remap any cashOutMinReclaimed metadata addressed to the registry into metadata addressed to the resolved
+        // hook.
         bytes4 registryCashOutMinId = JBMetadataResolver.getId("cashOutMinReclaimed", address(this));
         (bool found, bytes memory minData) = JBMetadataResolver.getDataFor(registryCashOutMinId, context.metadata);
 
         if (found) {
             bytes4 hookCashOutMinId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
-            bytes memory rekeyedMetadata =
-                JBMetadataResolver.addToMetadata(context.metadata, hookCashOutMinId, minData);
+            bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata(context.metadata, hookCashOutMinId, minData);
             JBBeforeCashOutRecordedContext memory modifiedContext = JBBeforeCashOutRecordedContext({
                 terminal: context.terminal,
                 holder: context.holder,

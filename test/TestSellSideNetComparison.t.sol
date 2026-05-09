@@ -114,7 +114,7 @@ contract TestSellSideNetComparison is Test {
     // fee = 0.275 * 25/1000 = 0.006875 ether
     // net = 0.275 - 0.006875 = 0.268125 ether
     uint256 constant GROSS = 0.275 ether;
-    uint256 constant NET = 0.268125 ether;
+    uint256 constant NET = 0.268_125 ether;
 
     function setUp() public {
         mockPm = new MockPoolManager();
