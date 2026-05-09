@@ -17,7 +17,6 @@ import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCashOuts} from "@bananapus/core-v6/src/libraries/JBCashOuts.sol";
-import {JBFees} from "@bananapus/core-v6/src/libraries/JBFees.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
@@ -1454,8 +1453,7 @@ contract V4BuybackHookTest is Test {
         ) = abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumSwapAmountOut, explicitMinimumReclaimed, "explicit cash-out minimum should be honored");
         assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
-        // Net = gross - fee: 0.5 ether - (0.5 ether * 25 / 1000) = 0.4875 ether
-        assertEq(minimumProtocolAmountOut, 0.4875 ether, "protocol minimum should reflect the net cash out amount");
+        assertEq(minimumProtocolAmountOut, 0.5 ether, "zero-tax protocol minimum should not deduct terminal fees");
         assertEq(twapTick, 0, "explicit minimum should skip TWAP diagnostics");
         assertEq(twapLiquidity, 0, "explicit minimum should skip TWAP diagnostics");
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
@@ -1509,8 +1507,7 @@ contract V4BuybackHookTest is Test {
             PoolId decodedPoolId
         ) = abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(cashOutCountInMetadata, 1 ether, "metadata should encode the cash-out count for afterCashOut");
-        // Net = gross - fee: 50 ether - (50 ether * 25 / 1000) = 48.75 ether
-        assertEq(minimumProtocolAmountOut, 48.75 ether, "metadata should include the net protocol minimum");
+        assertEq(minimumProtocolAmountOut, 50 ether, "zero-tax metadata should include the gross protocol minimum");
         assertGt(minimumSwapAmountOut, 0, "metadata should include a non-zero sell-side minimum");
         assertLt(minimumSwapAmountOut, minimumProtocolAmountOut, "sell-side minimum should lose to the protocol path");
         assertEq(twapTick, 0, "TWAP tick should be surfaced in informational metadata");
@@ -1576,11 +1573,9 @@ contract V4BuybackHookTest is Test {
 
         (uint256 minimumSwapAmountOut, uint256 cashOutCountInMetadata, uint256 minimumProtocolAmountOut,,,) =
             abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
-        uint256 netProtocolMinimum =
-            protocolMinimum - JBFees.feeAmountFrom({amountBeforeFee: protocolMinimum, feePercent: 25});
         assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
         assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
-        assertEq(minimumProtocolAmountOut, netProtocolMinimum, "metadata should surface net protocol minimum");
+        assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface gross zero-tax protocol minimum");
     }
 
     function testFuzz_beforeCashOutRecordedWith_explicitMinimumAtOrBelowProtocolNoops(
@@ -1602,11 +1597,8 @@ contract V4BuybackHookTest is Test {
         uint256 protocolMinimum = JBCashOuts.cashOutFrom({
             surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
         });
-        // Noop requires explicitMinimum <= netProtocolMinimum (after fee deduction).
-        uint256 netProtocolMinimum =
-            protocolMinimum - JBFees.feeAmountFrom({amountBeforeFee: protocolMinimum, feePercent: 25});
-        uint256 delta = bound(uint256(deltaSeed), 0, netProtocolMinimum);
-        uint256 explicitMinimum = netProtocolMinimum - delta;
+        uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
+        uint256 explicitMinimum = protocolMinimum - delta;
 
         bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
         bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum));
@@ -1647,11 +1639,11 @@ contract V4BuybackHookTest is Test {
             abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
         assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
-        assertEq(minimumProtocolAmountOut, netProtocolMinimum, "metadata should surface net protocol minimum");
+        assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface gross zero-tax protocol minimum");
         assertLe(
             minimumSwapAmountOut,
             minimumProtocolAmountOut,
-            "noop path should only happen at or below net protocol minimum"
+            "noop path should only happen at or below the zero-tax protocol minimum"
         );
     }
 
