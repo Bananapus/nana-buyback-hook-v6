@@ -759,7 +759,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Deduct the terminal's fee from the direct cash-out amount so we compare against net reclaim.
         uint256 netDirectCashOutAmount = directCashOutAmount;
-        if (!context.beneficiaryIsFeeless) {
+        if (!context.beneficiaryIsFeeless && context.cashOutTaxRate != 0) {
             netDirectCashOutAmount -= JBFees.feeAmountFrom({
                 amountBeforeFee: directCashOutAmount, feePercent: IJBFeeTerminal(context.terminal).FEE()
             });

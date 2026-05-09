@@ -3,20 +3,17 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 
-// JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
 import {IJBFeeTerminal} from "@bananapus/core-v6/src/interfaces/IJBFeeTerminal.sol";
-import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
 import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
 import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
-import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
+import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
-import {JBCashOuts} from "@bananapus/core-v6/src/libraries/JBCashOuts.sol";
 import {JBFees} from "@bananapus/core-v6/src/libraries/JBFees.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
@@ -27,7 +24,6 @@ import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadat
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-// Uniswap V4
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -35,24 +31,21 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
-// Buyback hook
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 
-// Test mocks
 import {MockPoolManager} from "./mock/MockPoolManager.sol";
 import {MockOracleHook} from "./mock/MockOracleHook.sol";
 
-/// @notice Simple ERC20 token for testing.
-contract TestProjectToken is ERC20 {
-    constructor() ERC20("ProjectToken", "PT") {}
+contract ZeroTaxProjectToken is ERC20 {
+    constructor() ERC20("PT", "PT") {}
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
     }
 }
 
-/// @notice Test harness that exposes JBBuybackHook internals.
-contract ForTest_NetComparison is JBBuybackHook {
+/// @notice Test harness for fee skip behavior.
+contract ForTest_ZeroTax is JBBuybackHook {
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
@@ -65,32 +58,18 @@ contract ForTest_NetComparison is JBBuybackHook {
     )
         JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
     {}
-
-    function forTestInitPool(
-        uint256 projectId,
-        PoolKey calldata key,
-        uint256 twapWindow,
-        address projectToken,
-        address terminalToken
-    )
-        external
-    {
-        _poolKeyOf[projectId][terminalToken] = key;
-        twapWindowOf[projectId][terminalToken] = twapWindow;
-        projectTokenOf[projectId] = projectToken;
-    }
 }
 
-/// @title TestSellSideNetComparison
-/// @notice Tests that sell-side routing compares AMM quotes against the net (post-fee) terminal reclaim.
-contract TestSellSideNetComparison is Test {
+/// @title TestZeroTaxFeeSkip
+/// @notice Verifies the fee deduction is skipped when cashOutTaxRate == 0.
+contract TestZeroTaxFeeSkip is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
 
-    ForTest_NetComparison hook;
+    ForTest_ZeroTax hook;
     MockPoolManager mockPm;
     MockOracleHook mockOracle;
-    TestProjectToken projectToken;
+    ZeroTaxProjectToken projectToken;
 
     IJBDirectory directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions permissions = IJBPermissions(makeAddr("permissions"));
@@ -98,28 +77,19 @@ contract TestSellSideNetComparison is Test {
     IJBProjects projects = IJBProjects(makeAddr("projects"));
     IJBTokens tokens = IJBTokens(makeAddr("tokens"));
     IJBController controller = IJBController(makeAddr("controller"));
-    IJBMultiTerminal terminal = IJBMultiTerminal(makeAddr("terminal"));
+    address terminal = makeAddr("terminal");
 
     address owner = makeAddr("owner");
-    address payer = makeAddr("payer");
+    address holder = makeAddr("holder");
 
-    uint256 projectId = 42;
-    uint32 twapWindow = 600;
+    uint256 projectId = 77;
 
     PoolKey poolKey;
-
-    // Scenario: cashOutCount=10, totalSupply=100, surplus=5, taxRate=5000 (50%)
-    // gross = cashOuts.cashOutFrom(surplus=5, cashOutCount=10, totalSupply=100, taxRate=5000)
-    //       = 10/100 * 5 * [(MAX - 5000) + 5000 * (10/100)] / MAX = 0.5 * 0.55 = 0.275 ether
-    // fee = 0.275 * 25/1000 = 0.006875 ether
-    // net = 0.275 - 0.006875 = 0.268125 ether
-    uint256 constant GROSS = 0.275 ether;
-    uint256 constant NET = 0.268125 ether;
 
     function setUp() public {
         mockPm = new MockPoolManager();
         mockOracle = new MockOracleHook();
-        projectToken = new TestProjectToken();
+        projectToken = new ZeroTaxProjectToken();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
@@ -127,9 +97,9 @@ contract TestSellSideNetComparison is Test {
         vm.etch(address(projects), "0x01");
         vm.etch(address(tokens), "0x01");
         vm.etch(address(controller), "0x01");
-        vm.etch(address(terminal), "0x01");
+        vm.etch(terminal, "0x01");
 
-        hook = new ForTest_NetComparison({
+        hook = new ForTest_ZeroTax({
             directory: directory,
             permissions: permissions,
             prices: prices,
@@ -152,13 +122,13 @@ contract TestSellSideNetComparison is Test {
         vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (projectId)), abi.encode(controller));
         vm.mockCall(
             address(directory),
-            abi.encodeCall(directory.isTerminalOf, (projectId, IJBTerminal(address(terminal)))),
+            abi.encodeCall(directory.isTerminalOf, (projectId, IJBTerminal(terminal))),
             abi.encode(true)
         );
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
         );
-        vm.mockCall(address(terminal), abi.encodeCall(IJBFeeTerminal.FEE, ()), abi.encode(uint256(25)));
+        vm.mockCall(terminal, abi.encodeCall(IJBFeeTerminal.FEE, ()), abi.encode(uint256(25)));
         vm.mockCall(
             address(permissions),
             abi.encodeWithSignature("hasPermission(address,address,uint256,uint256,bool,bool)"),
@@ -170,22 +140,21 @@ contract TestSellSideNetComparison is Test {
             abi.encode(true)
         );
 
-        _mockCurrentRuleset();
-
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
         mockPm.setSlot0(poolKey.toId(), sqrtPrice, 0, 3000);
         mockPm.setLiquidity(poolKey.toId(), 1_000_000 ether);
 
         vm.prank(owner);
         hook.setPoolFor({
-            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+            projectId: projectId, poolKey: poolKey, twapWindow: 600, terminalToken: JBConstants.NATIVE_TOKEN
         });
     }
 
-    function _mockCurrentRuleset() internal {
+    function _mockRuleset(uint256 cashOutTaxRate) internal {
         JBRulesetMetadata memory meta = JBRulesetMetadata({
             reservedPercent: 0,
-            cashOutTaxRate: 5000,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            cashOutTaxRate: uint16(cashOutTaxRate),
             baseCurrency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
             pausePay: false,
             pauseCreditTransfers: false,
@@ -221,8 +190,9 @@ contract TestSellSideNetComparison is Test {
     }
 
     function _buildContext(
-        uint256 explicitMinimum,
-        bool beneficiaryIsFeeless
+        uint256 cashOutTaxRate,
+        bool beneficiaryIsFeeless,
+        uint256 explicitMinimum
     )
         internal
         view
@@ -232,8 +202,8 @@ contract TestSellSideNetComparison is Test {
         bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum));
 
         return JBBeforeCashOutRecordedContext({
-            terminal: address(terminal),
-            holder: payer,
+            terminal: terminal,
+            holder: holder,
             projectId: projectId,
             rulesetId: 1,
             cashOutCount: 10 ether,
@@ -245,51 +215,76 @@ contract TestSellSideNetComparison is Test {
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             }),
             useTotalSurplus: false,
-            cashOutTaxRate: 5000,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            cashOutTaxRate: uint16(cashOutTaxRate),
             beneficiaryIsFeeless: beneficiaryIsFeeless,
             metadata: metadata
         });
     }
 
-    /// @notice AMM quote between net and gross → routes to AMM (noop=false).
-    function test_ammQuoteBetweenNetAndGross_routesToAmm() public view {
-        // 0.27 ether is between net (0.268125) and gross (0.275)
-        uint256 ammQuote = 0.27 ether;
-        JBBeforeCashOutRecordedContext memory context = _buildContext(ammQuote, false);
-
-        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
-
-        assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "should route to AMM");
-        assertFalse(specs[0].noop, "should not be noop when AMM beats net reclaim");
+    /// @notice Decode netDirectCashOutAmount from hook metadata (3rd field in 7-tuple).
+    function _decodeNet(bytes memory metadata) internal pure returns (uint256 netDirectCashOutAmount) {
+        (,, netDirectCashOutAmount,,,,) =
+            abi.decode(metadata, (uint256, uint256, uint256, int24, uint128, PoolId, uint256));
     }
 
-    /// @notice AMM quote below net reclaim → routes to terminal (noop=true).
-    function test_ammQuoteBelowNet_routesToTerminal() public view {
-        // 0.26 ether is below net (0.268125)
-        uint256 ammQuote = 0.26 ether;
-        JBBeforeCashOutRecordedContext memory context = _buildContext(ammQuote, false);
+    /// @notice cashOutTaxRate=0, feeless=false → no fee deduction (net == gross).
+    function test_zeroTaxRate_noFeeDeduction() public {
+        _mockRuleset(0);
+        // gross = 10/100 * 5 = 0.5 ether, no fee deduction → net = 0.5 ether
+        uint256 gross = 0.5 ether;
 
-        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+        // AMM quote just above gross → noop because AMM can't beat gross.
+        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, gross + 1);
 
-        assertEq(cashOutTaxRate, 5000, "should keep original tax rate for terminal path");
-        assertTrue(specs[0].noop, "should noop when AMM loses to net reclaim");
+        (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+
+        uint256 net = _decodeNet(specs[0].metadata);
+        assertEq(net, gross, "zero tax rate should not deduct fee");
     }
 
-    /// @notice Feeless beneficiary → compares against gross (no fee deduction), so AMM between net and gross noops.
-    function test_feelessBeneficiary_comparesAgainstGross() public view {
-        // 0.27 ether is between net (0.268125) and gross (0.275).
-        // With feeless, comparison is against gross 0.275 → noop because 0.27 <= 0.275.
-        uint256 ammQuote = 0.27 ether;
-        JBBeforeCashOutRecordedContext memory context = _buildContext(ammQuote, true);
+    /// @notice cashOutTaxRate=5000, feeless=false → fee IS deducted (net < gross).
+    function test_nonZeroTaxRate_feeDeducted() public {
+        _mockRuleset(5000);
+        JBBeforeCashOutRecordedContext memory context = _buildContext(5000, false, 1 ether);
 
-        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+        (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
-        assertEq(cashOutTaxRate, 5000, "feeless beneficiary should keep original tax rate");
-        assertTrue(specs[0].noop, "feeless beneficiary should compare against gross, so noop");
+        uint256 net = _decodeNet(specs[0].metadata);
 
-        // Metadata should encode gross (no fee deduction for feeless).
-        (,, uint256 minimumProtocolAmountOut,,,) =
-            abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
-        assertEq(minimumProtocolAmountOut, GROSS, "feeless metadata should encode gross reclaim");
+        // gross with 50% tax = 0.275 ether, fee = 0.006875 ether, net = 0.268125 ether
+        uint256 expectedGross = 0.275 ether;
+        uint256 expectedFee = JBFees.feeAmountFrom({amountBeforeFee: expectedGross, feePercent: 25});
+        uint256 expectedNet = expectedGross - expectedFee;
+
+        assertEq(net, expectedNet, "nonzero tax rate should deduct fee");
+        assertLt(net, expectedGross, "net should be less than gross");
+    }
+
+    /// @notice cashOutTaxRate=5000, feeless=true → no fee deduction (net == gross).
+    function test_feelessBeneficiary_alwaysGross() public {
+        _mockRuleset(5000);
+        JBBeforeCashOutRecordedContext memory context = _buildContext(5000, true, 1 ether);
+
+        (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+
+        uint256 net = _decodeNet(specs[0].metadata);
+
+        uint256 expectedGross = 0.275 ether;
+        assertEq(net, expectedGross, "feeless beneficiary should not deduct fee");
+    }
+
+    /// @notice cashOutTaxRate=MAX → JBCashOuts returns 0 (no reclaim), so net is 0.
+    function test_maxTaxRate_zeroReclaim() public {
+        _mockRuleset(JBConstants.MAX_CASH_OUT_TAX_RATE);
+        JBBeforeCashOutRecordedContext memory context =
+            _buildContext(JBConstants.MAX_CASH_OUT_TAX_RATE, false, 1 ether);
+
+        (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+
+        uint256 net = _decodeNet(specs[0].metadata);
+
+        // MAX_CASH_OUT_TAX_RATE makes JBCashOuts.cashOutFrom return 0 — no direct reclaim at all.
+        assertEq(net, 0, "max tax rate should yield zero reclaim");
     }
 }
