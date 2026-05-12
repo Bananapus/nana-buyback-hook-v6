@@ -76,6 +76,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_InsufficientPayAmount(uint256 swapAmount, uint256 totalPaid);
     error JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max);
     error JBBuybackHook_PoolAlreadySet(PoolId poolId);
+    error JBBuybackHook_PoolInitializedAtWrongPrice(uint160 actualSqrtPriceX96, uint160 expectedSqrtPriceX96);
     error JBBuybackHook_PoolNotInitialized(PoolId poolId);
     error JBBuybackHook_PoolNotSet(uint256 projectId, address terminalToken);
     error JBBuybackHook_SpecifiedSlippageExceeded(uint256 amount, uint256 minimum);
@@ -462,6 +463,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Initialize pool in PoolManager if not already initialized.
         try POOL_MANAGER.initialize({key: poolKey, sqrtPriceX96: sqrtPriceX96}) {} catch {}
+
+        // The project token address can be predicted before deployment (CREATE2 with project-supplied salt), so an
+        // attacker can front-run the buyback configuration by initializing the V4 pool at an arbitrary
+        // `sqrtPriceX96`. Without this check, `_setPoolFor` would lock the poisoned price in for all future
+        // buyback routing. Read the on-chain price after the initialize attempt and reject any mismatch — callers
+        // pass the price they expect, so honest reinitialization is unaffected.
+        (uint160 actualSqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolKey.toId());
+        if (actualSqrtPriceX96 != sqrtPriceX96) {
+            revert JBBuybackHook_PoolInitializedAtWrongPrice({
+                actualSqrtPriceX96: actualSqrtPriceX96, expectedSqrtPriceX96: sqrtPriceX96
+            });
+        }
 
         _setPoolFor({
             projectId: projectId,
