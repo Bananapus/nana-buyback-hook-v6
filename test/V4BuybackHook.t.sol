@@ -17,6 +17,7 @@ import {IJBToken} from "@bananapus/core-v6/src/interfaces/IJBToken.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCashOuts} from "@bananapus/core-v6/src/libraries/JBCashOuts.sol";
+import {JBFees} from "@bananapus/core-v6/src/libraries/JBFees.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
@@ -1453,7 +1454,10 @@ contract V4BuybackHookTest is Test {
         ) = abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumSwapAmountOut, explicitMinimumReclaimed, "explicit cash-out minimum should be honored");
         assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
-        assertEq(minimumProtocolAmountOut, 0.5 ether, "zero-tax protocol minimum should not deduct terminal fees");
+        // Zero-tax non-feeless cash-outs still pay the terminal fee (against `_feeFreeSurplusOf`), so the surfaced
+        // direct-path amount is gross minus the 2.5% terminal fee.
+        uint256 expectedNet = 0.5 ether - JBFees.feeAmountFrom({amountBeforeFee: 0.5 ether, feePercent: 25});
+        assertEq(minimumProtocolAmountOut, expectedNet, "zero-tax direct path is net of terminal fee for non-feeless");
         assertEq(twapTick, 0, "explicit minimum should skip TWAP diagnostics");
         assertEq(twapLiquidity, 0, "explicit minimum should skip TWAP diagnostics");
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
@@ -1507,7 +1511,9 @@ contract V4BuybackHookTest is Test {
             PoolId decodedPoolId
         ) = abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(cashOutCountInMetadata, 1 ether, "metadata should encode the cash-out count for afterCashOut");
-        assertEq(minimumProtocolAmountOut, 50 ether, "zero-tax metadata should include the gross protocol minimum");
+        // Zero-tax non-feeless cash-out is still charged the terminal fee against `_feeFreeSurplusOf`.
+        uint256 expectedNet50 = 50 ether - JBFees.feeAmountFrom({amountBeforeFee: 50 ether, feePercent: 25});
+        assertEq(minimumProtocolAmountOut, expectedNet50, "zero-tax direct path is net of terminal fee for non-feeless");
         assertGt(minimumSwapAmountOut, 0, "metadata should include a non-zero sell-side minimum");
         assertLt(minimumSwapAmountOut, minimumProtocolAmountOut, "sell-side minimum should lose to the protocol path");
         assertEq(twapTick, 0, "TWAP tick should be surfaced in informational metadata");
@@ -1531,9 +1537,11 @@ contract V4BuybackHookTest is Test {
         uint256 cashOutCount = bound(uint256(cashOutCountSeed), 1, 1_000_000 ether);
         uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
         uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
-        uint256 protocolMinimum = JBCashOuts.cashOutFrom({
+        uint256 grossDirect = JBCashOuts.cashOutFrom({
             surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
         });
+        // Non-feeless zero-tax cash-outs pay the terminal fee against `_feeFreeSurplusOf`.
+        uint256 protocolMinimum = grossDirect - JBFees.feeAmountFrom({amountBeforeFee: grossDirect, feePercent: 25});
         uint256 explicitMinimum = protocolMinimum + bound(uint256(deltaSeed), 1, 1_000_000 ether);
 
         bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
@@ -1594,9 +1602,11 @@ contract V4BuybackHookTest is Test {
         uint256 cashOutCount = bound(uint256(cashOutCountSeed), 1, 1_000_000 ether);
         uint256 totalSupply = bound(uint256(totalSupplySeed), cashOutCount, 10_000_000 ether);
         uint256 surplus = bound(uint256(surplusSeed), 0, 10_000_000 ether);
-        uint256 protocolMinimum = JBCashOuts.cashOutFrom({
+        uint256 grossDirect = JBCashOuts.cashOutFrom({
             surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
         });
+        // Non-feeless zero-tax cash-outs pay the terminal fee against `_feeFreeSurplusOf`.
+        uint256 protocolMinimum = grossDirect - JBFees.feeAmountFrom({amountBeforeFee: grossDirect, feePercent: 25});
         uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
         uint256 explicitMinimum = protocolMinimum - delta;
 
