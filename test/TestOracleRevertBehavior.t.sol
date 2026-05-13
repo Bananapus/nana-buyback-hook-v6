@@ -56,11 +56,10 @@ contract ORB_ForTest_BuybackHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IPoolManager poolManager,
-        IHooks oracleHook,
+        address deployer,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
+        JBBuybackHook(directory, permissions, prices, projects, tokens, deployer, trustedForwarder)
     {}
 
     function forTestInitPool(
@@ -133,10 +132,10 @@ contract TestOracleRevertBehavior is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            poolManager: IPoolManager(address(mockPm)),
-            oracleHook: IHooks(address(mockOracle)),
+            deployer: address(this),
             trustedForwarder: address(0)
         });
+        hook.setChainSpecificConstants(IPoolManager(address(mockPm)), IHooks(address(mockOracle)));
 
         // Build pool key: native ETH (address(0)) is always currency0.
         poolKey = PoolKey({

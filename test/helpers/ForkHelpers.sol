@@ -161,10 +161,9 @@ contract ForTest_BuybackHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IPoolManager poolManager,
-        IHooks oracleHook,
+        address deployer,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
+        JBBuybackHook(directory, permissions, prices, projects, tokens, deployer, trustedForwarder)
     {}
 }

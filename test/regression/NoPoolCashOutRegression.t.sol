@@ -31,10 +31,10 @@ contract RegressionNoPoolCashOutRegression is Test {
             prices: IJBPrices(makeAddr("prices")),
             projects: IJBProjects(makeAddr("projects")),
             tokens: IJBTokens(makeAddr("tokens")),
-            poolManager: IPoolManager(makeAddr("poolManager")),
-            oracleHook: IHooks(makeAddr("oracleHook")),
+            deployer: address(this),
             trustedForwarder: address(0)
         });
+        hook.setChainSpecificConstants(IPoolManager(makeAddr("poolManager")), IHooks(makeAddr("oracleHook")));
 
         (,,, uint256 effectiveSurplusValue,) = hook.beforeCashOutRecordedWith(_context());
 

@@ -77,10 +77,10 @@ contract CrossCurrency_Unit is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            poolManager: poolManager,
-            oracleHook: IHooks(address(0)),
+            deployer: address(this),
             trustedForwarder: address(0)
         });
+        hook.setChainSpecificConstants(poolManager, IHooks(address(0)));
 
         // Mock directory -> controller
         vm.mockCall(

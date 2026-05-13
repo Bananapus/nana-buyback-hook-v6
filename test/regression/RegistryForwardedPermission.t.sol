@@ -89,10 +89,10 @@ contract RegistryForwardedPermissionRegression is Test {
             prices: IJBPrices(prices),
             projects: IJBProjects(address(projects)),
             tokens: IJBTokens(tokens),
-            poolManager: IPoolManager(poolManager),
-            oracleHook: IHooks(oracleHook),
+            deployer: address(this),
             trustedForwarder: trustedForwarder
         });
+        hook.setChainSpecificConstants(IPoolManager(poolManager), IHooks(oracleHook));
 
         registry = new JBBuybackHookRegistry({
             permissions: permissions,

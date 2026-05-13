@@ -95,11 +95,10 @@ contract RegressionCashOutMetadataHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IPoolManager poolManager,
-        IHooks oracleHook,
+        address deployer,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
+        JBBuybackHook(directory, permissions, prices, projects, tokens, deployer, trustedForwarder)
     {}
 
     function forTestInitPool(
@@ -154,10 +153,10 @@ contract RegressionCashOutMetadataInflationRegression is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            poolManager: IPoolManager(address(poolManager)),
-            oracleHook: IHooks(address(oracleHook)),
+            deployer: address(this),
             trustedForwarder: address(0)
         });
+        hook.setChainSpecificConstants(IPoolManager(address(poolManager)), IHooks(address(oracleHook)));
 
         vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (projectId)), abi.encode(controller));
         vm.mockCall(
