@@ -346,7 +346,7 @@ contract V4RealOracleForkTest is Test {
                 decimals: 18,
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             }),
-            useTotalSurplus: false,
+            scopeCashOutsToLocalBalances: true,
             cashOutTaxRate: 0,
             beneficiaryIsFeeless: false,
             metadata: ""
@@ -720,7 +720,7 @@ contract V4RealOracleForkTest is Test {
             allowAddAccountingContext: false,
             allowAddPriceFeed: false,
             holdFees: false,
-            useTotalSurplusForCashOuts: false,
+            scopeCashOutsToLocalBalances: true,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),

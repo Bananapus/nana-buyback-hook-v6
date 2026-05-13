@@ -198,7 +198,7 @@ contract TestSellSideNetComparison is Test {
             allowAddAccountingContext: false,
             allowAddPriceFeed: false,
             holdFees: false,
-            useTotalSurplusForCashOuts: false,
+            scopeCashOutsToLocalBalances: true,
             useDataHookForPay: true,
             useDataHookForCashOut: true,
             dataHook: address(hook),
@@ -244,7 +244,7 @@ contract TestSellSideNetComparison is Test {
                 decimals: 18,
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             }),
-            useTotalSurplus: false,
+            scopeCashOutsToLocalBalances: true,
             cashOutTaxRate: 5000,
             beneficiaryIsFeeless: beneficiaryIsFeeless,
             metadata: metadata

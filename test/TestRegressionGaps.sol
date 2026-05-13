@@ -213,7 +213,7 @@ contract TestRegressionGaps is Test {
             allowAddAccountingContext: false,
             allowAddPriceFeed: false,
             holdFees: false,
-            useTotalSurplusForCashOuts: false,
+            scopeCashOutsToLocalBalances: true,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),
@@ -533,7 +533,7 @@ contract TestRegressionGaps is Test {
             surplus: JBTokenAmount({
                 token: address(usdc), value: 5e6, decimals: 6, currency: uint32(uint160(address(usdc)))
             }),
-            useTotalSurplus: false,
+            scopeCashOutsToLocalBalances: true,
             cashOutTaxRate: 0,
             beneficiaryIsFeeless: false,
             metadata: metadata

@@ -61,7 +61,8 @@ contract ForTest_ZeroTax is JBBuybackHook {
 }
 
 /// @title TestZeroTaxFeeSkip
-/// @notice Verifies the fee deduction is skipped when cashOutTaxRate == 0.
+/// @notice Verifies that the terminal fee is deducted from `netDirectCashOutAmount` on every non-feeless cash-out,
+/// including `cashOutTaxRate == 0`, because the core terminal can still charge a fee against `_feeFreeSurplusOf`.
 contract TestZeroTaxFeeSkip is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
@@ -167,7 +168,7 @@ contract TestZeroTaxFeeSkip is Test {
             allowAddAccountingContext: false,
             allowAddPriceFeed: false,
             holdFees: false,
-            useTotalSurplusForCashOuts: false,
+            scopeCashOutsToLocalBalances: true,
             useDataHookForPay: true,
             useDataHookForCashOut: true,
             dataHook: address(hook),
@@ -214,7 +215,7 @@ contract TestZeroTaxFeeSkip is Test {
                 decimals: 18,
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             }),
-            useTotalSurplus: false,
+            scopeCashOutsToLocalBalances: true,
             // forge-lint: disable-next-line(unsafe-typecast)
             cashOutTaxRate: uint16(cashOutTaxRate),
             beneficiaryIsFeeless: beneficiaryIsFeeless,
@@ -228,19 +229,40 @@ contract TestZeroTaxFeeSkip is Test {
             abi.decode(metadata, (uint256, uint256, uint256, int24, uint128, PoolId, uint256));
     }
 
-    /// @notice cashOutTaxRate=0, feeless=false → no fee deduction (net == gross).
-    function test_zeroTaxRate_noFeeDeduction() public {
+    /// @notice cashOutTaxRate=0, feeless=false → fee IS deducted because the core terminal can charge a fee against
+    /// `_feeFreeSurplusOf` even when `cashOutTaxRate == 0`.
+    function test_zeroTaxRate_feeStillDeductedForNonFeelessBeneficiary() public {
         _mockRuleset(0);
-        // gross = 10/100 * 5 = 0.5 ether, no fee deduction → net = 0.5 ether
+        // gross = 10/100 * 5 = 0.5 ether; fee = 25/1000 of gross = 0.0125 ether; net = 0.4875 ether.
         uint256 gross = 0.5 ether;
+        uint256 expectedFee = JBFees.feeAmountFrom({amountBeforeFee: gross, feePercent: 25});
+        uint256 expectedNet = gross - expectedFee;
 
-        // AMM quote just above gross → noop because AMM can't beat gross.
-        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, gross + 1);
+        // AMM quote just above net → routes to AMM because AMM beats net.
+        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, expectedNet + 1);
 
         (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         uint256 net = _decodeNet(specs[0].metadata);
-        assertEq(net, gross, "zero tax rate should not deduct fee");
+        assertEq(net, expectedNet, "zero tax rate should still deduct fee for non-feeless beneficiary");
+        assertFalse(specs[0].noop, "AMM beats net-of-fee direct path");
+    }
+
+    /// @notice cashOutTaxRate=0, feeless=true → no fee deduction (net == gross), because feeless beneficiary skips
+    /// the
+    /// terminal fee entirely.
+    function test_zeroTaxRate_feelessBeneficiarySkipsFee() public {
+        _mockRuleset(0);
+        uint256 gross = 0.5 ether;
+
+        // AMM minimum is just below gross → noop because feeless direct path returns gross.
+        JBBeforeCashOutRecordedContext memory context = _buildContext(0, true, gross - 1);
+
+        (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+
+        uint256 net = _decodeNet(specs[0].metadata);
+        assertEq(net, gross, "feeless beneficiary should not deduct fee at zero tax rate");
+        assertTrue(specs[0].noop, "AMM minimum below gross direct: feeless direct path wins");
     }
 
     /// @notice cashOutTaxRate=5000, feeless=false → fee IS deducted (net < gross).

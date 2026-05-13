@@ -339,7 +339,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
                 cashOutCount: context.cashOutCount,
                 totalSupply: context.totalSupply,
                 surplus: context.surplus,
-                useTotalSurplus: context.useTotalSurplus,
+                scopeCashOutsToLocalBalances: context.scopeCashOutsToLocalBalances,
                 cashOutTaxRate: context.cashOutTaxRate,
                 beneficiaryIsFeeless: context.beneficiaryIsFeeless,
                 metadata: rekeyedMetadata
