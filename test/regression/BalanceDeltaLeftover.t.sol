@@ -223,7 +223,7 @@ contract BDL_BalanceDeltaLeftover is Test {
             allowAddAccountingContext: false,
             allowAddPriceFeed: false,
             holdFees: false,
-            useTotalSurplusForCashOuts: false,
+            scopeCashOutsToLocalBalances: true,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),

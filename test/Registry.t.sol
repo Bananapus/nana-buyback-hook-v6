@@ -764,7 +764,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
                 decimals: 18,
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             }),
-            useTotalSurplus: false,
+            scopeCashOutsToLocalBalances: true,
             cashOutTaxRate: 5000,
             beneficiaryIsFeeless: false,
             metadata: ""

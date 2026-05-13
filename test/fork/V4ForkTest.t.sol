@@ -346,7 +346,7 @@ contract V4ForkTest is Test {
                 decimals: 18,
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
             }),
-            useTotalSurplus: false,
+            scopeCashOutsToLocalBalances: true,
             cashOutTaxRate: 0,
             beneficiaryIsFeeless: false,
             metadata: fullMetadata
@@ -572,7 +572,7 @@ contract V4ForkTest is Test {
             allowAddAccountingContext: false,
             allowAddPriceFeed: false,
             holdFees: false,
-            useTotalSurplusForCashOuts: false,
+            scopeCashOutsToLocalBalances: true,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),
@@ -1034,7 +1034,7 @@ contract V4ForkTest is Test {
                     decimals: 18,
                     currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
                 }),
-                useTotalSurplus: false,
+                scopeCashOutsToLocalBalances: true,
                 cashOutTaxRate: 0,
                 beneficiaryIsFeeless: false,
                 metadata: fullMetadata

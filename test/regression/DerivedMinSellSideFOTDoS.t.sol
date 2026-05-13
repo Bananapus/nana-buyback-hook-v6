@@ -211,7 +211,7 @@ contract DerivedMinSellSideFOTDoSTest is Test {
                 decimals: 18,
                 currency: uint32(uint160(address(terminalToken)))
             }),
-            useTotalSurplus: false,
+            scopeCashOutsToLocalBalances: true,
             cashOutTaxRate: 0,
             beneficiaryIsFeeless: false,
             metadata: ""

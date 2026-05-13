@@ -191,7 +191,7 @@ contract RegressionZeroTaxFeeFreeSurplusTest is Test {
                 currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
                 value: SURPLUS
             }),
-            useTotalSurplus: false,
+            scopeCashOutsToLocalBalances: true,
             cashOutTaxRate: cashOutTaxRate,
             beneficiaryIsFeeless: beneficiaryIsFeeless,
             metadata: metadata

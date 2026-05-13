@@ -113,7 +113,7 @@ contract CrossCurrency_Unit is Test {
             allowAddPriceFeed: false,
             ownerMustSendPayouts: false,
             holdFees: false,
-            useTotalSurplusForCashOuts: false,
+            scopeCashOutsToLocalBalances: true,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),
