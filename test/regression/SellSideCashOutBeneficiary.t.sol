@@ -120,7 +120,9 @@ contract SellSideCashOutBeneficiaryTest is Test {
             deployer: address(this),
             trustedForwarder: address(0)
         });
-        hook.setChainSpecificConstants(IPoolManager(address(poolManager)), IHooks(address(0x5)));
+        hook.setChainSpecificConstants({
+            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(0x5))
+        });
         hook.setProjectTokenForTest(PROJECT_ID, address(projectToken));
     }
 

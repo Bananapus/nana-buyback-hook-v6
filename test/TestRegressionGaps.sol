@@ -163,7 +163,9 @@ contract TestRegressionGaps is Test {
             deployer: address(this),
             trustedForwarder: address(0)
         });
-        hook.setChainSpecificConstants(IPoolManager(address(mockPm)), IHooks(address(mockOracle)));
+        hook.setChainSpecificConstants({
+            poolManager: IPoolManager(address(mockPm)), oracleHook: IHooks(address(mockOracle))
+        });
 
         // Set up default mock responses for JB core.
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));

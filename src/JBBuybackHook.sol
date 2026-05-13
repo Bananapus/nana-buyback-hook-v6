@@ -114,23 +114,27 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice The token registry.
     IJBTokens public immutable override TOKENS;
 
+    //*********************************************************************//
+    // -------------- internal immutable stored properties -------------- //
+    //*********************************************************************//
+
     /// @notice The deployer authorized to set the chain-specific Uniswap V4 PoolManager and oracle hook.
     /// @dev Held as immutable so the constructor inputs are byte-identical on every chain. The chain-specific
     /// Uniswap V4 PoolManager (and the matching JB V4 oracle hook deployed against it) are set by this
     /// deployer in a one-shot call to `setChainSpecificConstants`. This mirrors the
     /// `JBOptimismSuckerDeployer.setChainSpecificConstants` pattern in nana-suckers-v6, and makes this
     /// contract's CREATE2 address identical across chains.
-    address public immutable DEPLOYER;
+    address internal immutable _DEPLOYER;
 
     //*********************************************************************//
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
-    /// @notice The Uniswap V4 PoolManager singleton. Set once by `DEPLOYER` after construction via
+    /// @notice The Uniswap V4 PoolManager singleton. Set once by `_DEPLOYER` after construction via
     /// `setChainSpecificConstants` and never changed thereafter.
     IPoolManager public override POOL_MANAGER;
 
-    /// @notice The oracle hook used for all JB V4 pools (provides TWAP via observe()). Set once by `DEPLOYER`
+    /// @notice The oracle hook used for all JB V4 pools (provides TWAP via observe()). Set once by `_DEPLOYER`
     /// after construction via `setChainSpecificConstants` and never changed thereafter.
     IHooks public ORACLE_HOOK;
 
@@ -183,7 +187,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         TOKENS = tokens;
         PROJECTS = projects;
         PRICES = prices;
-        DEPLOYER = deployer;
+        _DEPLOYER = deployer;
     }
 
     //*********************************************************************//
@@ -495,14 +499,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     }
 
     /// @notice One-shot setter for the chain-specific Uniswap V4 PoolManager and oracle hook.
-    /// @dev Callable only by `DEPLOYER` and only once (when `POOL_MANAGER` is still `address(0)`). After this
+    /// @dev Callable only by `_DEPLOYER` and only once (when `POOL_MANAGER` is still `address(0)`). After this
     /// call both values are effectively immutable for the contract's lifetime. Mirrors the
     /// `JBOptimismSuckerDeployer.setChainSpecificConstants` pattern so the contract's CREATE2 inputs stay
     /// byte-identical across chains and its deployed address is unified.
     /// @param poolManager The Uniswap V4 PoolManager singleton on the current chain.
     /// @param oracleHook The JB V4 oracle hook deployed against `poolManager` on the current chain.
     function setChainSpecificConstants(IPoolManager poolManager, IHooks oracleHook) external override {
-        if (msg.sender != DEPLOYER) revert JBBuybackHook_Unauthorized({caller: msg.sender});
+        if (msg.sender != _DEPLOYER) revert JBBuybackHook_Unauthorized({caller: msg.sender});
         if (address(POOL_MANAGER) != address(0)) revert JBBuybackHook_AlreadyConfigured();
         POOL_MANAGER = poolManager;
         ORACLE_HOOK = oracleHook;

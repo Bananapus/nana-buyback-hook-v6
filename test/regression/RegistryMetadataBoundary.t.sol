@@ -79,7 +79,9 @@ contract RegressionRegistryMetadataBoundaryTest is Test {
             deployer: address(this),
             trustedForwarder: trustedForwarder
         });
-        hook.setChainSpecificConstants(IPoolManager(address(poolManager)), IHooks(address(oracleHook)));
+        hook.setChainSpecificConstants({
+            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(oracleHook))
+        });
 
         registry = new JBBuybackHookRegistry({
             permissions: permissions, projects: projects, owner: owner, trustedForwarder: trustedForwarder

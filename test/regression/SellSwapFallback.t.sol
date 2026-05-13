@@ -150,7 +150,9 @@ contract SellSwapFallback is Test {
             deployer: address(this),
             trustedForwarder: address(0)
         });
-        hook.setChainSpecificConstants(IPoolManager(address(poolManager)), IHooks(address(oracleHook)));
+        hook.setChainSpecificConstants({
+            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(oracleHook))
+        });
 
         // Mock directory responses.
         vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (projectId)), abi.encode(controller));

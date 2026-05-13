@@ -169,7 +169,7 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
         external;
 
     /// @notice One-shot setter for the chain-specific Uniswap V4 PoolManager and oracle hook.
-    /// @dev Callable only by `DEPLOYER` and only once (when `POOL_MANAGER` is still `address(0)`). After
+    /// @dev Callable only by the contract's deployer and only once (when `POOL_MANAGER` is still `address(0)`). After
     /// this call both values are effectively immutable for the contract's lifetime. Mirrors the
     /// `JBOptimismSuckerDeployer.setChainSpecificConstants` pattern so the contract's CREATE2 inputs stay
     /// byte-identical across chains and its deployed address is unified.

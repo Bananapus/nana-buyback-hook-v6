@@ -42,7 +42,9 @@ contract NoPoolCashOutSurplusTest is Test {
             deployer: address(this),
             trustedForwarder: address(0)
         });
-        hook.setChainSpecificConstants(IPoolManager(makeAddr("poolManager")), IHooks(makeAddr("oracleHook")));
+        hook.setChainSpecificConstants({
+            poolManager: IPoolManager(makeAddr("poolManager")), oracleHook: IHooks(makeAddr("oracleHook"))
+        });
 
         JBBeforeCashOutRecordedContext memory context = _context();
 

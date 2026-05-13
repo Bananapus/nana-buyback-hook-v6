@@ -137,7 +137,9 @@ contract BDL_BalanceDeltaLeftover is Test {
             deployer: address(this),
             trustedForwarder: address(0)
         });
-        hook.setChainSpecificConstants(IPoolManager(address(mockPm)), IHooks(address(mockOracle)));
+        hook.setChainSpecificConstants({
+            poolManager: IPoolManager(address(mockPm)), oracleHook: IHooks(address(mockOracle))
+        });
 
         // Build native pool key: native ETH (address(0)) is always currency0.
         {

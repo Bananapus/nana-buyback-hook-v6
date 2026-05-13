@@ -34,7 +34,9 @@ contract RegressionNoPoolCashOutRegression is Test {
             deployer: address(this),
             trustedForwarder: address(0)
         });
-        hook.setChainSpecificConstants(IPoolManager(makeAddr("poolManager")), IHooks(makeAddr("oracleHook")));
+        hook.setChainSpecificConstants({
+            poolManager: IPoolManager(makeAddr("poolManager")), oracleHook: IHooks(makeAddr("oracleHook"))
+        });
 
         (,,, uint256 effectiveSurplusValue,) = hook.beforeCashOutRecordedWith(_context());
 

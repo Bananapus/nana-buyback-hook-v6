@@ -103,7 +103,7 @@ contract DeployScript is Script, Sphinx {
             deployer: safeAddress(),
             trustedForwarder: trustedForwarder
         });
-        hook.setChainSpecificConstants(IPoolManager(poolManager), router.hook);
+        hook.setChainSpecificConstants({poolManager: IPoolManager(poolManager), oracleHook: router.hook});
 
         // Configure the hook to be the default.
         registry.setDefaultHook(hook);

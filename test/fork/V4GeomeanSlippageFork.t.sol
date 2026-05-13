@@ -126,7 +126,7 @@ contract V4GeomeanSlippageForkTest is Test {
             deployer: address(this),
             trustedForwarder: address(0)
         });
-        hook.setChainSpecificConstants(poolManager, IHooks(address(0)));
+        hook.setChainSpecificConstants({poolManager: poolManager, oracleHook: IHooks(address(0))});
 
         // Default JB mocks.
         vm.mockCall(
