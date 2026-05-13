@@ -83,11 +83,10 @@ contract SellSideRevertHook is JBBuybackHook {
         IJBPrices prices,
         IJBProjects projects,
         IJBTokens tokens,
-        IPoolManager poolManager,
-        IHooks oracleHook,
+        address deployer,
         address trustedForwarder
     )
-        JBBuybackHook(directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder)
+        JBBuybackHook(directory, permissions, prices, projects, tokens, deployer, trustedForwarder)
     {}
 
     function setProjectTokenForTest(uint256 projectId, address token) external {
@@ -118,9 +117,11 @@ contract SellSideCashOutBeneficiaryTest is Test {
             prices: IJBPrices(address(0x2)),
             projects: IJBProjects(address(0x3)),
             tokens: IJBTokens(address(0x4)),
-            poolManager: IPoolManager(address(poolManager)),
-            oracleHook: IHooks(address(0x5)),
+            deployer: address(this),
             trustedForwarder: address(0)
+        });
+        hook.setChainSpecificConstants({
+            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(0x5))
         });
         hook.setProjectTokenForTest(PROJECT_ID, address(projectToken));
     }

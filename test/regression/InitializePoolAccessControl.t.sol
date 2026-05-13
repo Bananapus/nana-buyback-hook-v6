@@ -37,9 +37,8 @@ contract InitializePoolAccessControl is Test {
     uint256 projectId = 42;
 
     function setUp() public {
-        hook = new JBBuybackHook(
-            directory, permissions, prices, projects, tokens, poolManager, oracleHook, trustedForwarder
-        );
+        hook = new JBBuybackHook(directory, permissions, prices, projects, tokens, address(this), trustedForwarder);
+        hook.setChainSpecificConstants({poolManager: poolManager, oracleHook: oracleHook});
 
         // Mock PROJECTS.ownerOf to return projectOwner.
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(projectOwner));

@@ -135,10 +135,10 @@ contract V4ForkTest is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            poolManager: poolManager,
-            oracleHook: IHooks(address(0)),
+            deployer: address(this),
             trustedForwarder: address(0)
         });
+        hook.setChainSpecificConstants({poolManager: poolManager, oracleHook: IHooks(address(0))});
 
         // Default JB mocks.
         vm.mockCall(

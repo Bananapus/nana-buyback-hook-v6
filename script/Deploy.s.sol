@@ -92,17 +92,18 @@ contract DeployScript is Script, Sphinx {
         // The registry is still deployed so it can be configured later once a PoolManager is verified.
         if (poolManager == address(0)) return;
 
-        // Deploy the V4 buyback hook.
+        // Deploy the V4 buyback hook with chain-same CREATE2 inputs; chain-specific constants
+        // (PoolManager + ORACLE_HOOK) are configured one-shot via setChainSpecificConstants below.
         JBBuybackHook hook = new JBBuybackHook{salt: buybackHook}({
             directory: core.directory,
             permissions: core.permissions,
             prices: core.prices,
             projects: core.projects,
             tokens: core.tokens,
-            poolManager: IPoolManager(poolManager),
-            oracleHook: router.hook,
+            deployer: safeAddress(),
             trustedForwarder: trustedForwarder
         });
+        hook.setChainSpecificConstants({poolManager: IPoolManager(poolManager), oracleHook: router.hook});
 
         // Configure the hook to be the default.
         registry.setDefaultHook(hook);

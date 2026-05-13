@@ -126,9 +126,11 @@ contract RegressionFOTMintAccountingRegression is Test {
             prices: prices,
             projects: projects,
             tokens: tokens,
-            poolManager: IPoolManager(address(poolManager)),
-            oracleHook: IHooks(address(oracleHook)),
+            deployer: address(this),
             trustedForwarder: address(0)
+        });
+        hook.setChainSpecificConstants({
+            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(oracleHook))
         });
 
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));

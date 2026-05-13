@@ -8,6 +8,7 @@ import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -166,6 +167,15 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
         uint160 sqrtPriceX96
     )
         external;
+
+    /// @notice One-shot setter for the chain-specific Uniswap V4 PoolManager and oracle hook.
+    /// @dev Callable only by the contract's deployer and only once (when `POOL_MANAGER` is still `address(0)`). After
+    /// this call both values are effectively immutable for the contract's lifetime. Mirrors the
+    /// `JBOptimismSuckerDeployer.setChainSpecificConstants` pattern so the contract's CREATE2 inputs stay
+    /// byte-identical across chains and its deployed address is unified.
+    /// @param poolManager The Uniswap V4 PoolManager singleton on the current chain.
+    /// @param oracleHook The JB V4 oracle hook deployed against `poolManager` on the current chain.
+    function setChainSpecificConstants(IPoolManager poolManager, IHooks oracleHook) external;
 
     /// @notice Change the TWAP window for a project's terminal token.
     /// @param projectId The ID of the project to set the TWAP window of.
