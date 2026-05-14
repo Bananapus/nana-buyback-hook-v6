@@ -146,7 +146,9 @@ contract SellSideCashOutBeneficiaryTest is Test {
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: payable(BENEFICIARY),
-            hookMetadata: abi.encode(uint256(1 ether), CASH_OUT_COUNT),
+            // No caller minimum (0) — exercises the fallback path that returns reminted tokens
+            // to the holder when the pool reverts.
+            hookMetadata: abi.encode(uint256(0), CASH_OUT_COUNT),
             cashOutMetadata: ""
         });
     }

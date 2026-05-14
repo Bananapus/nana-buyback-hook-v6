@@ -238,6 +238,28 @@ contract SellSwapFallback is Test {
         assertEq(controller.lastMintCount(), cashOutCount, "controller should have minted the sell count");
     }
 
+    /// @notice A non-zero hook-level minimum is now enforced even when the pool reverts. The hook
+    /// reverts the cash-out instead of silently settling in project tokens, which cannot satisfy a
+    /// terminal-token minimum.
+    function test_sellSwapFallback_nonZeroMinimumRevertsOnPoolRevert() public {
+        uint256 cashOutCount = 100 ether;
+        uint256 minimumSwapAmountOut = 80 ether;
+
+        poolManager.setShouldRevertOnUnlock(true);
+
+        JBAfterCashOutRecordedContext memory context = _buildCashOutContext({
+            cashOutCount: cashOutCount, minimumSwapAmountOut: minimumSwapAmountOut, cashOutCountToSell: cashOutCount
+        });
+
+        vm.prank(terminal);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, 0, minimumSwapAmountOut
+            )
+        );
+        hook.afterCashOutRecordedWith(context);
+    }
+
     /// @notice When the swap succeeds, behavior is unchanged — tokens are sold, proceeds go to beneficiary.
     function test_sellSwapFallback_normalSwapStillWorks() public {
         uint256 cashOutCount = 100 ether;
