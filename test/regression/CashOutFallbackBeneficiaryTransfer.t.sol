@@ -137,7 +137,9 @@ contract RegressionCashOutFallbackBeneficiaryTransferTest is Test {
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: payable(beneficiary),
-            hookMetadata: abi.encode(uint256(1 ether), cashOutCount),
+            // No caller minimum (0) — exercises the fallback path that returns reminted tokens
+            // to the holder when the pool reverts.
+            hookMetadata: abi.encode(uint256(0), cashOutCount),
             cashOutMetadata: ""
         });
 

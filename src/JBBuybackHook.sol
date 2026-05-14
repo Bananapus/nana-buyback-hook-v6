@@ -260,7 +260,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // If the pool reverted, return the reminted project tokens to the holder instead of
         // blocking the cash-out entirely. The holder keeps their tokens and can sell manually or retry.
+        // BUT if the caller explicitly demanded a non-zero terminal-token minimum, returning project
+        // tokens to the holder cannot satisfy that minimum — revert so the user is not silently
+        // settled in the wrong token at less than they asked for.
         if (swapFailed) {
+            if (minimumSwapAmountOut != 0) {
+                revert JBBuybackHook_SpecifiedSlippageExceeded({amount: 0, minimum: minimumSwapAmountOut});
+            }
             IERC20(projectToken).safeTransfer({to: context.holder, value: actualReceived});
             emit SellSwapReverted({projectId: context.projectId, holder: context.holder, amount: actualReceived});
             return;
@@ -746,9 +752,39 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Load the project token that would be sold if the pool route is chosen.
         address projectToken = projectTokenOf[context.projectId];
 
+        // Read any user-specified minimum reclaimed amount from metadata up front so the no-pool
+        // fallback below can honor it. An explicit non-zero value is a hard floor — when no
+        // pool/project-token is available, falling back to direct reclaim must still satisfy it.
+        uint256 minimumSwapAmountOut;
+        bool hasUserSpecifiedMinimumSwapAmountOut;
+        (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
+            id: JBMetadataResolver.getId("cashOutMinReclaimed"), metadata: context.metadata
+        });
+        if (exists) {
+            minimumSwapAmountOut = abi.decode(minData, (uint256));
+            // Only honor user minimum when they specify an explicit value.
+            // minimumSwapAmountOut=0 (programmatic orders) falls through to TWAP oracle.
+            hasUserSpecifiedMinimumSwapAmountOut = minimumSwapAmountOut != 0;
+        }
+
         // Fall back to the protocol cash-out path if no pool is configured, no project token is known,
-        // or no project tokens are being cashed out.
+        // or no project tokens are being cashed out. When the user supplied an explicit minimum, the
+        // fallback must still satisfy it — otherwise revert so the user does not silently receive less
+        // than they asked for.
         if (!_poolIsSet[context.projectId][terminalToken] || projectToken == address(0) || context.cashOutCount == 0) {
+            if (hasUserSpecifiedMinimumSwapAmountOut) {
+                uint256 fallbackReclaim = JBCashOuts.cashOutFrom({
+                    surplus: context.surplus.value,
+                    cashOutCount: context.cashOutCount,
+                    totalSupply: context.totalSupply,
+                    cashOutTaxRate: context.cashOutTaxRate
+                });
+                if (fallbackReclaim < minimumSwapAmountOut) {
+                    revert JBBuybackHook_SpecifiedSlippageExceeded({
+                        amount: fallbackReclaim, minimum: minimumSwapAmountOut
+                    });
+                }
+            }
             return (
                 context.cashOutTaxRate,
                 context.cashOutCount,
@@ -765,19 +801,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             totalSupply: context.totalSupply,
             cashOutTaxRate: context.cashOutTaxRate
         });
-
-        // Read any user-specified minimum reclaimed amount from metadata.
-        uint256 minimumSwapAmountOut;
-        bool hasUserSpecifiedMinimumSwapAmountOut;
-        (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
-            id: JBMetadataResolver.getId("cashOutMinReclaimed"), metadata: context.metadata
-        });
-        if (exists) {
-            minimumSwapAmountOut = abi.decode(minData, (uint256));
-            // Only honor user minimum when they specify an explicit value.
-            // minimumSwapAmountOut=0 (programmatic orders) falls through to TWAP oracle.
-            hasUserSpecifiedMinimumSwapAmountOut = minimumSwapAmountOut != 0;
-        }
 
         // Keep references to pool diagnostics. Explicit minimums skip the TWAP lookup, so diagnostics remain zeroed.
         uint256 rawSwapQuote;
@@ -969,6 +992,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
             // All the minting will be done in `afterPayRecordedWith`. Return a weight of 0.
             if (!noop) return (0, hookSpecifications);
+        } else if (hasUserSpecifiedQuote && tokenCountWithoutHook < minimumSwapAmountOut) {
+            // User supplied an explicit pool quote with a non-zero minimum, but no pool is configured —
+            // the direct mint alone cannot satisfy the requested minimum. Revert so the user does not
+            // silently receive fewer tokens than they asked for.
+            revert JBBuybackHook_SpecifiedSlippageExceeded({
+                amount: tokenCountWithoutHook, minimum: minimumSwapAmountOut
+            });
         }
     }
 
