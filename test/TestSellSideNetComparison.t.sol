@@ -6,7 +6,6 @@ import {Test} from "forge-std/Test.sol";
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
-import {IJBFeeTerminal} from "@bananapus/core-v6/src/interfaces/IJBFeeTerminal.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
 import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
 import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
@@ -159,7 +158,6 @@ contract TestSellSideNetComparison is Test {
         vm.mockCall(
             address(tokens), abi.encodeCall(tokens.tokenOf, (projectId)), abi.encode(IJBToken(address(projectToken)))
         );
-        vm.mockCall(address(terminal), abi.encodeCall(IJBFeeTerminal.FEE, ()), abi.encode(uint256(25)));
         vm.mockCall(
             address(permissions),
             abi.encodeWithSignature("hasPermission(address,address,uint256,uint256,bool,bool)"),
@@ -200,6 +198,7 @@ contract TestSellSideNetComparison is Test {
             allowAddPriceFeed: false,
             holdFees: false,
             scopeCashOutsToLocalBalances: true,
+            pauseCrossProjectFeeFreeInflows: false,
             useDataHookForPay: true,
             useDataHookForCashOut: true,
             dataHook: address(hook),

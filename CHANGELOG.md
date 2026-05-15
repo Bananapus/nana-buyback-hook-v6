@@ -12,6 +12,16 @@ This file describes the verified change from `nana-buyback-hook-v5` to the curre
 - `IJBBuybackHookRegistry`
 - `JBSwapLib`
 
+## 0.0.46 — Bump nana-core-v6 to 0.0.52
+
+`nana-core-v6@0.0.52` centralized the protocol fee constant into `JBConstants.FEE` and dropped `IJBFeeTerminal.FEE()`. Updated `JBBuybackHook` accordingly:
+
+- The direct cash-out fee deduction in `beforeCashOutRecordedWith` now uses `JBFees.standardFeeAmountFrom(directCashOutAmount)` instead of `JBFees.feeAmountFrom(directCashOutAmount, IJBFeeTerminal(context.terminal).FEE())`. `standardFeeAmountFrom` is the new compile-time-constant helper that hardcodes the standard 25/1000 rate.
+- Dropped the `IJBFeeTerminal` import (no longer referenced from src).
+- Removed all `vm.mockCall(... IJBFeeTerminal.FEE ...)` setups across `test/` — those mocks no longer intercept anything because the call is now a pure library reference. Test files that imported `IJBFeeTerminal` only for the mock had the import dropped.
+- Test struct literals updated for the new core 0.0.52 schema: `JBRulesetMetadata` gained `pauseCrossProjectFeeFreeInflows: false`; `JBBeforeCashOutRecordedContext` left unchanged (no new fields).
+- `package.json`: version 0.0.45 -> 0.0.46, core dep ^0.0.48 -> ^0.0.52, univ4-router-v6 dep ^0.0.30 -> ^0.0.31 (the matching downstream bump for core 0.0.52).
+
 ## Summary
 
 - The buyback path is now built around Uniswap v4-era infrastructure rather than the v5 Uniswap v3 model.
