@@ -6,7 +6,6 @@ import {Test} from "forge-std/Test.sol";
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
-import {IJBFeeTerminal} from "@bananapus/core-v6/src/interfaces/IJBFeeTerminal.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
 import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
 import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
@@ -188,7 +187,6 @@ contract V4BuybackHookTest is Test {
         );
 
         // Mock terminal FEE (2.5% = 25 out of MAX_FEE=1000)
-        vm.mockCall(address(terminal), abi.encodeCall(IJBFeeTerminal.FEE, ()), abi.encode(uint256(25)));
 
         // Mock permissions to always allow (for setPoolFor)
         vm.mockCall(
@@ -238,6 +236,7 @@ contract V4BuybackHookTest is Test {
             allowAddPriceFeed: false,
             holdFees: false,
             scopeCashOutsToLocalBalances: true,
+            pauseCrossProjectFeeFreeInflows: false,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),
@@ -539,6 +538,7 @@ contract V4BuybackHookTest is Test {
             allowAddPriceFeed: false,
             holdFees: false,
             scopeCashOutsToLocalBalances: true,
+            pauseCrossProjectFeeFreeInflows: false,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),
@@ -942,6 +942,7 @@ contract V4BuybackHookTest is Test {
             allowAddPriceFeed: false,
             holdFees: false,
             scopeCashOutsToLocalBalances: true,
+            pauseCrossProjectFeeFreeInflows: false,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),
@@ -1239,6 +1240,7 @@ contract V4BuybackHookTest is Test {
             allowAddPriceFeed: false,
             holdFees: false,
             scopeCashOutsToLocalBalances: true,
+            pauseCrossProjectFeeFreeInflows: false,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),

@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
-import {IJBFeeTerminal} from "@bananapus/core-v6/src/interfaces/IJBFeeTerminal.sol";
 import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
 import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
@@ -54,7 +53,7 @@ contract RegressionZeroTaxFeeFreeSurplusTest is Test {
     IJBProjects internal projects = IJBProjects(makeAddr("projects"));
     IJBTokens internal tokens = IJBTokens(makeAddr("tokens"));
     IJBController internal controller = IJBController(makeAddr("controller"));
-    IJBFeeTerminal internal terminal = IJBFeeTerminal(makeAddr("terminal"));
+    IJBTerminal internal terminal = IJBTerminal(makeAddr("terminal"));
 
     address internal owner = makeAddr("owner");
     address internal holder = makeAddr("holder");
@@ -100,7 +99,6 @@ contract RegressionZeroTaxFeeFreeSurplusTest is Test {
             abi.encodeCall(directory.isTerminalOf, (PROJECT_ID, IJBTerminal(address(terminal)))),
             abi.encode(true)
         );
-        vm.mockCall(address(terminal), abi.encodeCall(terminal.FEE, ()), abi.encode(TERMINAL_FEE));
         vm.mockCall(
             address(permissions),
             abi.encodeWithSignature("hasPermission(address,address,uint256,uint256,bool,bool)"),

@@ -6,7 +6,6 @@ import {Test} from "forge-std/Test.sol";
 // JB core imports
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
-import {IJBFeeTerminal} from "@bananapus/core-v6/src/interfaces/IJBFeeTerminal.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
 import {IJBPermissions} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
 import {IJBPrices} from "@bananapus/core-v6/src/interfaces/IJBPrices.sol";
@@ -147,7 +146,6 @@ contract TestRegressionGaps is Test {
         vm.etch(address(tokens), "0x01");
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
-        vm.mockCall(address(terminal), abi.encodeCall(IJBFeeTerminal.FEE, ()), abi.encode(uint256(25)));
 
         // Labels.
         vm.label(address(mockPm), "MockPoolManager");
@@ -215,6 +213,7 @@ contract TestRegressionGaps is Test {
             allowAddPriceFeed: false,
             holdFees: false,
             scopeCashOutsToLocalBalances: true,
+            pauseCrossProjectFeeFreeInflows: false,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),

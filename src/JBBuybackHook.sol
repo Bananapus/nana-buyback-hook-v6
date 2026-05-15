@@ -5,7 +5,6 @@ import {JBPermissioned} from "@bananapus/core-v6/src/abstract/JBPermissioned.sol
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBCashOutHook} from "@bananapus/core-v6/src/interfaces/IJBCashOutHook.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
-import {IJBFeeTerminal} from "@bananapus/core-v6/src/interfaces/IJBFeeTerminal.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
 import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
 import {IJBPermissioned} from "@bananapus/core-v6/src/interfaces/IJBPermissioned.sol";
@@ -820,14 +819,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        // Deduct the terminal's fee from the direct cash-out amount so we compare against net reclaim.
+        // Deduct the standard protocol fee from the direct cash-out amount so we compare against net reclaim.
         // The fee is charged on any non-feeless cash-out, including `cashOutTaxRate == 0` cash-outs that
-        // consume `_feeFreeSurplusOf` in the core terminal.
+        // consume `_feeFreeSurplusOf` in the core terminal. nana-core-v6 0.0.52 centralized the fee constant
+        // into `JBConstants.FEE`, so `JBFees.standardFeeAmountFrom` is used here instead of querying the
+        // terminal.
         uint256 netDirectCashOutAmount = directCashOutAmount;
         if (!context.beneficiaryIsFeeless) {
-            netDirectCashOutAmount -= JBFees.feeAmountFrom({
-                amountBeforeFee: directCashOutAmount, feePercent: IJBFeeTerminal(context.terminal).FEE()
-            });
+            netDirectCashOutAmount -= JBFees.standardFeeAmountFrom(directCashOutAmount);
         }
 
         bool noop = minimumSwapAmountOut <= netDirectCashOutAmount;
