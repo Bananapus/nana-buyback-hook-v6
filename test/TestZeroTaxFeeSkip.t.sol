@@ -168,7 +168,6 @@ contract TestZeroTaxFeeSkip is Test {
             allowAddPriceFeed: false,
             holdFees: false,
             scopeCashOutsToLocalBalances: true,
-            pauseCrossProjectFeeFreeInflows: false,
             useDataHookForPay: true,
             useDataHookForCashOut: true,
             dataHook: address(hook),

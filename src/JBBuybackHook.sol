@@ -821,9 +821,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Deduct the standard protocol fee from the direct cash-out amount so we compare against net reclaim.
         // The fee is charged on any non-feeless cash-out, including `cashOutTaxRate == 0` cash-outs that
-        // consume `_feeFreeSurplusOf` in the core terminal. nana-core-v6 0.0.52 centralized the fee constant
-        // into `JBConstants.FEE`, so `JBFees.standardFeeAmountFrom` is used here instead of querying the
-        // terminal.
+        // consume `_feeFreeSurplusOf` in the core terminal. The standard fee numerator is centralized in
+        // `JBConstants`, so use `JBFees.standardFeeAmountFrom` instead of querying the terminal.
         uint256 netDirectCashOutAmount = directCashOutAmount;
         if (!context.beneficiaryIsFeeless) {
             netDirectCashOutAmount -= JBFees.standardFeeAmountFrom(directCashOutAmount);
