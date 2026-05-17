@@ -197,7 +197,6 @@ contract DerivedMinBuySideFOTDoSTest is Test {
             allowAddPriceFeed: false,
             holdFees: false,
             scopeCashOutsToLocalBalances: true,
-            pauseCrossProjectFeeFreeInflows: false,
             useDataHookForPay: true,
             useDataHookForCashOut: false,
             dataHook: address(hook),
