@@ -59,8 +59,15 @@ contract ForTest_ZeroTax is JBBuybackHook {
 }
 
 /// @title TestZeroTaxFeeSkip
-/// @notice Verifies that the terminal fee is deducted from `netDirectCashOutAmount` on every non-feeless cash-out,
-/// including `cashOutTaxRate == 0`, because the core terminal can still charge a fee against `_feeFreeSurplusOf`.
+/// @notice Verifies the asymmetric fee model the hook applies for sell-side route scoring:
+///   - When `cashOutTaxRate != 0` and the beneficiary is non-feeless, the terminal always charges the standard
+///     fee on the full reclaim, so `netDirectCashOutAmount = gross - fee`.
+///   - When `cashOutTaxRate == 0` and the beneficiary is non-feeless, the terminal charges the standard fee only
+///     up to `_feeFreeSurplusOf` (which the hook cannot read). For routing the hook uses the best-case net
+///     (`= gross`) so it never directs to the AMM when the direct path could pay more.
+///   - Feeless beneficiaries always settle at gross.
+/// Explicit minima in the no-pool fallback are still enforced against the worst-case net (`gross - fee`) so the
+/// user is never silently settled below their floor — that path is covered in TestCashOutMinFallbackWorstCase.
 contract TestZeroTaxFeeSkip is Test {
     using PoolIdLibrary for PoolKey;
     using JBRulesetMetadataResolver for JBRulesetMetadata;
@@ -228,23 +235,39 @@ contract TestZeroTaxFeeSkip is Test {
             abi.decode(metadata, (uint256, uint256, uint256, int24, uint128, PoolId, uint256));
     }
 
-    /// @notice cashOutTaxRate=0, feeless=false → fee IS deducted because the core terminal can charge a fee against
-    /// `_feeFreeSurplusOf` even when `cashOutTaxRate == 0`.
-    function test_zeroTaxRate_feeStillDeductedForNonFeelessBeneficiary() public {
+    /// @notice `cashOutTaxRate=0`, non-feeless beneficiary → routing uses GROSS (best case) so the
+    /// hook never directs to the AMM when the direct path could pay more. The terminal's actual fee charge depends
+    /// on `_feeFreeSurplusOf` (which the hook cannot read); the best-case bound protects the user from being routed
+    /// to the AMM in cases where the direct path would settle at gross.
+    function test_zeroTaxRate_nonFeelessUsesGrossForRouting() public {
         _mockRuleset(0);
-        // gross = 10/100 * 5 = 0.5 ether; fee = 25/1000 of gross = 0.0125 ether; net = 0.4875 ether.
         uint256 gross = 0.5 ether;
-        uint256 expectedFee = JBFees.feeAmountFrom({amountBeforeFee: gross, feePercent: 25});
-        uint256 expectedNet = gross - expectedFee;
 
-        // AMM quote just above net → routes to AMM because AMM beats net.
-        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, expectedNet + 1);
+        // AMM quote just below gross → noop, because the direct path could pay gross under the active
+        // fee/free-surplus semantics. Routing to the AMM would deny the user the better outcome.
+        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, gross - 1);
 
         (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         uint256 net = _decodeNet(specs[0].metadata);
-        assertEq(net, expectedNet, "zero tax rate should still deduct fee for non-feeless beneficiary");
-        assertFalse(specs[0].noop, "AMM beats net-of-fee direct path");
+        assertEq(net, gross, "zero tax rate non-feeless routing must use gross (best case)");
+        assertTrue(specs[0].noop, "AMM below gross direct: hook must prefer direct path");
+    }
+
+    /// @notice With `cashOutTaxRate=0` and non-feeless beneficiary, the hook only routes to the AMM
+    /// when the AMM minimum strictly beats the best-case direct (gross). That way the route swap is unambiguously
+    /// better than any direct outcome under the active fee/free-surplus semantics.
+    function test_zeroTaxRate_nonFeelessRoutesToAmmOnlyWhenAmmBeatsGross() public {
+        _mockRuleset(0);
+        uint256 gross = 0.5 ether;
+
+        // AMM quote strictly above gross → AMM wins.
+        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, gross + 1);
+
+        (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
+
+        assertEq(_decodeNet(specs[0].metadata), gross, "still uses gross as the routing reference");
+        assertFalse(specs[0].noop, "AMM strictly beats gross direct: hook must route to AMM");
     }
 
     /// @notice cashOutTaxRate=0, feeless=true → no fee deduction (net == gross), because feeless beneficiary skips

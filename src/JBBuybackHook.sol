@@ -778,9 +778,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     totalSupply: context.totalSupply,
                     cashOutTaxRate: context.cashOutTaxRate
                 });
-                if (fallbackReclaim < minimumSwapAmountOut) {
+                // Enforce the user's explicit minimum against the worst-case net the terminal would pay out.
+                // The hook cannot read `_feeFreeSurplusOf`, so it must assume the terminal applies the full
+                // standard fee whenever the beneficiary is non-feeless — otherwise a `cashOutTaxRate != 0`
+                // (or zero-tax with non-zero `_feeFreeSurplusOf`) cash-out would silently settle the user
+                // below their stated floor after the fee is deducted.
+                uint256 worstCaseNetFallbackReclaim = fallbackReclaim;
+                if (!context.beneficiaryIsFeeless) {
+                    worstCaseNetFallbackReclaim -= JBFees.standardFeeAmountFrom(fallbackReclaim);
+                }
+                if (worstCaseNetFallbackReclaim < minimumSwapAmountOut) {
                     revert JBBuybackHook_SpecifiedSlippageExceeded({
-                        amount: fallbackReclaim, minimum: minimumSwapAmountOut
+                        amount: worstCaseNetFallbackReclaim, minimum: minimumSwapAmountOut
                     });
                 }
             }
@@ -819,12 +828,20 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        // Deduct the standard protocol fee from the direct cash-out amount so we compare against net reclaim.
-        // The fee is charged on any non-feeless cash-out, including `cashOutTaxRate == 0` cash-outs that
-        // consume `_feeFreeSurplusOf` in the core terminal. The standard fee numerator is centralized in
-        // `JBConstants`, so use `JBFees.standardFeeAmountFrom` instead of querying the terminal.
+        // Compute the executable net direct reclaim under the active fee semantics. The terminal's effective
+        // payout depends on the cash-out tax rate and whether the beneficiary is feeless:
+        //   - Feeless beneficiary: no fee, net == gross.
+        //   - Non-zero tax rate, non-feeless: terminal charges the standard fee on the full reclaim
+        //     (`_feeFreeSurplusOf` only gates the zero-tax branch), so net == gross - standardFee.
+        //   - Zero tax rate, non-feeless: terminal charges the standard fee only up to
+        //     `_feeFreeSurplusOf`, so net is somewhere in `[gross - standardFee, gross]`. The hook
+        //     cannot read that storage; treat the route as if the best case applies (no fee) so
+        //     the noop comparison only directs to the AMM when the AMM strictly beats gross — that
+        //     way the hook never routes to AMM when the direct path could have paid more under the
+        //     active fee/free-surplus semantics. The worst-case bound is still enforced against any
+        //     explicit minimum the user supplies (see the fallback and `afterCashOutRecordedWith` paths).
         uint256 netDirectCashOutAmount = directCashOutAmount;
-        if (!context.beneficiaryIsFeeless) {
+        if (!context.beneficiaryIsFeeless && context.cashOutTaxRate != 0) {
             netDirectCashOutAmount -= JBFees.standardFeeAmountFrom(directCashOutAmount);
         }
 

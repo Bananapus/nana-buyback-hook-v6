@@ -10,6 +10,7 @@ import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {JBCashOuts} from "@bananapus/core-v6/src/libraries/JBCashOuts.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBFees} from "@bananapus/core-v6/src/libraries/JBFees.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
@@ -56,9 +57,12 @@ contract ExplicitCashOutMinNoPoolGapTest is Test {
         });
 
         _assertFallbackRevertsBelowMinimum();
+        // The no-pool fallback enforces the user's explicit minimum against the worst-case net
+        // (`gross - standardFee`) for non-feeless beneficiaries, not the gross reclaim.
+        uint256 worstCaseNet = DIRECT_RECLAIM - JBFees.standardFeeAmountFrom(DIRECT_RECLAIM);
         vm.expectRevert(
             abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, DIRECT_RECLAIM, EXPLICIT_MINIMUM
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, worstCaseNet, EXPLICIT_MINIMUM
             )
         );
         hook.beforeCashOutRecordedWith(_context(metadata));
@@ -75,9 +79,12 @@ contract ExplicitCashOutMinNoPoolGapTest is Test {
         });
 
         _assertFallbackRevertsBelowMinimum();
+        // The no-pool fallback enforces the user's explicit minimum against the worst-case net
+        // (`gross - standardFee`) for non-feeless beneficiaries, not the gross reclaim.
+        uint256 worstCaseNet = DIRECT_RECLAIM - JBFees.standardFeeAmountFrom(DIRECT_RECLAIM);
         vm.expectRevert(
             abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, DIRECT_RECLAIM, EXPLICIT_MINIMUM
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, worstCaseNet, EXPLICIT_MINIMUM
             )
         );
         registry.beforeCashOutRecordedWith(_context(metadata));
