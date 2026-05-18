@@ -143,6 +143,47 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // By design — atomic set-and-lock (calling setHookFor then lockHookFor in one transaction) is a
     // feature, not a bug. It allows trusted operators to configure and finalize hook settings in a single transaction,
     // reducing the window for front-running or configuration changes between set and lock.
+    /// @notice Initialize a Uniswap V4 pool and configure it as the buyback pool for a project, forwarding to the
+    /// resolved buyback hook implementation.
+    /// @param projectId The ID of the project to set the pool for.
+    /// @param fee The Uniswap V4 pool fee tier.
+    /// @param tickSpacing The Uniswap V4 pool tick spacing.
+    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param terminalToken The address of the terminal token that payments to the project are made in.
+    function initializePoolFor(
+        uint256 projectId,
+        uint24 fee,
+        int24 tickSpacing,
+        uint256 twapWindow,
+        address terminalToken,
+        uint160 sqrtPriceX96
+    )
+        external
+        override
+    {
+        // Enforce permissions.
+        _requirePermissionFrom({
+            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
+        });
+
+        // Get the hook for the project (project-specific or default if eligible).
+        IJBRulesetDataHook hook = _resolvedHookOf(projectId);
+
+        // Revert if there is no hook to forward to.
+        if (address(hook) == address(0)) revert JBBuybackHookRegistry_HookNotSet(projectId);
+
+        // Forward the call to the resolved hook.
+        IJBBuybackHook(address(hook))
+            .initializePoolFor({
+            projectId: projectId,
+            fee: fee,
+            tickSpacing: tickSpacing,
+            twapWindow: twapWindow,
+            terminalToken: terminalToken,
+            sqrtPriceX96: sqrtPriceX96
+        });
+    }
+
     /// @param projectId The ID of the project to lock the hook for.
     /// @param expectedHook The hook the caller expects to lock. Prevents race conditions where the hook changes
     /// between transaction submission and execution.
@@ -233,47 +274,6 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         emit JBBuybackHookRegistry_SetHook({projectId: projectId, hook: hook});
     }
 
-    /// @notice Initialize a Uniswap V4 pool and configure it as the buyback pool for a project, forwarding to the
-    /// resolved buyback hook implementation.
-    /// @param projectId The ID of the project to set the pool for.
-    /// @param fee The Uniswap V4 pool fee tier.
-    /// @param tickSpacing The Uniswap V4 pool tick spacing.
-    /// @param twapWindow The period of time over which the TWAP is computed.
-    /// @param terminalToken The address of the terminal token that payments to the project are made in.
-    function initializePoolFor(
-        uint256 projectId,
-        uint24 fee,
-        int24 tickSpacing,
-        uint256 twapWindow,
-        address terminalToken,
-        uint160 sqrtPriceX96
-    )
-        external
-        override
-    {
-        // Enforce permissions.
-        _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
-        });
-
-        // Get the hook for the project (project-specific or default if eligible).
-        IJBRulesetDataHook hook = _resolvedHookOf(projectId);
-
-        // Revert if there is no hook to forward to.
-        if (address(hook) == address(0)) revert JBBuybackHookRegistry_HookNotSet(projectId);
-
-        // Forward the call to the resolved hook.
-        IJBBuybackHook(address(hook))
-            .initializePoolFor({
-            projectId: projectId,
-            fee: fee,
-            tickSpacing: tickSpacing,
-            twapWindow: twapWindow,
-            terminalToken: terminalToken,
-            sqrtPriceX96: sqrtPriceX96
-        });
-    }
-
     /// @notice Set the Uniswap V4 pool for a project by forwarding to the resolved buyback hook implementation.
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
@@ -353,12 +353,15 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
         // Remap any cashOutMinReclaimed metadata addressed to the registry into metadata addressed to the resolved
         // hook.
-        bytes4 registryCashOutMinId = JBMetadataResolver.getId("cashOutMinReclaimed", address(this));
-        (bool found, bytes memory minData) = JBMetadataResolver.getDataFor(registryCashOutMinId, context.metadata);
+        bytes4 registryCashOutMinId = JBMetadataResolver.getId({purpose: "cashOutMinReclaimed", target: address(this)});
+        (bool found, bytes memory minData) =
+            JBMetadataResolver.getDataFor({id: registryCashOutMinId, metadata: context.metadata});
 
         if (found) {
-            bytes4 hookCashOutMinId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
-            bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata(context.metadata, hookCashOutMinId, minData);
+            bytes4 hookCashOutMinId = JBMetadataResolver.getId({purpose: "cashOutMinReclaimed", target: address(hook)});
+            bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata({
+                originalMetadata: context.metadata, idToAdd: hookCashOutMinId, dataToAdd: minData
+            });
             JBBeforeCashOutRecordedContext memory modifiedContext = JBBeforeCashOutRecordedContext({
                 terminal: context.terminal,
                 holder: context.holder,
@@ -408,13 +411,16 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Remap any metadata addressed to the registry into metadata addressed to the resolved hook.
         // This lets payers scope their quote to the registry address while the underlying hook receives
         // it under its own ID.
-        bytes4 registryQuoteId = JBMetadataResolver.getId("quote", address(this));
-        (bool found, bytes memory quoteData) = JBMetadataResolver.getDataFor(registryQuoteId, context.metadata);
+        bytes4 registryQuoteId = JBMetadataResolver.getId({purpose: "quote", target: address(this)});
+        (bool found, bytes memory quoteData) =
+            JBMetadataResolver.getDataFor({id: registryQuoteId, metadata: context.metadata});
 
         if (found) {
             // Build rekeyed metadata with the hook-scoped quote ID.
-            bytes4 hookQuoteId = JBMetadataResolver.getId("quote", address(hook));
-            bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata(context.metadata, hookQuoteId, quoteData);
+            bytes4 hookQuoteId = JBMetadataResolver.getId({purpose: "quote", target: address(hook)});
+            bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata({
+                originalMetadata: context.metadata, idToAdd: hookQuoteId, dataToAdd: quoteData
+            });
 
             // Forward a context copy with the rekeyed metadata via staticcall (view-safe).
             JBBeforePayRecordedContext memory modifiedContext = JBBeforePayRecordedContext({
