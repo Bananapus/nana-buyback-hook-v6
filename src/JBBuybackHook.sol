@@ -75,6 +75,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_CallerNotTerminal(address caller);
     error JBBuybackHook_InsufficientPayAmount(uint256 swapAmount, uint256 totalPaid);
     error JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max);
+    error JBBuybackHook_NativeDeliveryFailed(address beneficiary, address holder);
     error JBBuybackHook_PoolAlreadySet(PoolId poolId);
     error JBBuybackHook_PoolInitializedAtWrongPrice(uint160 actualSqrtPriceX96, uint160 expectedSqrtPriceX96);
     error JBBuybackHook_PoolNotInitialized(PoolId poolId);
@@ -287,7 +288,22 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Forward the swap proceeds to the beneficiary in the same token they would have reclaimed natively.
         if (context.reclaimedAmount.token == JBConstants.NATIVE_TOKEN) {
-            Address.sendValue(context.beneficiary, amountReceived);
+            // Use a raw call rather than `Address.sendValue` so a contract beneficiary with a reverting `receive()` /
+            // `fallback()` does not atomically revert the entire cash-out. If the beneficiary cannot accept native
+            // value, fall back to the cash-out holder (who by definition could initiate the cash-out, which already
+            // required them to be able to interact with the terminal). If both reject the funds, revert — this
+            // mirrors the prior atomic-revert behavior for the unreachable edge where neither party can receive.
+            (bool delivered,) = context.beneficiary.call{value: amountReceived}("");
+            if (!delivered) {
+                (bool fallbackDelivered,) = payable(context.holder).call{value: amountReceived}("");
+                if (!fallbackDelivered) revert JBBuybackHook_NativeDeliveryFailed(context.beneficiary, context.holder);
+                emit CashOutSwapNativeDeliveryFellBackToHolder({
+                    projectId: context.projectId,
+                    beneficiary: context.beneficiary,
+                    holder: context.holder,
+                    amount: amountReceived
+                });
+            }
         } else {
             // Measure the actual delivery to guard against fee-on-transfer tokens.
             uint256 balBefore = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary);

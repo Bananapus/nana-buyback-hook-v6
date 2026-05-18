@@ -47,6 +47,16 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     /// @param amount The number of project tokens transferred to the holder.
     event SellSwapReverted(uint256 indexed projectId, address indexed holder, uint256 amount);
 
+    /// @notice Emitted when sell-side cash-out proceeds in native value couldn't be delivered to the configured
+    /// beneficiary (its `receive()`/`fallback()` reverted) and were re-routed to the cash-out holder instead.
+    /// @param projectId The ID of the project whose cash-out routed through the buyback path.
+    /// @param beneficiary The configured beneficiary that rejected the native transfer.
+    /// @param holder The cash-out initiator that received the proceeds as a fallback.
+    /// @param amount The native amount that was redirected.
+    event CashOutSwapNativeDeliveryFellBackToHolder(
+        uint256 indexed projectId, address indexed beneficiary, address indexed holder, uint256 amount
+    );
+
     /// @notice Emitted when terminal tokens are swapped for project tokens via the Uniswap V4 pool.
     /// @param projectId The ID of the project whose tokens were swapped for.
     /// @param amountToSwapWith The amount of terminal tokens used for the swap.
