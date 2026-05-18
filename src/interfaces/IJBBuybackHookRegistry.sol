@@ -4,6 +4,8 @@ pragma solidity ^0.8.0;
 import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 
+import {DefaultHookSegment} from "../structs/DefaultHookSegment.sol";
+
 /// @notice Stores the buyback hook each project should use and resolves the default hook for newly created projects.
 interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @notice Emitted when a hook is allowed for use by projects.
@@ -51,6 +53,16 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @param projectId The ID of the project.
     /// @return The data hook for the project.
     function hookOf(uint256 projectId) external view returns (IJBRulesetDataHook);
+
+    /// @notice The segment of the default-hook history at the given index, in insertion (chronological) order.
+    /// @dev Each segment records a previous default hook and the project-ID range that was created while it was active.
+    /// @param index The history index, in insertion order. Reverts on out-of-bounds.
+    /// @return segment The segment at that index.
+    function defaultHookHistoryAt(uint256 index) external view returns (DefaultHookSegment memory segment);
+
+    /// @notice The number of segments in the default-hook history.
+    /// @return length The number of historical default-hook segments.
+    function defaultHookHistoryLength() external view returns (uint256 length);
 
     /// @notice Whether the given hook is allowed to be set for projects.
     /// @param hook The hook to check.

@@ -19,6 +19,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IJBBuybackHook} from "./interfaces/IJBBuybackHook.sol";
 import {IJBBuybackHookRegistry} from "./interfaces/IJBBuybackHookRegistry.sol";
+import {DefaultHookSegment} from "./structs/DefaultHookSegment.sol";
 
 /// @notice A registry that maps projects to their buyback hook implementation. Projects can set a specific hook or
 /// inherit the protocol default. Hooks can be locked to prevent changes. Acts as the data hook for the terminal —
@@ -73,6 +74,15 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @notice The hook explicitly set for the given project.
     /// @custom:param projectId The ID of the project to get the hook for.
     mapping(uint256 projectId => IJBRulesetDataHook) internal _hookOf;
+
+    /// @notice Snapshots of every previously-active default hook, keyed by the project-count window each one applied
+    /// to. @dev Each time `setDefaultHook` overwrites an existing default, the outgoing default is pushed here with
+    /// `maxProjectId` set to the project count at that moment. A project whose ID is `<= defaultHookProjectIdThreshold`
+    /// (i.e. one that was already issued the last time the default changed) walks this list to find the segment whose
+    /// `maxProjectId` covers it. The first call ever — when `defaultHook == 0` — skips the push so the resolver
+    /// continues to return `address(0)` for project IDs that pre-dated any default, preserving the documented "the
+    /// default only applies to projects created AFTER it was set" guarantee at registry cold-start.
+    DefaultHookSegment[] internal _defaultHookHistory;
 
     //*********************************************************************//
     // ---------------------------- constructor -------------------------- //
@@ -163,13 +173,31 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     }
 
     /// @notice Sets the protocol-wide default buyback hook. Only affects projects created AFTER this call — existing
-    /// projects keep their current hook unless they explicitly call `setHookFor`.
-    /// @dev Only the owner can set the default hook.
+    /// projects keep their previously-active default (or their explicitly-set hook) unless they explicitly call
+    /// `setHookFor`.
+    /// @dev Only the owner can set the default hook. Snapshots the outgoing default into `_defaultHookHistory` so the
+    /// cohort that was created while the previous default was active continues to resolve to that default rather than
+    /// being orphaned to `address(0)`.
     /// @param hook The hook to set as the default.
     function setDefaultHook(IJBRulesetDataHook hook) external onlyOwner {
         // Prevent setting address(0) as the default hook — it would mark address(0) as allowed,
         // causing payments to revert when projects without a specific hook try to use the default.
         if (address(hook) == address(0)) revert JBBuybackHookRegistry_ZeroHook(hook);
+
+        // Snapshot the OUTGOING default so projects whose IDs were issued while it was active keep resolving to it.
+        // The segment encodes the half-open range `(prevThreshold, currentCount]` — i.e. the cohort that was assigned
+        // the outgoing default at creation time. The first call ever has `defaultHook == 0` and nothing to snapshot;
+        // in that case projects whose IDs already exist remain unaffected by the new default, matching the documented
+        // "default only applies to projects created AFTER it was set" property.
+        if (address(defaultHook) != address(0)) {
+            _defaultHookHistory.push(
+                DefaultHookSegment({
+                    minProjectIdExclusive: defaultHookProjectIdThreshold,
+                    maxProjectId: PROJECTS.count(),
+                    hook: defaultHook
+                })
+            );
+        }
 
         // Set the default hook.
         defaultHook = hook;
@@ -287,6 +315,19 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     //*********************************************************************//
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
+
+    /// @notice The segment of the default-hook history at the given index, in insertion (chronological) order.
+    /// @param index The history index. Reverts on out-of-bounds.
+    /// @return segment The segment at that index.
+    function defaultHookHistoryAt(uint256 index) external view override returns (DefaultHookSegment memory segment) {
+        return _defaultHookHistory[index];
+    }
+
+    /// @notice The number of segments in the default-hook history.
+    /// @return length The number of historical default-hook segments.
+    function defaultHookHistoryLength() external view override returns (uint256 length) {
+        return _defaultHookHistory.length;
+    }
 
     /// @notice Forward the cash-out data-hook call to the resolved buyback hook for the project.
     /// @dev Uses the project-specific hook when configured, otherwise falls back to the default hook.
@@ -470,14 +511,27 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         return ERC2771Context._msgSender();
     }
 
-    /// @notice Resolve the hook for a project. Returns the project-specific hook if set, otherwise the default hook
-    /// (only if the project was created after the default was set), otherwise address(0).
+    /// @notice Resolve the hook for a project. Returns the project-specific hook if set, otherwise the default that
+    /// was active when the project was created (current default for future projects, historical default for projects
+    /// in a prior default's cohort), otherwise address(0) for projects that pre-date any default.
     /// @param projectId The ID of the project.
     /// @return hook The resolved hook, or address(0) if none applies.
     function _resolvedHookOf(uint256 projectId) internal view returns (IJBRulesetDataHook hook) {
         hook = _hookOf[projectId];
-        if (hook == IJBRulesetDataHook(address(0)) && projectId > defaultHookProjectIdThreshold) {
-            hook = defaultHook;
+        if (hook != IJBRulesetDataHook(address(0))) return hook;
+
+        if (projectId > defaultHookProjectIdThreshold) return defaultHook;
+
+        // Project ID was issued before the current default was set. Walk the history segments to find the default
+        // that was active at this project's creation. Segments are appended in chronological order; each one covers a
+        // half-open range of project IDs `(minProjectIdExclusive, maxProjectId]`. A projectId is matched by exactly
+        // one segment (or none, in which case the project pre-dates every recorded default).
+        uint256 len = _defaultHookHistory.length;
+        for (uint256 i; i < len; ++i) {
+            DefaultHookSegment storage segment = _defaultHookHistory[i];
+            if (projectId > segment.minProjectIdExclusive && projectId <= segment.maxProjectId) {
+                return segment.hook;
+            }
         }
     }
 }
