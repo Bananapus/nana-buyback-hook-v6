@@ -316,19 +316,6 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
-    /// @notice The segment of the default-hook history at the given index, in insertion (chronological) order.
-    /// @param index The history index. Reverts on out-of-bounds.
-    /// @return segment The segment at that index.
-    function defaultHookHistoryAt(uint256 index) external view override returns (DefaultHookSegment memory segment) {
-        return _defaultHookHistory[index];
-    }
-
-    /// @notice The number of segments in the default-hook history.
-    /// @return length The number of historical default-hook segments.
-    function defaultHookHistoryLength() external view override returns (uint256 length) {
-        return _defaultHookHistory.length;
-    }
-
     /// @notice Forward the cash-out data-hook call to the resolved buyback hook for the project.
     /// @dev Uses the project-specific hook when configured, otherwise falls back to the default hook.
     /// If neither exists, the cash-out values are passed through unchanged.
@@ -446,6 +433,19 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
         // Forward the call to the hook unchanged.
         return hook.beforePayRecordedWith(context);
+    }
+
+    /// @notice The segment of the default-hook history at the given index, in insertion (chronological) order.
+    /// @param index The history index. Reverts on out-of-bounds.
+    /// @return segment The segment at that index.
+    function defaultHookHistoryAt(uint256 index) external view override returns (DefaultHookSegment memory segment) {
+        return _defaultHookHistory[index];
+    }
+
+    /// @notice The number of segments in the default-hook history.
+    /// @return length The number of historical default-hook segments.
+    function defaultHookHistoryLength() external view override returns (uint256 length) {
+        return _defaultHookHistory.length;
     }
 
     /// @notice Returns true only if `addr` is the resolved hook for the project — this grants the hook (and only the

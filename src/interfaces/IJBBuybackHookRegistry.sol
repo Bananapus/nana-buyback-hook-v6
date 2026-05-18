@@ -37,6 +37,16 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @return The default data hook.
     function defaultHook() external view returns (IJBRulesetDataHook);
 
+    /// @notice The segment of the default-hook history at the given index, in insertion (chronological) order.
+    /// @dev Each segment records a previous default hook and the project-ID range that was created while it was active.
+    /// @param index The history index, in insertion order. Reverts on out-of-bounds.
+    /// @return segment The segment at that index.
+    function defaultHookHistoryAt(uint256 index) external view returns (DefaultHookSegment memory segment);
+
+    /// @notice The number of segments in the default-hook history.
+    /// @return length The number of historical default-hook segments.
+    function defaultHookHistoryLength() external view returns (uint256 length);
+
     /// @notice The project ID threshold below which the default hook does not apply.
     /// @dev Set to `PROJECTS.count()` each time the default hook changes. Only projects with IDs above this threshold
     /// get the default hook, preventing the registry owner from unilaterally granting mint permission to existing
@@ -53,16 +63,6 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @param projectId The ID of the project.
     /// @return The data hook for the project.
     function hookOf(uint256 projectId) external view returns (IJBRulesetDataHook);
-
-    /// @notice The segment of the default-hook history at the given index, in insertion (chronological) order.
-    /// @dev Each segment records a previous default hook and the project-ID range that was created while it was active.
-    /// @param index The history index, in insertion order. Reverts on out-of-bounds.
-    /// @return segment The segment at that index.
-    function defaultHookHistoryAt(uint256 index) external view returns (DefaultHookSegment memory segment);
-
-    /// @notice The number of segments in the default-hook history.
-    /// @return length The number of historical default-hook segments.
-    function defaultHookHistoryLength() external view returns (uint256 length);
 
     /// @notice Whether the given hook is allowed to be set for projects.
     /// @param hook The hook to check.
