@@ -166,7 +166,7 @@ contract TestBuybackFOT is Test {
             trustedForwarder: address(0)
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(mockPm)), oracleHook: IHooks(address(mockOracle))
+            newPoolManager: IPoolManager(address(mockPm)), newOracleHook: IHooks(address(mockOracle))
         });
 
         // Build pool key: FOT token as terminal token, project token as project token.

@@ -131,11 +131,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice The Uniswap V4 PoolManager singleton. Set once by `_DEPLOYER` after construction via
     /// `setChainSpecificConstants` and never changed thereafter.
-    IPoolManager public override POOL_MANAGER;
+    IPoolManager public override poolManager;
 
     /// @notice The oracle hook used for all JB V4 pools (provides TWAP via observe()). Set once by `_DEPLOYER`
     /// after construction via `setChainSpecificConstants` and never changed thereafter.
-    IHooks public ORACLE_HOOK;
+    IHooks public oracleHook;
 
     /// @notice The PoolKey for a given project's token and terminal token pair.
     /// @custom:param projectId The ID of the project whose token is traded in the pool.
@@ -287,7 +287,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Forward the swap proceeds to the beneficiary in the same token they would have reclaimed natively.
         if (context.reclaimedAmount.token == JBConstants.NATIVE_TOKEN) {
-            Address.sendValue(context.beneficiary, amountReceived);
+            Address.sendValue({recipient: context.beneficiary, amount: amountReceived});
         } else {
             // Measure the actual delivery to guard against fee-on-transfer tokens.
             uint256 balBefore = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary);
@@ -480,14 +480,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
 
         // Initialize pool in PoolManager if not already initialized.
-        try POOL_MANAGER.initialize({key: poolKey, sqrtPriceX96: sqrtPriceX96}) {} catch {}
+        try poolManager.initialize({key: poolKey, sqrtPriceX96: sqrtPriceX96}) {} catch {}
 
         // The project token address can be predicted before deployment (CREATE2 with project-supplied salt), so an
         // attacker can front-run the buyback configuration by initializing the V4 pool at an arbitrary
         // `sqrtPriceX96`. Without this check, `_setPoolFor` would lock the poisoned price in for all future
         // buyback routing. Read the on-chain price after the initialize attempt and reject any mismatch — callers
         // pass the price they expect, so honest reinitialization is unaffected.
-        (uint160 actualSqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolKey.toId());
+        (uint160 actualSqrtPriceX96,,,) = poolManager.getSlot0(poolKey.toId());
         if (actualSqrtPriceX96 != sqrtPriceX96) {
             revert JBBuybackHook_PoolInitializedAtWrongPrice({
                 actualSqrtPriceX96: actualSqrtPriceX96, expectedSqrtPriceX96: sqrtPriceX96
@@ -504,17 +504,17 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     }
 
     /// @notice One-shot setter for the chain-specific Uniswap V4 PoolManager and oracle hook.
-    /// @dev Callable only by `_DEPLOYER` and only once (when `POOL_MANAGER` is still `address(0)`). After this
+    /// @dev Callable only by `_DEPLOYER` and only once (when `poolManager` is still `address(0)`). After this
     /// call both values are effectively immutable for the contract's lifetime. Mirrors the
     /// `JBOptimismSuckerDeployer.setChainSpecificConstants` pattern so the contract's CREATE2 inputs stay
     /// byte-identical across chains and its deployed address is unified.
-    /// @param poolManager The Uniswap V4 PoolManager singleton on the current chain.
-    /// @param oracleHook The JB V4 oracle hook deployed against `poolManager` on the current chain.
-    function setChainSpecificConstants(IPoolManager poolManager, IHooks oracleHook) external override {
+    /// @param newPoolManager The Uniswap V4 PoolManager singleton on the current chain.
+    /// @param newOracleHook The JB V4 oracle hook deployed against `newPoolManager` on the current chain.
+    function setChainSpecificConstants(IPoolManager newPoolManager, IHooks newOracleHook) external override {
         if (msg.sender != _DEPLOYER) revert JBBuybackHook_Unauthorized({caller: msg.sender});
-        if (address(POOL_MANAGER) != address(0)) revert JBBuybackHook_AlreadyConfigured();
-        POOL_MANAGER = poolManager;
-        ORACLE_HOOK = oracleHook;
+        if (address(poolManager) != address(0)) revert JBBuybackHook_AlreadyConfigured();
+        poolManager = newPoolManager;
+        oracleHook = newOracleHook;
     }
 
     /// @notice Set the V4 pool to use for a given project and terminal token pair.
@@ -637,7 +637,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @return result ABI-encoded swap input consumed and output received.
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
         // Only the PoolManager can call this.
-        if (msg.sender != address(POOL_MANAGER)) revert JBBuybackHook_CallerNotPoolManager(msg.sender);
+        if (msg.sender != address(poolManager)) revert JBBuybackHook_CallerNotPoolManager(msg.sender);
 
         SwapCallbackData memory params = abi.decode(data, (SwapCallbackData));
 
@@ -646,7 +646,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             amountIn: params.amountIn, minimumAmountOut: params.minimumSwapAmountOut, zeroForOne: params.zeroForOne
         });
 
-        BalanceDelta delta = POOL_MANAGER.swap({
+        BalanceDelta delta = poolManager.swap({
             key: params.key,
             params: SwapParams({
                 zeroForOne: params.zeroForOne,
@@ -686,12 +686,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Settle the input (we owe the PoolManager).
         if (inputCurrency.isAddressZero()) {
             // Native ETH: settle with value.
-            POOL_MANAGER.settle{value: inputAmount}();
+            poolManager.settle{value: inputAmount}();
         } else {
             // ERC-20: sync → transfer → settle.
-            POOL_MANAGER.sync(inputCurrency);
-            IERC20(Currency.unwrap(inputCurrency)).safeTransfer({to: address(POOL_MANAGER), value: inputAmount});
-            POOL_MANAGER.settle();
+            poolManager.sync(inputCurrency);
+            IERC20(Currency.unwrap(inputCurrency)).safeTransfer({to: address(poolManager), value: inputAmount});
+            poolManager.settle();
         }
 
         // Take the output (PoolManager owes us).
@@ -700,7 +700,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             ? address(this).balance
             : IERC20(Currency.unwrap(outputCurrency)).balanceOf(address(this));
 
-        POOL_MANAGER.take({currency: outputCurrency, to: address(this), amount: outputAmount});
+        poolManager.take({currency: outputCurrency, to: address(this), amount: outputAmount});
 
         uint256 balanceAfterTake = outputCurrency.isAddressZero()
             ? address(this).balance
@@ -1084,7 +1084,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Validate the pool is initialized in the PoolManager.
         PoolId poolId = poolKey.toId();
-        (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         if (sqrtPriceX96 == 0) revert JBBuybackHook_PoolNotInitialized(poolId);
 
         // Validate the PoolKey currencies match the project token and terminal token.
@@ -1156,7 +1156,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         );
 
         // Try the V4 unlock/callback swap. On failure, fall back to minting.
-        try POOL_MANAGER.unlock(callbackData) returns (bytes memory result) {
+        try poolManager.unlock(callbackData) returns (bytes memory result) {
             (, amountReceived) = abi.decode(result, (uint256, uint256));
         } catch {
             return (0, true);
@@ -1206,7 +1206,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         );
 
         // Try the V4 unlock/callback swap. On failure, signal the caller to handle the fallback.
-        try POOL_MANAGER.unlock(callbackData) returns (bytes memory result) {
+        try poolManager.unlock(callbackData) returns (bytes memory result) {
             (amountSpent, amountReceived) = abi.decode(result, (uint256, uint256));
         } catch {
             return (0, 0, true);
@@ -1248,7 +1248,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Construct the pool key with the oracle hook.
         poolKey = PoolKey({
-            currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: ORACLE_HOOK
+            currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: oracleHook
         });
     }
 
@@ -1295,7 +1295,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Query the oracle hook (or spot if twapWindow is 0).
         (amountOut, twapTick, twapLiquidity) = JBSwapLib.getQuoteFromOracle({
-            poolManager: POOL_MANAGER,
+            poolManager: poolManager,
             key: key,
             // Safe: twapWindow is validated <= MAX_TWAP_WINDOW (2 days = 172800), fits in uint32.
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -1322,7 +1322,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Get the actual LP fee from slot0 (key.fee may differ for dynamic-fee pools).
         // V4 fees are in hundredths of a bip, so divide by 100 to get basis points.
-        (,,, uint24 lpFee) = POOL_MANAGER.getSlot0(poolId);
+        (,,, uint24 lpFee) = poolManager.getSlot0(poolId);
         uint256 poolFeeBps = uint256(lpFee) / 100;
 
         // Calculate continuous sigmoid slippage tolerance.

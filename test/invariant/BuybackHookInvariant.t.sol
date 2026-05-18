@@ -496,7 +496,7 @@ contract BuybackHookInvariantTest is StdInvariant, Test {
             trustedForwarder: address(0)
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(mockPm)), oracleHook: IHooks(address(mockOracle))
+            newPoolManager: IPoolManager(address(mockPm)), newOracleHook: IHooks(address(mockOracle))
         });
 
         // Build pool key: native ETH (address(0)) is always currency0.

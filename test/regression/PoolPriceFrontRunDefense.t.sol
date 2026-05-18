@@ -71,7 +71,7 @@ contract PoolPriceFrontRunDefenseTest is Test {
             trustedForwarder: address(0)
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(oracleHook))
+            newPoolManager: IPoolManager(address(poolManager)), newOracleHook: IHooks(address(oracleHook))
         });
 
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (PROJECT_ID)), abi.encode(owner));

@@ -137,7 +137,7 @@ contract TestSellSideNetComparison is Test {
             trustedForwarder: address(0)
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(mockPm)), oracleHook: IHooks(address(mockOracle))
+            newPoolManager: IPoolManager(address(mockPm)), newOracleHook: IHooks(address(mockOracle))
         });
 
         poolKey = PoolKey({
