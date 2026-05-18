@@ -77,21 +77,6 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @param hook The hook to disallow.
     function disallowHook(IJBRulesetDataHook hook) external;
 
-    /// @notice Permanently lock the buyback hook for a project, preventing future changes.
-    /// @param projectId The ID of the project to lock the hook for.
-    /// @param expectedHook The hook the caller expects to lock. Prevents race conditions where the hook changes
-    /// between transaction submission and execution.
-    function lockHookFor(uint256 projectId, IJBRulesetDataHook expectedHook) external;
-
-    /// @notice Set the default buyback hook used for projects that haven't configured a project-specific one.
-    /// @param hook The hook to set as the default.
-    function setDefaultHook(IJBRulesetDataHook hook) external;
-
-    /// @notice Set the hook for a specific project.
-    /// @param projectId The ID of the project to set the hook for.
-    /// @param hook The hook to set.
-    function setHookFor(uint256 projectId, IJBRulesetDataHook hook) external;
-
     /// @notice Initialize a Uniswap V4 pool and configure it as the buyback pool for a project, forwarding to the
     /// resolved buyback hook implementation.
     /// @dev Resolves the hook for the project (or the default), then calls initializePoolFor on it.
@@ -109,6 +94,21 @@ interface IJBBuybackHookRegistry is IJBRulesetDataHook {
         uint160 sqrtPriceX96
     )
         external;
+
+    /// @notice Permanently lock the buyback hook for a project, preventing future changes.
+    /// @param projectId The ID of the project to lock the hook for.
+    /// @param expectedHook The hook the caller expects to lock. Prevents race conditions where the hook changes
+    /// between transaction submission and execution.
+    function lockHookFor(uint256 projectId, IJBRulesetDataHook expectedHook) external;
+
+    /// @notice Set the default buyback hook used for projects that haven't configured a project-specific one.
+    /// @param hook The hook to set as the default.
+    function setDefaultHook(IJBRulesetDataHook hook) external;
+
+    /// @notice Set the hook for a specific project.
+    /// @param projectId The ID of the project to set the hook for.
+    /// @param hook The hook to set.
+    function setHookFor(uint256 projectId, IJBRulesetDataHook hook) external;
 
     /// @notice Set the Uniswap V4 pool for a project, forwarding to the resolved buyback hook implementation.
     /// @dev Resolves the hook for the project (or the default), then calls setPoolFor on it.
