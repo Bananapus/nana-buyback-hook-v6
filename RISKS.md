@@ -125,3 +125,9 @@ Projects using `JBBuybackHookRegistry` as their data hook without explicitly cal
 ### 9.8 Sell-Side AMM Proceeds Are Not Fee-Metered
 
 When the buyback hook routes a cash-out through the AMM sell path, the swap proceeds go directly to the beneficiary without passing through the terminal's fee meter. This is by design — protocol fees apply only to actual terminal cashouts, not AMM market operations. The hook's `hookSpecifications.amount = 0` reflects this intent.
+
+### 9.9 Native delivery to a reverting beneficiary atomically reverts the cash-out
+
+When the sell path wins and the terminal token is the native asset, `afterCashOutRecordedWith` delivers proceeds via `Address.sendValue(context.beneficiary, amountReceived)`. If the beneficiary is a contract whose `receive()` / `fallback()` reverts (multisig with unfunded fallback, contract with disabled receive, gas-stipend-overrunning logic), the entire cash-out tx atomically reverts. The holder retains their tokens — there is no fund loss — but the cash-out cannot complete through this beneficiary until the configuration is changed.
+
+This is intentional and mirrors the direct-cash-out path in `JBMultiTerminal`, which also uses `Address.sendValue` and reverts under the same conditions. Adding a fallback path in this hook (e.g. wrap-to-WETH or re-route to the holder) would create an asymmetry: the buyback path would be more lenient than the direct path that would otherwise have been used, making the routing decision affect whether a holder with a misconfigured beneficiary can cash out at all. The right cure is on the beneficiary side: ensure contract beneficiaries can accept native value (or use an ERC-20 terminal token where `safeTransfer` handles the delivery).
