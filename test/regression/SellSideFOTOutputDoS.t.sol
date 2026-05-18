@@ -142,7 +142,7 @@ contract RegressionSellSideFOTOutputDoSTest is Test {
             trustedForwarder: address(0)
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(oracleHook))
+            newPoolManager: IPoolManager(address(poolManager)), newOracleHook: IHooks(address(oracleHook))
         });
 
         vm.mockCall(address(directory), abi.encodeCall(directory.controllerOf, (projectId)), abi.encode(controller));

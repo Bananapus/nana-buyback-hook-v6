@@ -92,7 +92,7 @@ contract RegistryForwardedPermissionRegression is Test {
             deployer: address(this),
             trustedForwarder: trustedForwarder
         });
-        hook.setChainSpecificConstants({poolManager: IPoolManager(poolManager), oracleHook: IHooks(oracleHook)});
+        hook.setChainSpecificConstants({newPoolManager: IPoolManager(poolManager), newOracleHook: IHooks(oracleHook)});
 
         registry = new JBBuybackHookRegistry({
             permissions: permissions,

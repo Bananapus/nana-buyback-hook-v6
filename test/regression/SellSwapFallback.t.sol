@@ -151,7 +151,7 @@ contract SellSwapFallback is Test {
             trustedForwarder: address(0)
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(oracleHook))
+            newPoolManager: IPoolManager(address(poolManager)), newOracleHook: IHooks(address(oracleHook))
         });
 
         // Mock directory responses.

@@ -114,7 +114,7 @@ contract RegressionCashOutFallbackBeneficiaryTransferTest is Test {
             trustedForwarder: address(0)
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(0x5))
+            newPoolManager: IPoolManager(address(poolManager)), newOracleHook: IHooks(address(0x5))
         });
         hook.setProjectTokenForTest(projectId, address(projectToken));
 

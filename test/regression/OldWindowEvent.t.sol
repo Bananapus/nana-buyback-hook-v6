@@ -76,7 +76,9 @@ contract OWE_OldWindowEvent is Test {
             deployer: address(this),
             trustedForwarder: address(0)
         });
-        hook.setChainSpecificConstants({poolManager: IPoolManager(address(mockPm)), oracleHook: IHooks(address(0))});
+        hook.setChainSpecificConstants({
+            newPoolManager: IPoolManager(address(mockPm)), newOracleHook: IHooks(address(0))
+        });
 
         // Mock JB core.
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (projectId)), abi.encode(owner));

@@ -78,7 +78,7 @@ contract CodexNemesisRegistryCashOutMetadataTest is Test {
             trustedForwarder: trustedForwarder
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(oracleHook))
+            newPoolManager: IPoolManager(address(poolManager)), newOracleHook: IHooks(address(oracleHook))
         });
 
         registry = new JBBuybackHookRegistry({

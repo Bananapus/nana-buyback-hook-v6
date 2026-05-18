@@ -171,7 +171,7 @@ contract V4RealOracleForkTest is Test {
             deployer: address(this),
             trustedForwarder: address(0)
         });
-        hook.setChainSpecificConstants({poolManager: poolManager, oracleHook: IHooks(ORACLE_ADDR)});
+        hook.setChainSpecificConstants({newPoolManager: poolManager, newOracleHook: IHooks(ORACLE_ADDR)});
 
         // Default JB mocks.
         vm.mockCall(

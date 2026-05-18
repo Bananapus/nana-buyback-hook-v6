@@ -139,7 +139,7 @@ contract PFMC_PartialFillMinimumCheck is Test {
             trustedForwarder: address(0)
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(mockPm)), oracleHook: IHooks(address(mockOracle))
+            newPoolManager: IPoolManager(address(mockPm)), newOracleHook: IHooks(address(mockOracle))
         });
 
         // Native ETH pool key: ETH (address(0)) is always currency0.

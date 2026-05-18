@@ -89,7 +89,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
             trustedForwarder: address(0)
         });
         hook.setChainSpecificConstants({
-            poolManager: IPoolManager(address(poolManager)), oracleHook: IHooks(address(oracleHook))
+            newPoolManager: IPoolManager(address(poolManager)), newOracleHook: IHooks(address(oracleHook))
         });
 
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (PROJECT_ID)), abi.encode(owner));
@@ -125,7 +125,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
     /// somewhere in `[gross - standardFee, gross]` depending on the terminal's `_feeFreeSurplusOf`. Before the fix,
     /// the hook treated direct as always net = gross - fee and would activate the AMM route whenever AMM beat that
     /// over-discounted value — even when the direct path could pay gross and outperform the AMM.
-    function test_zeroTaxNonFeeless_doesNotRouteToAmmBelowGrossDirectReclaim() public {
+    function test_zeroTaxNonFeeless_doesNotRouteToAmmBelowGrossDirectReclaim() public view {
         uint256 grossDirect = JBCashOuts.cashOutFrom({
             surplus: ZERO_TAX_SURPLUS, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
         });
@@ -147,7 +147,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
     /// @notice with `cashOutTaxRate == 0` and non-feeless beneficiary, the AMM route is only chosen
     /// when the AMM minimum strictly beats the best-case direct (gross). At that point the AMM is unambiguously
     /// better than any direct outcome under the active fee/free-surplus semantics.
-    function test_zeroTaxNonFeeless_routesToAmmWhenAmmStrictlyBeatsGross() public {
+    function test_zeroTaxNonFeeless_routesToAmmWhenAmmStrictlyBeatsGross() public view {
         uint256 grossDirect = JBCashOuts.cashOutFrom({
             surplus: ZERO_TAX_SURPLUS, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
         });

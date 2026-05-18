@@ -45,9 +45,9 @@ contract RegressionRegistryDefaultHookHijackTest is Test {
         });
     }
 
-    /// @notice Changing the default hook should NOT retarget existing projects.
-    /// @dev The defaultHookProjectIdThreshold prevents the registry owner from unilaterally granting
-    /// mint permission to existing projects via a new default hook.
+    /// @notice Changing the default hook should not retarget projects that inherited a previous default.
+    /// @dev Historical default cohorts prevent the registry owner from unilaterally changing an existing project's
+    /// mint-permission hook with a new default.
     function test_DefaultHookChangeDoesNotRetargetExistingProject() external {
         // Set count to 0 so that PROJECT_ID (1) > threshold (0), making the first default apply.
         projects.setCount(0);
@@ -76,10 +76,12 @@ contract RegressionRegistryDefaultHookHijackTest is Test {
         vm.prank(registryOwner);
         registry.setDefaultHook(IJBRulesetDataHook(address(hookB)));
 
-        // Existing project should no longer resolve to any hook (threshold blocks it).
+        // Existing project should keep resolving to hook A (the default it inherited), not retarget to hook B.
         (uint256 weightAfter,) = registry.beforePayRecordedWith(context);
-        assertEq(weightAfter, 1, "existing project should passthrough (original weight) after default change");
-        assertEq(address(registry.hookOf(PROJECT_ID)), address(0), "existing project should not resolve to new default");
+        assertEq(weightAfter, 111, "existing project should keep its historical default");
+        assertEq(
+            address(registry.hookOf(PROJECT_ID)), address(hookA), "existing project should not resolve to new default"
+        );
 
         JBRuleset memory ruleset = JBRuleset({
             cycleNumber: 0,
@@ -94,12 +96,12 @@ contract RegressionRegistryDefaultHookHijackTest is Test {
         });
 
         assertFalse(
-            registry.hasMintPermissionFor(PROJECT_ID, ruleset, address(hookA)),
-            "old default hook should no longer have mint privilege"
-        );
-        assertFalse(
             registry.hasMintPermissionFor(PROJECT_ID, ruleset, address(hookB)),
             "new default hook should NOT have mint privilege for existing project"
+        );
+        assertTrue(
+            registry.hasMintPermissionFor(PROJECT_ID, ruleset, address(hookA)),
+            "historical default hook should keep mint privilege"
         );
     }
 }
