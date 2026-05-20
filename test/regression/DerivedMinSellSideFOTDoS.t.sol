@@ -10,6 +10,7 @@ import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
 import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
 import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
@@ -197,24 +198,7 @@ contract DerivedMinSellSideFOTDoSTest is Test {
     }
 
     function test_protocolDerivedMinimumSupportsERC20OutputTokens() public {
-        JBBeforeCashOutRecordedContext memory beforeContext = JBBeforeCashOutRecordedContext({
-            terminal: terminal,
-            holder: makeAddr("holder"),
-            projectId: PROJECT_ID,
-            rulesetId: 1,
-            cashOutCount: CASH_OUT_COUNT,
-            totalSupply: TOTAL_SUPPLY,
-            surplus: JBTokenAmount({
-                token: address(terminalToken),
-                value: SURPLUS,
-                decimals: 18,
-                currency: uint32(uint160(address(terminalToken)))
-            }),
-            scopeCashOutsToLocalBalances: true,
-            cashOutTaxRate: 0,
-            beneficiaryIsFeeless: false,
-            metadata: ""
-        });
+        JBBeforeCashOutRecordedContext memory beforeContext = _metadataLessBeforeContext();
 
         (
             uint256 cashOutTaxRate,
@@ -233,10 +217,99 @@ contract DerivedMinSellSideFOTDoSTest is Test {
         assertEq(specs.length, 1, "hook should return one sell-side specification");
         assertFalse(specs[0].noop, "protocol-derived sell-side hook should be active when it beats reclaim");
 
-        (uint256 minimumSwapAmountOut,,,,,, uint256 rawSwapQuote) =
-            abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, bytes32, uint256));
+        (uint256 minimumSwapAmountOut,,,,,, uint256 rawSwapQuote,) =
+            abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, bytes32, uint256, bool));
 
         assertGt(rawSwapQuote, 0, "metadata-less ERC20 output should get a TWAP quote");
         assertGt(minimumSwapAmountOut, 0, "metadata-less ERC20 output should get an AMM floor");
+    }
+
+    function test_protocolDerivedMinimumFallsBackToProjectTokensOnPoolRevert() public {
+        JBBeforeCashOutRecordedContext memory beforeContext = _metadataLessBeforeContext();
+        (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(beforeContext);
+
+        (uint256 minimumSwapAmountOut,,,,,,, bool shouldEnforceMinimumSwapAmountOut) =
+            abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, bytes32, uint256, bool));
+
+        assertGt(minimumSwapAmountOut, 0, "route should carry the oracle-derived AMM floor");
+        assertFalse(shouldEnforceMinimumSwapAmountOut, "metadata-less route should not be an explicit user floor");
+
+        poolManager.setShouldRevertOnUnlock(true);
+
+        JBAfterCashOutRecordedContext memory afterContext = _afterContext({hookMetadata: specs[0].metadata});
+
+        vm.prank(terminal);
+        hook.afterCashOutRecordedWith(afterContext);
+
+        assertEq(projectToken.balanceOf(beforeContext.holder), CASH_OUT_COUNT, "holder should get reminted tokens");
+        assertEq(terminalToken.balanceOf(afterContext.beneficiary), 0, "beneficiary should not get swap output");
+    }
+
+    function test_protocolDerivedMinimumAllowsFeeOnTransferOutputDelivery() public {
+        JBBeforeCashOutRecordedContext memory beforeContext = _metadataLessBeforeContext();
+        (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(beforeContext);
+
+        (uint256 minimumSwapAmountOut,,,,,,, bool shouldEnforceMinimumSwapAmountOut) =
+            abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, bytes32, uint256, bool));
+
+        assertGt(minimumSwapAmountOut, 0, "route should carry the oracle-derived AMM floor");
+        assertFalse(shouldEnforceMinimumSwapAmountOut, "metadata-less route should not be an explicit user floor");
+
+        address beneficiary = makeAddr("beneficiary");
+
+        JBAfterCashOutRecordedContext memory afterContext = _afterContext({hookMetadata: specs[0].metadata});
+        afterContext.beneficiary = payable(beneficiary);
+
+        vm.prank(terminal);
+        hook.afterCashOutRecordedWith(afterContext);
+
+        uint256 expectedHookReceipt = CASH_OUT_COUNT * 9500 / 10_000;
+        uint256 expectedBeneficiaryReceipt = expectedHookReceipt * 9500 / 10_000;
+        assertEq(
+            terminalToken.balanceOf(beneficiary),
+            expectedBeneficiaryReceipt,
+            "derived minimum should not hard-revert FOT output"
+        );
+        assertEq(projectToken.balanceOf(address(hook)), 0, "all reminted project tokens should be spent or burned");
+    }
+
+    function _metadataLessBeforeContext() internal returns (JBBeforeCashOutRecordedContext memory) {
+        return JBBeforeCashOutRecordedContext({
+            terminal: terminal,
+            holder: makeAddr("holder"),
+            projectId: PROJECT_ID,
+            rulesetId: 1,
+            cashOutCount: CASH_OUT_COUNT,
+            totalSupply: TOTAL_SUPPLY,
+            surplus: JBTokenAmount({
+                token: address(terminalToken),
+                value: SURPLUS,
+                decimals: 18,
+                currency: uint32(uint160(address(terminalToken)))
+            }),
+            scopeCashOutsToLocalBalances: true,
+            cashOutTaxRate: 0,
+            beneficiaryIsFeeless: false,
+            metadata: ""
+        });
+    }
+
+    function _afterContext(bytes memory hookMetadata) internal returns (JBAfterCashOutRecordedContext memory) {
+        return JBAfterCashOutRecordedContext({
+            holder: makeAddr("holder"),
+            projectId: PROJECT_ID,
+            rulesetId: 1,
+            cashOutCount: CASH_OUT_COUNT,
+            reclaimedAmount: JBTokenAmount({
+                token: address(terminalToken), value: 0, decimals: 18, currency: uint32(uint160(address(terminalToken)))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: address(terminalToken), value: 0, decimals: 18, currency: uint32(uint160(address(terminalToken)))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(makeAddr("beneficiary")),
+            hookMetadata: hookMetadata,
+            cashOutMetadata: ""
+        });
     }
 }

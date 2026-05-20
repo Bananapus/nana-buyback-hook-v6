@@ -224,8 +224,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // context.cashOutCount when a wrapper (e.g. REVDeployer) splits tokens into fee and non-fee tranches.
         uint256 minimumSwapAmountOut;
         uint256 cashOutCountToSell = context.cashOutCount;
+        bool shouldEnforceMinimumSwapAmountOut;
         if (context.hookMetadata.length != 0) {
-            (minimumSwapAmountOut, cashOutCountToSell) = abi.decode(context.hookMetadata, (uint256, uint256));
+            if (context.hookMetadata.length >= 256) {
+                (minimumSwapAmountOut, cashOutCountToSell,,,,,, shouldEnforceMinimumSwapAmountOut) = abi.decode(
+                    context.hookMetadata, (uint256, uint256, uint256, int24, uint128, PoolId, uint256, bool)
+                );
+            } else {
+                (minimumSwapAmountOut, cashOutCountToSell) = abi.decode(context.hookMetadata, (uint256, uint256));
+                shouldEnforceMinimumSwapAmountOut = minimumSwapAmountOut != 0;
+            }
         }
         // Wrappers can pass a smaller sell count through metadata, but they must never inflate it above
         // what the terminal actually burned in `context.cashOutCount`.
@@ -263,7 +271,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // tokens to the holder cannot satisfy that minimum — revert so the user is not silently
         // settled in the wrong token at less than they asked for.
         if (swapFailed) {
-            if (minimumSwapAmountOut != 0) {
+            if (shouldEnforceMinimumSwapAmountOut && minimumSwapAmountOut != 0) {
                 revert JBBuybackHook_SpecifiedSlippageExceeded({amount: 0, minimum: minimumSwapAmountOut});
             }
             IERC20(projectToken).safeTransfer({to: context.holder, value: actualReceived});
@@ -272,7 +280,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // Re-check the minimum to fail closed if the pool returned less than expected.
-        if (amountReceived < minimumSwapAmountOut) {
+        if (shouldEnforceMinimumSwapAmountOut && amountReceived < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded({amount: amountReceived, minimum: minimumSwapAmountOut});
         }
 
@@ -293,7 +301,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 balBefore = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary);
             IERC20(context.reclaimedAmount.token).safeTransfer({to: context.beneficiary, value: amountReceived});
             uint256 delivered = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary) - balBefore;
-            if (delivered < minimumSwapAmountOut) {
+            if (shouldEnforceMinimumSwapAmountOut && delivered < minimumSwapAmountOut) {
                 revert JBBuybackHook_SpecifiedSlippageExceeded({amount: delivered, minimum: minimumSwapAmountOut});
             }
         }
@@ -861,7 +869,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 twapTick,
                 twapLiquidity,
                 poolId,
-                rawSwapQuote
+                rawSwapQuote,
+                hasUserSpecifiedMinimumSwapAmountOut
             )
         });
 
