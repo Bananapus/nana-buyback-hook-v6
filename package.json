@@ -1,6 +1,6 @@
 {
   "name": "@bananapus/buyback-hook-v6",
-  "version": "0.0.51",
+  "version": "0.0.52",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -25,9 +25,9 @@
     "artifacts": "source ./.env && npx sphinx artifacts --org-id 'ea165b21-7cdc-4d7b-be59-ecdd4c26bee4' --project-name 'nana-buyback-hook-v6'"
   },
   "dependencies": {
-    "@bananapus/core-v6": "^0.0.57",
-    "@bananapus/permission-ids-v6": "^0.0.26",
-    "@bananapus/univ4-router-v6": "^0.0.34",
+    "@bananapus/core-v6": "^0.0.60",
+    "@bananapus/permission-ids-v6": "^0.0.27",
+    "@bananapus/univ4-router-v6": "^0.0.37",
     "@openzeppelin/contracts": "5.6.1",
     "@prb/math": "4.1.1",
     "@uniswap/v4-core": "1.0.2"
