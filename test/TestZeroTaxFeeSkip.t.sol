@@ -229,10 +229,10 @@ contract TestZeroTaxFeeSkip is Test {
         });
     }
 
-    /// @notice Decode netDirectCashOutAmount from hook metadata (3rd field in 7-tuple).
+    /// @notice Decode netDirectCashOutAmount from hook metadata (3rd field in current cash-out metadata tuple).
     function _decodeNet(bytes memory metadata) internal pure returns (uint256 netDirectCashOutAmount) {
-        (,, netDirectCashOutAmount,,,,) =
-            abi.decode(metadata, (uint256, uint256, uint256, int24, uint128, PoolId, uint256));
+        (,, netDirectCashOutAmount,,,,,) =
+            abi.decode(metadata, (uint256, uint256, uint256, int24, uint128, PoolId, uint256, bool));
     }
 
     /// @notice `cashOutTaxRate=0`, non-feeless beneficiary → routing uses GROSS (best case) so the
