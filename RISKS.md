@@ -81,7 +81,8 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 ## 8. Invariants To Verify
 
 - users always get at least their specified explicit minimum
-- cash-out beneficiaries always get at least direct protocol cash-out value when routed through the pool
+- cash-out beneficiaries always get at least their explicit minimum, and holders keep any project tokens the pool
+  does not buy on a partial sell-side fill
 - cash-out sell count matches data-hook intent, not necessarily the terminal's full original count
 - swap fallback to mint works correctly on the buy side
 - there is no value extraction gap between swap boundary and mint rate
@@ -117,6 +118,11 @@ When a swap fails and leftover terminal tokens return through `addToBalanceOf`, 
 ### 9.6 Sell-side swaps degrade gracefully
 
 When `afterCashOutRecordedWith()` attempts to sell reminted project tokens through the pool and the swap reverts (e.g., zero liquidity, pool unavailable), the hook transfers the reminted project tokens back to the **holder** (not the beneficiary) instead of reverting the entire cash-out. The holder retains their project tokens and can sell them manually or retry. A `SellSwapReverted` event is emitted for offchain monitoring.
+
+If the pool only partially fills before hitting the hook's price limit, the swap proceeds are still sent to the
+beneficiary, but the unsold reminted project tokens are returned to the holder. This keeps a derived sell-side route
+from destroying the part of the holder's position that the AMM did not actually buy. Explicit user-supplied minimums
+still revert if the delivered terminal-token amount is below the requested floor.
 
 ### 9.7 Unpinned projects fall back to the mutable default hook
 
