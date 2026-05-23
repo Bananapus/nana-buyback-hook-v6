@@ -171,7 +171,7 @@ contract CashOutConsumedInputResidue is Test {
         });
     }
 
-    function test_afterCashOutRecordedWith_burnsOnlyCurrentUnsoldResidue() public {
+    function test_afterCashOutRecordedWith_returnsOnlyCurrentUnsoldResidue() public {
         uint256 cashOutCountToSell = 100 ether;
         uint256 swapConsumed = 60 ether;
         uint256 amountReceived = 60 ether;
@@ -211,8 +211,11 @@ contract CashOutConsumedInputResidue is Test {
         hook.afterCashOutRecordedWith(context);
 
         assertEq(controller.lastMintCount(), cashOutCountToSell, "hook should remint the requested sell amount");
+        assertEq(controller.lastBurnCount(), 0, "partial fills should not burn unsold reminted residue");
         assertEq(
-            controller.lastBurnCount(), cashOutCountToSell - swapConsumed, "only unsold reminted residue should burn"
+            projectToken.balanceOf(context.holder),
+            cashOutCountToSell - swapConsumed,
+            "only the unsold reminted residue should return to the holder"
         );
         assertEq(
             projectToken.balanceOf(address(hook)),

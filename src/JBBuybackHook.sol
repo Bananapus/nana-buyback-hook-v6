@@ -284,13 +284,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             revert JBBuybackHook_SpecifiedSlippageExceeded({amount: amountReceived, minimum: minimumSwapAmountOut});
         }
 
-        // Burn only the reminted residue left unsold by THIS execution.
-        // Pre-existing project-token balances on the hook must not be swept into this burn.
+        // Return only the reminted residue left unsold by THIS execution. The terminal already burned the holder's
+        // project tokens before this hook ran, so returning the unsold remint restores the portion that the pool did
+        // not actually buy. Pre-existing project-token balances on the hook must not be swept into this transfer.
         uint256 unsoldProjectTokenCount = actualReceived > amountSpent ? actualReceived - amountSpent : 0;
         if (unsoldProjectTokenCount != 0) {
-            controller.burnTokensOf({
-                holder: address(this), projectId: context.projectId, tokenCount: unsoldProjectTokenCount, memo: ""
-            });
+            IERC20(projectToken).safeTransfer({to: context.holder, value: unsoldProjectTokenCount});
         }
 
         // Forward the swap proceeds to the beneficiary in the same token they would have reclaimed natively.

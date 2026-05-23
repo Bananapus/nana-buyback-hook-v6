@@ -321,10 +321,10 @@ contract FOTProjectTokenTest is Test {
         );
     }
 
-    /// @notice Unsold residue burn: With a FOT project token, the unsold token calculation
-    /// should use `actualReceived` instead of `cashOutCountToSell` to avoid burning more tokens
+    /// @notice Unsold residue return: With a FOT project token, the unsold token calculation
+    /// should use `actualReceived` instead of `cashOutCountToSell` to avoid returning more tokens
     /// than the hook actually holds.
-    function test_partialSwap_FOTProjectToken_burnsCorrectResidue() public {
+    function test_partialSwap_FOTProjectToken_returnsCorrectResidue() public {
         uint256 cashOutCount = 100 ether;
         uint256 swapConsumed = 50 ether; // Pool only consumes 50 ether of the 99 ether received
         uint256 swapAmountReceived = 40 ether;
@@ -358,9 +358,14 @@ contract FOTProjectTokenTest is Test {
             "beneficiary should receive terminal token proceeds"
         );
 
-        // The hook's residual project tokens should have been burned (49 ether).
-        // After burn, hook should hold zero.
-        assertEq(projectToken.balanceOf(address(hook)), 0, "hook should have burned all unsold residue");
+        // The hook's residual project tokens should have been returned to the holder.
+        // The return transfer is itself fee-on-transfer, so the holder receives the net residue.
+        assertEq(projectToken.balanceOf(address(hook)), 0, "hook should not retain unsold residue");
+        assertEq(
+            projectToken.balanceOf(context.holder),
+            _afterFOTFee(49 ether),
+            "holder should receive the unsold residue net of transfer fee"
+        );
     }
 
     /// @notice Helper: calculate the amount received after a 1% FOT deduction.
