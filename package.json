@@ -1,19 +1,16 @@
 {
   "name": "@bananapus/buyback-hook-v6",
-  "version": "0.0.50",
+  "version": "0.0.51",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Bananapus/nana-buyback-hook-v6"
   },
   "files": [
-    "foundry.lock",
     "foundry.toml",
     "references/",
     "remappings.txt",
-    "script/Deploy.s.sol",
-    "script/helpers/",
-    "sphinx.lock",
+    "script/",
     "src/"
   ],
   "engines": {
