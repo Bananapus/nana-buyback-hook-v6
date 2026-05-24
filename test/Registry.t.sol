@@ -38,11 +38,11 @@ contract Test_BuybackHookRegistry_Unit is Test {
     IJBRulesetDataHook hookB = IJBRulesetDataHook(makeAddr("hookB"));
 
     // Events (from IJBBuybackHookRegistry).
-    event JBBuybackHookRegistry_AllowHook(IJBRulesetDataHook hook);
-    event JBBuybackHookRegistry_DisallowHook(IJBRulesetDataHook hook);
-    event JBBuybackHookRegistry_SetDefaultHook(IJBRulesetDataHook hook);
-    event JBBuybackHookRegistry_SetHook(uint256 indexed projectId, IJBRulesetDataHook hook);
-    event JBBuybackHookRegistry_LockHook(uint256 indexed projectId);
+    event JBBuybackHookRegistry_AllowHook(IJBRulesetDataHook hook, address caller);
+    event JBBuybackHookRegistry_DisallowHook(IJBRulesetDataHook hook, address caller);
+    event JBBuybackHookRegistry_SetDefaultHook(IJBRulesetDataHook hook, address caller);
+    event JBBuybackHookRegistry_SetHook(uint256 indexed projectId, IJBRulesetDataHook hook, address caller);
+    event JBBuybackHookRegistry_LockHook(uint256 indexed projectId, address caller);
 
     function setUp() public {
         registry = new JBBuybackHookRegistry(permissions, projects, owner, trustedForwarder);
@@ -79,7 +79,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
 
         vm.prank(owner);
         vm.expectEmit(false, false, false, true);
-        emit JBBuybackHookRegistry_AllowHook(hookA);
+        emit JBBuybackHookRegistry_AllowHook(hookA, owner);
         registry.allowHook(hookA);
 
         assertTrue(registry.isHookAllowed(hookA), "hookA should be allowed");
@@ -104,7 +104,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         // Disallow.
         vm.prank(owner);
         vm.expectEmit(false, false, false, true);
-        emit JBBuybackHookRegistry_DisallowHook(hookA);
+        emit JBBuybackHookRegistry_DisallowHook(hookA, owner);
         registry.disallowHook(hookA);
 
         assertFalse(registry.isHookAllowed(hookA), "hookA should be disallowed");
@@ -123,7 +123,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
     function test_setDefaultHook() public {
         vm.prank(owner);
         vm.expectEmit(false, false, false, true);
-        emit JBBuybackHookRegistry_SetDefaultHook(hookA);
+        emit JBBuybackHookRegistry_SetDefaultHook(hookA, owner);
         registry.setDefaultHook(hookA);
 
         assertEq(address(registry.defaultHook()), address(hookA), "defaultHook should be hookA");
@@ -148,7 +148,7 @@ contract Test_BuybackHookRegistry_Unit is Test {
         // Set hook for project.
         vm.prank(projectOwner);
         vm.expectEmit(true, false, false, true);
-        emit JBBuybackHookRegistry_SetHook(projectId, hookA);
+        emit JBBuybackHookRegistry_SetHook(projectId, hookA, projectOwner);
         registry.setHookFor(projectId, hookA);
 
         assertEq(address(registry.hookOf(projectId)), address(hookA), "hookOf should be hookA");

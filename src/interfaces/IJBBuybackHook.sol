@@ -45,7 +45,8 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     /// @param projectId The ID of the project whose sell-side swap failed.
     /// @param holder The address that received the project tokens.
     /// @param amount The number of project tokens transferred to the holder.
-    event SellSwapReverted(uint256 indexed projectId, address indexed holder, uint256 amount);
+    /// @param caller The address that triggered the cash out.
+    event SellSwapReverted(uint256 indexed projectId, address indexed holder, uint256 amount, address caller);
 
     /// @notice Emitted when terminal tokens are swapped for project tokens via the Uniswap V4 pool.
     /// @param projectId The ID of the project whose tokens were swapped for.
