@@ -220,7 +220,9 @@ contract SellSwapFallback is Test {
 
         // Expect the SellSwapReverted event — tokens go to holder, not beneficiary.
         vm.expectEmit(true, true, true, true);
-        emit IJBBuybackHook.SellSwapReverted({projectId: projectId, holder: context.holder, amount: cashOutCount});
+        emit IJBBuybackHook.SellSwapReverted({
+            projectId: projectId, holder: context.holder, amount: cashOutCount, caller: terminal
+        });
 
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);

@@ -275,7 +275,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 revert JBBuybackHook_SpecifiedSlippageExceeded({amount: 0, minimum: minimumSwapAmountOut});
             }
             IERC20(projectToken).safeTransfer({to: context.holder, value: actualReceived});
-            emit SellSwapReverted({projectId: context.projectId, holder: context.holder, amount: actualReceived});
+            emit SellSwapReverted({
+                projectId: context.projectId, holder: context.holder, amount: actualReceived, caller: msg.sender
+            });
             return;
         }
 

@@ -165,7 +165,9 @@ contract SellSideCashOutBeneficiaryTest is Test {
     /// @notice Fix verification: correct event is emitted with holder address.
     function test_SellSideRevert_fix_swapFailure_emitsHolderEvent() public {
         vm.expectEmit(true, true, false, true);
-        emit IJBBuybackHook.SellSwapReverted({projectId: PROJECT_ID, holder: HOLDER, amount: CASH_OUT_COUNT});
+        emit IJBBuybackHook.SellSwapReverted({
+            projectId: PROJECT_ID, holder: HOLDER, amount: CASH_OUT_COUNT, caller: address(this)
+        });
 
         hook.afterCashOutRecordedWith(_makeContext());
     }

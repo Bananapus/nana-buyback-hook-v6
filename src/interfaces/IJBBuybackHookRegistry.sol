@@ -10,24 +10,29 @@ import {DefaultHookSegment} from "../structs/DefaultHookSegment.sol";
 interface IJBBuybackHookRegistry is IJBRulesetDataHook {
     /// @notice Emitted when a hook is allowed for use by projects.
     /// @param hook The hook that was allowed.
-    event JBBuybackHookRegistry_AllowHook(IJBRulesetDataHook hook);
+    /// @param caller The address that allowed the hook.
+    event JBBuybackHookRegistry_AllowHook(IJBRulesetDataHook hook, address caller);
 
     /// @notice Emitted when a hook is disallowed from use by projects.
     /// @param hook The hook that was disallowed.
-    event JBBuybackHookRegistry_DisallowHook(IJBRulesetDataHook hook);
+    /// @param caller The address that disallowed the hook.
+    event JBBuybackHookRegistry_DisallowHook(IJBRulesetDataHook hook, address caller);
 
     /// @notice Emitted when a project's hook is locked, preventing future changes.
     /// @param projectId The ID of the project whose hook was locked.
-    event JBBuybackHookRegistry_LockHook(uint256 projectId);
+    /// @param caller The address that locked the hook.
+    event JBBuybackHookRegistry_LockHook(uint256 projectId, address caller);
 
     /// @notice Emitted when the default hook is set.
     /// @param hook The hook that was set as the default.
-    event JBBuybackHookRegistry_SetDefaultHook(IJBRulesetDataHook hook);
+    /// @param caller The address that set the default hook.
+    event JBBuybackHookRegistry_SetDefaultHook(IJBRulesetDataHook hook, address caller);
 
     /// @notice Emitted when a hook is set for a specific project.
     /// @param projectId The ID of the project the hook was set for.
     /// @param hook The hook that was set.
-    event JBBuybackHookRegistry_SetHook(uint256 indexed projectId, IJBRulesetDataHook hook);
+    /// @param caller The address that set the hook.
+    event JBBuybackHookRegistry_SetHook(uint256 indexed projectId, IJBRulesetDataHook hook, address caller);
 
     /// @notice The JBProjects ERC-721 contract used to verify project ownership.
     /// @return The projects contract.

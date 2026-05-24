@@ -119,7 +119,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Allow the hook.
         isHookAllowed[hook] = true;
 
-        emit JBBuybackHookRegistry_AllowHook({hook: hook});
+        emit JBBuybackHookRegistry_AllowHook({hook: hook, caller: _msgSender()});
     }
 
     /// @notice Removes a buyback hook implementation from the allowlist, preventing new projects from selecting it.
@@ -133,7 +133,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Disallow the hook.
         isHookAllowed[hook] = false;
 
-        emit JBBuybackHookRegistry_DisallowHook({hook: hook});
+        emit JBBuybackHookRegistry_DisallowHook({hook: hook, caller: _msgSender()});
     }
 
     /// @notice Permanently locks a project's buyback hook assignment, preventing future changes. Once locked, the
@@ -210,7 +210,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Set the hook to locked.
         hasLockedHook[projectId] = true;
 
-        emit JBBuybackHookRegistry_LockHook({projectId: projectId});
+        emit JBBuybackHookRegistry_LockHook({projectId: projectId, caller: _msgSender()});
     }
 
     /// @notice Sets the protocol-wide default buyback hook. Only affects projects created AFTER this call — existing
@@ -249,7 +249,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Allow the default hook.
         isHookAllowed[hook] = true;
 
-        emit JBBuybackHookRegistry_SetDefaultHook({hook: hook});
+        emit JBBuybackHookRegistry_SetDefaultHook({hook: hook, caller: _msgSender()});
     }
 
     /// @notice Assigns a specific buyback hook implementation to a project, overriding the default.
@@ -271,7 +271,7 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Set the hook.
         _hookOf[projectId] = hook;
 
-        emit JBBuybackHookRegistry_SetHook({projectId: projectId, hook: hook});
+        emit JBBuybackHookRegistry_SetHook({projectId: projectId, hook: hook, caller: _msgSender()});
     }
 
     /// @notice Set the Uniswap V4 pool for a project by forwarding to the resolved buyback hook implementation.
