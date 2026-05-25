@@ -85,16 +85,16 @@ contract DisallowDefaultHook is Test {
 
     /// @notice After the fix, the payment path (beforePayRecordedWith) should never encounter
     ///         address(0) as the default hook because disallowHook prevents clearing it.
-    /// @dev This test demonstrates the bug scenario that the fix prevents:
+    /// @dev This test demonstrates the default-hook clearing scenario:
     ///      1. Set hookA as default
-    ///      2. Try to disallow hookA (now reverts — before fix would clear default to address(0))
-    ///      3. Verify payments still work (beforePayRecordedWith does not revert on address(0))
+    ///      2. Try to disallow hookA, which must revert before clearing the default
+    ///      3. Verify payments still work through the configured default
     function test_paymentPathSafeAfterDisallowAttempt() public {
         // Set hookA as the default.
         vm.prank(registryOwner);
         registry.setDefaultHook(hookA);
 
-        // Attempt to disallow hookA — reverts (fix).
+        // Attempting to disallow the active default hook must revert.
         vm.prank(registryOwner);
         vm.expectRevert(
             abi.encodeWithSelector(

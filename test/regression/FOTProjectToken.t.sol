@@ -135,16 +135,9 @@ contract FOTHook is JBBuybackHook {
 }
 
 /// @title FOTProjectTokenTest
-/// @notice When the project token is a fee-on-transfer token, afterCashOutRecordedWith
-/// should use the actual received balance (not the nominal cashOutCountToSell) for swap input,
-/// fallback transfer, and burn calculations.
-///
-/// Before fix: the hook assumes it received exactly `cashOutCountToSell` tokens from mintTokensOf,
-/// but with a FOT project token it actually receives less. This causes:
-/// 1. `_swapExactInput` tries to sell more tokens than the hook holds -> revert
-/// 2. `swapFailed` fallback tries to transfer `cashOutCountToSell` -> revert (insufficient balance)
-///
-/// After fix: the hook snapshots balanceOf before/after mintTokensOf and uses `actualReceived`.
+/// @notice Regression coverage for fee-on-transfer project tokens in sell-side cash-outs.
+/// @dev The hook snapshots its project-token balance before and after `mintTokensOf`, then uses the actual received
+/// amount for swap input, fallback transfer, and burn calculations.
 contract FOTProjectTokenTest is Test {
     FOTHook internal hook;
     MockPoolManager internal poolManager;
@@ -246,11 +239,6 @@ contract FOTProjectTokenTest is Test {
     /// @notice Swap-failed path: With a FOT project token, the hook receives fewer tokens than
     /// `cashOutCountToSell` from mintTokensOf. When the swap fails, the hook should transfer only the
     /// actual received amount to the holder, not `cashOutCountToSell`.
-    ///
-    /// Before fix: reverts with ERC20InsufficientBalance because the hook tries to transfer
-    /// `cashOutCountToSell` but only holds 99% of that.
-    ///
-    /// After fix: transfers `actualReceived` (99%) to the holder successfully.
     function test_swapFailed_FOTProjectToken_transfersActualReceived() public {
         uint256 cashOutCount = 100 ether;
         uint256 expectedFee = cashOutCount / 100; // 1% = 1 ether
@@ -263,7 +251,7 @@ contract FOTProjectTokenTest is Test {
             cashOutCount: cashOutCount, minimumSwapAmountOut: 0, cashOutCountToSell: cashOutCount
         });
 
-        // Execute from terminal. Before fix: reverts. After fix: succeeds.
+        // Execute from the terminal and return only the tokens actually received.
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
@@ -281,11 +269,6 @@ contract FOTProjectTokenTest is Test {
     /// @notice Swap path: With a FOT project token, the hook passes `actualReceived` to
     /// `_swapExactInput` instead of `cashOutCountToSell`. This prevents the swap from trying
     /// to sell more tokens than the hook actually holds.
-    ///
-    /// Before fix: the swap tries to sell `cashOutCountToSell` tokens but the hook only holds 99%,
-    /// causing a revert during the pool settlement.
-    ///
-    /// After fix: the swap uses `actualReceived` (99%) as the input amount, which succeeds.
     function test_swapSucceeds_FOTProjectToken_usesActualReceived() public {
         uint256 cashOutCount = 100 ether;
         uint256 expectedFee = cashOutCount / 100; // 1%
@@ -309,7 +292,7 @@ contract FOTProjectTokenTest is Test {
             cashOutCount: cashOutCount, minimumSwapAmountOut: 0, cashOutCountToSell: cashOutCount
         });
 
-        // Execute from terminal. Before fix: reverts. After fix: succeeds.
+        // Execute from the terminal using the measured post-fee input amount.
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 
@@ -345,9 +328,7 @@ contract FOTProjectTokenTest is Test {
             cashOutCount: cashOutCount, minimumSwapAmountOut: 0, cashOutCountToSell: cashOutCount
         });
 
-        // Execute from terminal. Before fix: reverts because unsoldProjectTokenCount = cashOutCountToSell - amountSpent
-        // = 100e18 - 50e18 = 50e18, but the hook only has 99e18 - 50e18 = 49e18 unsold tokens.
-        // After fix: unsoldProjectTokenCount = actualReceived - amountSpent = 99e18 - 50e18 = 49e18, which is correct.
+        // Unsold residue is `actualReceived - amountSpent`, not `cashOutCountToSell - amountSpent`.
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(context);
 

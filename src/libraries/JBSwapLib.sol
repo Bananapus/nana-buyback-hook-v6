@@ -239,7 +239,7 @@ library JBSwapLib {
         pure
         returns (uint160 sqrtPriceLimit)
     {
-        // No minimum specified → no limit (legacy behaviour).
+        // No explicit minimum means the swap can use the full valid price range.
         if (minimumAmountOut == 0 || amountIn == 0) {
             return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
         }

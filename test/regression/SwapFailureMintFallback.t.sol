@@ -222,7 +222,7 @@ contract SFMF_SwapFailureMintFallback is Test {
     function test_swapFailureMintFallback_allowsOracleDerivedMinimum() public {
         bool projectTokenIs0 = address(projectToken) < address(0);
         uint256 payAmount = 1 ether;
-        uint256 minimumSwapAmountOut = 500e18; // Non-zero — this would have caused revert before fix.
+        uint256 minimumSwapAmountOut = 500e18; // Non-zero oracle-derived minimum should still permit fallback.
 
         // Force unlock to revert (simulating pool unavailability).
         mockPm.setShouldRevertOnUnlock(true);

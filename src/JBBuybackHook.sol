@@ -119,7 +119,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice The deployer authorized to set the chain-specific Uniswap V4 PoolManager and oracle hook.
     /// @dev Held as immutable so the constructor inputs are byte-identical on every chain. The chain-specific
-    /// Uniswap V4 PoolManager (and the matching JB V4 oracle hook deployed against it) are set by this
+    /// Uniswap V4 PoolManager (and the matching oracle hook deployed against it) are set by this
     /// deployer in a one-shot call to `setChainSpecificConstants`. This mirrors the
     /// `JBOptimismSuckerDeployer.setChainSpecificConstants` pattern in nana-suckers-v6, and makes this
     /// contract's CREATE2 address identical across chains.
@@ -133,7 +133,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// `setChainSpecificConstants` and never changed thereafter.
     IPoolManager public override poolManager;
 
-    /// @notice The oracle hook used for all JB V4 pools (provides TWAP via observe()). Set once by `_DEPLOYER`
+    /// @notice The oracle hook used for configured Uniswap V4 pools. Set once by `_DEPLOYER`
     /// after construction via `setChainSpecificConstants` and never changed thereafter.
     IHooks public oracleHook;
 
@@ -518,7 +518,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// `JBOptimismSuckerDeployer.setChainSpecificConstants` pattern so the contract's CREATE2 inputs stay
     /// byte-identical across chains and its deployed address is unified.
     /// @param newPoolManager The Uniswap V4 PoolManager singleton on the current chain.
-    /// @param newOracleHook The JB V4 oracle hook deployed against `newPoolManager` on the current chain.
+    /// @param newOracleHook The Uniswap V4 oracle hook deployed against `newPoolManager` on the current chain.
     function setChainSpecificConstants(IPoolManager newPoolManager, IHooks newOracleHook) external override {
         if (msg.sender != _DEPLOYER) revert JBBuybackHook_Unauthorized({caller: msg.sender});
         if (address(poolManager) != address(0)) revert JBBuybackHook_AlreadyConfigured();
