@@ -279,8 +279,8 @@ contract RegressionBuySideFOTProjectTokenDoSTest is Test {
             payerMetadata: ""
         });
 
-        // The balance-delta fix () in unlockCallback now properly handles fee-on-transfer tokens,
-        // so the swap completes without reverting.
+        // The unlock callback measures the balance delta, so fee-on-transfer project tokens do not
+        // make the swap overstate its received input.
         vm.prank(terminal);
         hook.afterPayRecordedWith(context);
 
