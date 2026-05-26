@@ -74,6 +74,9 @@ contract CashOutFeeComparisonMismatchTest is Test {
         vm.etch(address(tokens), "0x01");
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
+        vm.mockCall(
+            address(terminal), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
+        );
 
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
@@ -122,7 +125,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
     }
 
     /// @notice with `cashOutTaxRate == 0` and non-feeless beneficiary the executable direct net is
-    /// somewhere in `[gross - standardFee, gross]` depending on the terminal's `_feeFreeSurplusOf`. Before the fix,
+    /// somewhere in `[gross - standardFee, gross]` depending on the terminal's `feeFreeSurplusOf`. Before the fix,
     /// the hook treated direct as always net = gross - fee and would activate the AMM route whenever AMM beat that
     /// over-discounted value — even when the direct path could pay gross and outperform the AMM.
     function test_zeroTaxNonFeeless_doesNotRouteToAmmBelowGrossDirectReclaim() public view {

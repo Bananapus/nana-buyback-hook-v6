@@ -129,6 +129,8 @@ contract CodexNemesisSellSidePartialFillTest is Test {
         vm.etch(address(prices), "0x01");
         vm.etch(address(projects), "0x01");
         vm.etch(address(tokens), "0x01");
+        vm.etch(terminal, "0x01");
+        vm.mockCall(terminal, abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0)));
 
         hook = new CNHook({
             directory: directory,

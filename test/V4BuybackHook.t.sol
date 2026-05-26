@@ -144,6 +144,9 @@ contract V4BuybackHookTest is Test {
         vm.etch(address(tokens), "0x01");
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
+        vm.mockCall(
+            address(terminal), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
+        );
 
         // Labels
         vm.label(address(mockPm), "MockPoolManager");
@@ -1454,7 +1457,7 @@ contract V4BuybackHookTest is Test {
         assertEq(minimumSwapAmountOut, explicitMinimumReclaimed, "explicit cash-out minimum should be honored");
         assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
         // zero-tax non-feeless cash-outs use GROSS as the routing reference because the terminal
-        // charges the fee only up to `_feeFreeSurplusOf` (which the hook cannot read), so the surfaced direct-path
+        // charges the fee only up to `feeFreeSurplusOf` (which the hook cannot read), so the surfaced direct-path
         // amount is gross.
         uint256 expectedGross = 0.5 ether;
         assertEq(minimumProtocolAmountOut, expectedGross, "zero-tax direct path uses gross for non-feeless routing");
@@ -1541,7 +1544,7 @@ contract V4BuybackHookTest is Test {
             surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
         });
         // zero-tax non-feeless cash-outs use gross as the routing reference; the terminal's fee
-        // depends on `_feeFreeSurplusOf` which the hook cannot read, so the best-case direct (= gross) is used.
+        // depends on `feeFreeSurplusOf` which the hook cannot read, so the best-case direct (= gross) is used.
         uint256 protocolMinimum = grossDirect;
         uint256 explicitMinimum = protocolMinimum + bound(uint256(deltaSeed), 1, 1_000_000 ether);
 
@@ -1607,7 +1610,7 @@ contract V4BuybackHookTest is Test {
             surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
         });
         // zero-tax non-feeless cash-outs use gross as the routing reference; the terminal's fee
-        // depends on `_feeFreeSurplusOf` which the hook cannot read, so the best-case direct (= gross) is used.
+        // depends on `feeFreeSurplusOf` which the hook cannot read, so the best-case direct (= gross) is used.
         uint256 protocolMinimum = grossDirect;
         uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
         uint256 explicitMinimum = protocolMinimum - delta;

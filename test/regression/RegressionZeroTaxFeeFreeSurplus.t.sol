@@ -35,7 +35,7 @@ contract RegressionZeroTaxProjectToken is ERC20 {
 }
 
 /// @notice Regression test: when `cashOutTaxRate == 0` and the core terminal will still charge a fee against
-/// `_feeFreeSurplusOf`, the hook must deduct the terminal fee from the direct-path comparison amount. Otherwise the
+/// `feeFreeSurplusOf`, the hook must deduct the terminal fee from the direct-path comparison amount. Otherwise the
 /// hook routes to a direct path that pays less than the available AMM floor.
 contract RegressionZeroTaxFeeFreeSurplusTest is Test {
     using PoolIdLibrary for PoolKey;
@@ -71,6 +71,9 @@ contract RegressionZeroTaxFeeFreeSurplusTest is Test {
         vm.etch(address(tokens), "0x01");
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
+        vm.mockCall(
+            address(terminal), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
+        );
 
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();

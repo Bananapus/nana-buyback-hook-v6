@@ -10,7 +10,6 @@ import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
 import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {JBCashOuts} from "@bananapus/core-v6/src/libraries/JBCashOuts.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
-import {JBFees} from "@bananapus/core-v6/src/libraries/JBFees.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
 import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
@@ -47,6 +46,11 @@ contract ExplicitCashOutMinNoPoolGapTest is Test {
         registry = new JBBuybackHookRegistry({
             permissions: permissions, projects: projects, owner: address(this), trustedForwarder: address(0)
         });
+        // Mock the terminal used in the context so the hook's `feeFreeSurplusOf` read returns zero.
+        vm.etch(address(0x1234), "0x01");
+        vm.mockCall(
+            address(0x1234), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
+        );
     }
 
     function test_explicitCashOutMinimumRevertsWhenNoPoolIsSet() public {
@@ -57,12 +61,12 @@ contract ExplicitCashOutMinNoPoolGapTest is Test {
         });
 
         _assertFallbackRevertsBelowMinimum();
-        // The no-pool fallback enforces the user's explicit minimum against the worst-case net
-        // (`gross - standardFee`) for non-feeless beneficiaries, not the gross reclaim.
-        uint256 worstCaseNet = DIRECT_RECLAIM - JBFees.standardFeeAmountFrom(DIRECT_RECLAIM);
+        // The no-pool fallback enforces the user's explicit minimum against the exact net the
+        // terminal would settle. With `feeFreeSurplusOf == 0` and `cashOutTaxRate == 0`, the
+        // terminal charges no fee, so the exact net equals the gross direct reclaim.
         vm.expectRevert(
             abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, worstCaseNet, EXPLICIT_MINIMUM
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, DIRECT_RECLAIM, EXPLICIT_MINIMUM
             )
         );
         hook.beforeCashOutRecordedWith(_context(metadata));
@@ -79,12 +83,12 @@ contract ExplicitCashOutMinNoPoolGapTest is Test {
         });
 
         _assertFallbackRevertsBelowMinimum();
-        // The no-pool fallback enforces the user's explicit minimum against the worst-case net
-        // (`gross - standardFee`) for non-feeless beneficiaries, not the gross reclaim.
-        uint256 worstCaseNet = DIRECT_RECLAIM - JBFees.standardFeeAmountFrom(DIRECT_RECLAIM);
+        // The no-pool fallback enforces the user's explicit minimum against the exact net the
+        // terminal would settle. With `feeFreeSurplusOf == 0` and `cashOutTaxRate == 0`, the
+        // terminal charges no fee, so the exact net equals the gross direct reclaim.
         vm.expectRevert(
             abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, worstCaseNet, EXPLICIT_MINIMUM
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, DIRECT_RECLAIM, EXPLICIT_MINIMUM
             )
         );
         registry.beforeCashOutRecordedWith(_context(metadata));

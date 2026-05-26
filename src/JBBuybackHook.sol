@@ -787,18 +787,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     totalSupply: context.totalSupply,
                     cashOutTaxRate: context.cashOutTaxRate
                 });
-                // Enforce the user's explicit minimum against the worst-case net the terminal would pay out.
-                // The hook cannot read `_feeFreeSurplusOf`, so it must assume the terminal applies the full
-                // standard fee whenever the beneficiary is non-feeless — otherwise a `cashOutTaxRate != 0`
-                // (or zero-tax with non-zero `_feeFreeSurplusOf`) cash-out would silently settle the user
-                // below their stated floor after the fee is deducted.
-                uint256 worstCaseNetFallbackReclaim = fallbackReclaim;
-                if (!context.beneficiaryIsFeeless) {
-                    worstCaseNetFallbackReclaim -= JBFees.standardFeeAmountFrom(fallbackReclaim);
-                }
-                if (worstCaseNetFallbackReclaim < minimumSwapAmountOut) {
+                // Enforce the user's explicit minimum against the exact net the terminal would pay out.
+                uint256 netFallbackReclaim = _netAfterTerminalFee({amount: fallbackReclaim, context: context});
+                if (netFallbackReclaim < minimumSwapAmountOut) {
                     revert JBBuybackHook_SpecifiedSlippageExceeded({
-                        amount: worstCaseNetFallbackReclaim, minimum: minimumSwapAmountOut
+                        amount: netFallbackReclaim, minimum: minimumSwapAmountOut
                     });
                 }
             }
@@ -837,22 +830,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        // Compute the executable net direct reclaim under the active fee semantics. The terminal's effective
-        // payout depends on the cash-out tax rate and whether the beneficiary is feeless:
-        //   - Feeless beneficiary: no fee, net == gross.
-        //   - Non-zero tax rate, non-feeless: terminal charges the standard fee on the full reclaim
-        //     (`_feeFreeSurplusOf` only gates the zero-tax branch), so net == gross - standardFee.
-        //   - Zero tax rate, non-feeless: terminal charges the standard fee only up to
-        //     `_feeFreeSurplusOf`, so net is somewhere in `[gross - standardFee, gross]`. The hook
-        //     cannot read that storage; treat the route as if the best case applies (no fee) so
-        //     the noop comparison only directs to the AMM when the AMM strictly beats gross — that
-        //     way the hook never routes to AMM when the direct path could have paid more under the
-        //     active fee/free-surplus semantics. The worst-case bound is still enforced against any
-        //     explicit minimum the user supplies (see the fallback and `afterCashOutRecordedWith` paths).
-        uint256 netDirectCashOutAmount = directCashOutAmount;
-        if (!context.beneficiaryIsFeeless && context.cashOutTaxRate != 0) {
-            netDirectCashOutAmount -= JBFees.standardFeeAmountFrom(directCashOutAmount);
-        }
+        // Compute the executable net direct reclaim under the active fee semantics. The terminal's
+        // effective payout depends on the cash-out tax rate, whether the beneficiary is feeless, and —
+        // in the zero-tax branch — the terminal's `feeFreeSurplusOf` counter (a fee applies only up
+        // to that surplus). Reading it via the now-public getter gives an exact net, so the
+        // noop-vs-AMM comparison and any user-specified floor can both rely on the same number.
+        uint256 netDirectCashOutAmount = _netAfterTerminalFee({amount: directCashOutAmount, context: context});
 
         bool noop = minimumSwapAmountOut <= netDirectCashOutAmount;
 
@@ -1356,6 +1339,38 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice The message's sender. Preferred to use over `msg.sender`.
     function _msgSender() internal view override(ERC2771Context, Context) returns (address sender) {
         return ERC2771Context._msgSender();
+    }
+
+    /// @notice The exact net the terminal will settle to the beneficiary after applying its fee policy.
+    /// @dev Mirrors `JBMultiTerminal._cashOutTokensOf` fee math: feeless beneficiaries pay nothing; non-zero
+    /// tax rate charges the full standard fee on the gross; zero tax rate charges only up to
+    /// `feeFreeSurplusOf` (the per-(project, token) round-trip exposure counter the terminal exposes
+    /// publicly). The hook reads the counter via the terminal address already present in the context.
+    /// @param amount The gross reclaim amount before any terminal fee.
+    /// @param context The before-cashout context the data hook is processing.
+    /// @return The net the beneficiary will receive (gross minus any applicable terminal fee).
+    function _netAfterTerminalFee(
+        uint256 amount,
+        JBBeforeCashOutRecordedContext calldata context
+    )
+        internal
+        view
+        returns (uint256)
+    {
+        if (context.beneficiaryIsFeeless) return amount;
+
+        uint256 feeBase;
+        if (context.cashOutTaxRate != 0) {
+            // Non-zero tax: terminal charges the full standard fee on the gross.
+            feeBase = amount;
+        } else {
+            // Zero tax: terminal charges only up to its fee-free surplus for this (project, token).
+            uint256 feeFreeSurplus = IJBMultiTerminal(context.terminal)
+                .feeFreeSurplusOf({projectId: context.projectId, token: context.surplus.token});
+            feeBase = amount < feeFreeSurplus ? amount : feeFreeSurplus;
+        }
+
+        return amount - JBFees.standardFeeAmountFrom(feeBase);
     }
 
     /// @notice Returns this contract's balance of the given terminal token.
