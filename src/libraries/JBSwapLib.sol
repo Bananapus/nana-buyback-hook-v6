@@ -275,10 +275,9 @@ library JBSwapLib {
         uint256 sqrtResult;
 
         if (num / den >= (uint256(1) << 128)) {
-            // zeroForOne: the requested output floor implies an impossible minimum price, so return an
-            // already-exceeded limit and let V4 fail closed. For oneForZero, the implied maximum price is above the
-            // valid V4 range, so every valid price still satisfies the floor.
-            return TickMath.MAX_SQRT_PRICE - 1;
+            // The implied sqrt price is outside V4's representable range. Use the normal direction-specific
+            // no-limit value here; callers enforce non-zero output floors after the swap using the settled amount.
+            return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
         } else if (num / den >= (uint256(1) << 64)) {
             // Extended range: use ratioX128 to avoid mulDiv overflow.
             // Shift before sqrt for better precision: sqrt(ratioX128 << 64) vs sqrt(ratioX128) << 32.
