@@ -242,16 +242,35 @@ contract TestZeroTaxFeeSkip is Test {
     function test_zeroTaxRate_nonFeelessUsesGrossForRouting() public {
         _mockRuleset(0);
         uint256 gross = 0.5 ether;
+        uint256 worstCaseNet = gross - JBFees.standardFeeAmountFrom(gross);
 
-        // AMM quote just below gross → noop, because the direct path could pay gross under the active
-        // fee/free-surplus semantics. Routing to the AMM would deny the user the better outcome.
-        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, gross - 1);
+        // AMM quote at the conservative direct bound → noop. The hook still uses gross for route scoring, but
+        // explicit user floors must also be satisfiable if the terminal charges the standard fee.
+        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, worstCaseNet);
 
         (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
         uint256 net = _decodeNet(specs[0].metadata);
         assertEq(net, gross, "zero tax rate non-feeless routing must use gross (best case)");
         assertTrue(specs[0].noop, "AMM below gross direct: hook must prefer direct path");
+    }
+
+    function test_zeroTaxRate_nonFeelessExplicitMinimumUsesWorstCaseNoopBound() public {
+        _mockRuleset(0);
+        uint256 gross = 0.5 ether;
+        uint256 worstCaseNet = gross - JBFees.standardFeeAmountFrom(gross);
+
+        // The AMM quote is below gross, so route scoring would otherwise pick the direct/noop path. Because the
+        // hook cannot read the terminal's fee-free-surplus balance, the user's explicit floor must be checked
+        // against the conservative direct-payout bound before the hook lets the direct path proceed.
+        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, worstCaseNet + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, worstCaseNet, worstCaseNet + 1
+            )
+        );
+        hook.beforeCashOutRecordedWith(context);
     }
 
     /// @notice With `cashOutTaxRate=0` and non-feeless beneficiary, the hook only routes to the AMM

@@ -856,6 +856,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         bool noop = minimumSwapAmountOut <= netDirectCashOutAmount;
 
+        if (noop && hasUserSpecifiedMinimumSwapAmountOut) {
+            uint256 worstCaseNetDirectCashOutAmount = netDirectCashOutAmount;
+            if (!context.beneficiaryIsFeeless && context.cashOutTaxRate == 0) {
+                worstCaseNetDirectCashOutAmount -= JBFees.standardFeeAmountFrom(directCashOutAmount);
+            }
+            if (worstCaseNetDirectCashOutAmount < minimumSwapAmountOut) {
+                revert JBBuybackHook_SpecifiedSlippageExceeded({
+                    amount: worstCaseNetDirectCashOutAmount, minimum: minimumSwapAmountOut
+                });
+            }
+        }
+
         // Return sell-side routing metadata in both cases so preview clients can inspect the route comparison without
         // forcing the terminal to execute `afterCashOutRecordedWith`.
         hookSpecifications = new JBCashOutHookSpecification[](1);
