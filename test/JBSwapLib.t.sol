@@ -152,13 +152,14 @@ contract JBSwapLibTest is Test {
         assert(limitOfz < TickMath.MAX_SQRT_PRICE - 1);
     }
 
-    /// @notice Extreme ratio >= 2^128 should fall back to no limit.
+    /// @notice Extreme zeroForOne ratios should fail closed instead of dropping the price limit.
     function test_sqrtPriceLimitExtremeRatioFallback() public pure {
-        // zeroForOne: num = minOut, den = amountIn → ratio = 2^128, triggers fallback.
+        // zeroForOne: num = minOut, den = amountIn. A ratio of 2^128 implies an unsatisfiable minimum price.
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(1, uint256(1) << 128, true);
-        assertEq(limit, TickMath.MIN_SQRT_PRICE + 1);
+        assertEq(limit, TickMath.MAX_SQRT_PRICE - 1);
 
-        // !zeroForOne: num = amountIn, den = minOut → ratio = 2^128, triggers fallback.
+        // !zeroForOne: num = amountIn, den = minOut. A ratio of 2^128 means the maximum acceptable price is above
+        // every valid V4 price, so the normal no-limit upper bound is still safe.
         limit = JBSwapLib.sqrtPriceLimitFromAmounts(uint256(1) << 128, 1, false);
         assertEq(limit, TickMath.MAX_SQRT_PRICE - 1);
     }

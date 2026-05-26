@@ -124,10 +124,10 @@ contract CashOutFeeComparisonMismatchTest is Test {
         hook.setPoolFor(PROJECT_ID, poolKey, 5 minutes, JBConstants.NATIVE_TOKEN);
     }
 
-    /// @notice with `cashOutTaxRate == 0` and non-feeless beneficiary the executable direct net is
-    /// somewhere in `[gross - standardFee, gross]` depending on the terminal's `feeFreeSurplusOf`. Before the fix,
-    /// the hook treated direct as always net = gross - fee and would activate the AMM route whenever AMM beat that
-    /// over-discounted value — even when the direct path could pay gross and outperform the AMM.
+    /// @notice With `cashOutTaxRate == 0` and non-feeless beneficiary, routing uses the EXACT direct net
+    /// (`gross - standardFee(min(gross, feeFreeSurplusOf))`) read from the terminal. With `feeFreeSurplusOf == 0`
+    /// the exact net equals the gross direct reclaim, so an AMM minimum below gross is rejected — the direct path
+    /// wins. (Pre-fix the hook treated direct as always net = gross - fee and over-discounted.)
     function test_zeroTaxNonFeeless_doesNotRouteToAmmBelowGrossDirectReclaim() public view {
         uint256 grossDirect = JBCashOuts.cashOutFrom({
             surplus: ZERO_TAX_SURPLUS, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
@@ -142,7 +142,8 @@ contract CashOutFeeComparisonMismatchTest is Test {
         (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
             hook.beforeCashOutRecordedWith(_context(0, ZERO_TAX_SURPLUS, AMM_BETWEEN_GROSS_AND_FULL_FEE_NET));
 
-        // Post-fix: routing uses GROSS for direct in the zero-tax non-feeless case, so AMM below gross is rejected.
+        // Routing uses exact net for direct in the zero-tax non-feeless case (= gross when feeFreeSurplus == 0),
+        // so AMM below gross is rejected.
         assertEq(cashOutTaxRate, 0, "hook must let the terminal complete the direct cash-out");
         assertTrue(specs[0].noop, "hook must prefer the direct path: AMM is below gross direct");
     }

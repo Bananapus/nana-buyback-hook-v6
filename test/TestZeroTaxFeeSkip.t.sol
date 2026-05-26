@@ -243,10 +243,11 @@ contract TestZeroTaxFeeSkip is Test {
     function test_zeroTaxRate_nonFeelessUsesGrossForRouting() public {
         _mockRuleset(0);
         uint256 gross = 0.5 ether;
+        uint256 worstCaseNet = gross - JBFees.standardFeeAmountFrom(gross);
 
-        // AMM quote just below gross → noop, because the direct path could pay gross under the active
-        // fee/free-surplus semantics. Routing to the AMM would deny the user the better outcome.
-        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, gross - 1);
+        // AMM quote at the conservative direct bound → noop. The hook still uses gross for route scoring, but
+        // explicit user floors must also be satisfiable if the terminal charges the standard fee.
+        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, worstCaseNet);
 
         (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 
