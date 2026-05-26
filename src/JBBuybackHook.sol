@@ -857,8 +857,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool noop = minimumSwapAmountOut <= netDirectCashOutAmount;
 
         if (noop && hasUserSpecifiedMinimumSwapAmountOut) {
+            // The noop decision above uses the optimistic zero-tax direct reclaim because the hook cannot read the
+            // terminal's fee-free surplus. Before honoring a user-specified floor, also check the pessimistic case.
             uint256 worstCaseNetDirectCashOutAmount = netDirectCashOutAmount;
             if (!context.beneficiaryIsFeeless && context.cashOutTaxRate == 0) {
+                // A zero cash-out tax removes the bonding-curve penalty, not necessarily the protocol fee. If the
+                // terminal has fee-free surplus the user may receive more, but this is the lowest net amount.
                 worstCaseNetDirectCashOutAmount -= JBFees.standardFeeAmountFrom(directCashOutAmount);
             }
             if (worstCaseNetDirectCashOutAmount < minimumSwapAmountOut) {
