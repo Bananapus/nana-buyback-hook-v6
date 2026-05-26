@@ -35,7 +35,7 @@ contract RegressionZeroTaxProjectToken is ERC20 {
 }
 
 /// @notice Regression test: when `cashOutTaxRate == 0` and the core terminal will still charge a fee against
-/// `_feeFreeSurplusOf`, the hook must deduct the terminal fee from the direct-path comparison amount. Otherwise the
+/// `feeFreeSurplusOf`, the hook must deduct the terminal fee from the direct-path comparison amount. Otherwise the
 /// hook routes to a direct path that pays less than the available AMM floor.
 contract RegressionZeroTaxFeeFreeSurplusTest is Test {
     using PoolIdLibrary for PoolKey;
@@ -71,6 +71,9 @@ contract RegressionZeroTaxFeeFreeSurplusTest is Test {
         vm.etch(address(tokens), "0x01");
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
+        vm.mockCall(
+            address(terminal), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
+        );
 
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
@@ -116,36 +119,6 @@ contract RegressionZeroTaxFeeFreeSurplusTest is Test {
 
         vm.prank(owner);
         hook.setPoolFor(PROJECT_ID, poolKey, 5 minutes, JBConstants.NATIVE_TOKEN);
-    }
-
-    /// @notice Routing supersedes the prior over-discounted behavior: when `cashOutTaxRate == 0` and the
-    /// beneficiary is non-feeless, the hook uses GROSS direct as the routing reference (best case under the active
-    /// fee/free-surplus semantics). The hook only routes to the AMM when AMM strictly beats gross direct — that
-    /// way the route swap is unambiguously better than any direct outcome.
-    function test_zeroTaxNonFeelessCashOutPrefersDirectWhenAmmFloorIsBelowGross() public {
-        bytes memory metadata = JBMetadataResolver.addToMetadata({
-            originalMetadata: "",
-            idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(hook)),
-            dataToAdd: abi.encode(AMM_FLOOR)
-        });
-
-        vm.prank(address(terminal));
-        (uint256 returnedTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(
-            _context({cashOutTaxRate: 0, beneficiaryIsFeeless: false, metadata: metadata})
-        );
-
-        uint256 grossDirect = JBCashOuts.cashOutFrom(SURPLUS, CASH_OUT_COUNT, TOTAL_SUPPLY, 0);
-        uint256 netDirectAfterFee = grossDirect - JBFees.feeAmountFrom(grossDirect, TERMINAL_FEE);
-
-        // AMM floor is between the worst-case net and gross. Pre-fix the hook over-discounted direct (used net) and
-        // routed to AMM. Post-fix the hook uses gross direct and prefers the direct path because direct could
-        // settle at gross under the active fee/free-surplus semantics.
-        assertGt(AMM_FLOOR, netDirectAfterFee, "AMM floor is above worst-case net");
-        assertLt(AMM_FLOOR, grossDirect, "AMM floor is below gross direct");
-
-        assertEq(specs.length, 1, "one hook spec");
-        assertTrue(specs[0].noop, "hook must prefer the direct path: AMM is below gross direct");
-        assertEq(returnedTaxRate, 0, "direct path passes the original tax rate through");
     }
 
     function test_zeroTaxFeelessCashOutKeepsDirectPathBecauseNoFeeIsCharged() public {

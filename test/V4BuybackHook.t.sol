@@ -144,6 +144,9 @@ contract V4BuybackHookTest is Test {
         vm.etch(address(tokens), "0x01");
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
+        vm.mockCall(
+            address(terminal), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
+        );
 
         // Labels
         vm.label(address(mockPm), "MockPoolManager");
@@ -1454,7 +1457,7 @@ contract V4BuybackHookTest is Test {
         assertEq(minimumSwapAmountOut, explicitMinimumReclaimed, "explicit cash-out minimum should be honored");
         assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
         // zero-tax non-feeless cash-outs use GROSS as the routing reference because the terminal
-        // charges the fee only up to `_feeFreeSurplusOf` (which the hook cannot read), so the surfaced direct-path
+        // charges the fee only up to `feeFreeSurplusOf` (which the hook cannot read), so the surfaced direct-path
         // amount is gross.
         uint256 expectedGross = 0.5 ether;
         assertEq(minimumProtocolAmountOut, expectedGross, "zero-tax direct path uses gross for non-feeless routing");
@@ -1541,7 +1544,7 @@ contract V4BuybackHookTest is Test {
             surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
         });
         // zero-tax non-feeless cash-outs use gross as the routing reference; the terminal's fee
-        // depends on `_feeFreeSurplusOf` which the hook cannot read, so the best-case direct (= gross) is used.
+        // depends on `feeFreeSurplusOf` which the hook cannot read, so the best-case direct (= gross) is used.
         uint256 protocolMinimum = grossDirect;
         uint256 explicitMinimum = protocolMinimum + bound(uint256(deltaSeed), 1, 1_000_000 ether);
 
@@ -1587,7 +1590,7 @@ contract V4BuybackHookTest is Test {
         assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface gross zero-tax protocol minimum");
     }
 
-    function testFuzz_beforeCashOutRecordedWith_explicitMinimumAtOrBelowProtocolNoops(
+    function testFuzz_beforeCashOutRecordedWith_explicitMinimumAtOrBelowWorstCaseNetNoops(
         uint96 cashOutCountSeed,
         uint96 totalSupplySeed,
         uint96 surplusSeed,
@@ -1606,8 +1609,8 @@ contract V4BuybackHookTest is Test {
         uint256 grossDirect = JBCashOuts.cashOutFrom({
             surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
         });
-        // zero-tax non-feeless cash-outs use gross as the routing reference; the terminal's fee
-        // depends on `_feeFreeSurplusOf` which the hook cannot read, so the best-case direct (= gross) is used.
+        // Zero-tax non-feeless cash-outs use the EXACT direct net (= gross when feeFreeSurplus == 0, mocked here)
+        // as the routing reference. Explicit user floors must be satisfiable against that same exact net.
         uint256 protocolMinimum = grossDirect;
         uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
         uint256 explicitMinimum = protocolMinimum - delta;
@@ -1651,11 +1654,11 @@ contract V4BuybackHookTest is Test {
             abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
         assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
-        assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface gross zero-tax protocol minimum");
+        assertEq(minimumProtocolAmountOut, grossDirect, "metadata should surface gross zero-tax protocol minimum");
         assertLe(
             minimumSwapAmountOut,
-            minimumProtocolAmountOut,
-            "noop path should only happen at or below the zero-tax protocol minimum"
+            protocolMinimum,
+            "noop path with an explicit user floor should only happen at or below the exact direct net"
         );
     }
 
@@ -1712,6 +1715,64 @@ contract V4BuybackHookTest is Test {
 
         assertTrue(mockPm.swapCalled(), "sell-side swap should hit the pool manager");
         assertEq(beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive swap proceeds");
+    }
+
+    function test_afterCashOutRecordedWith_revertsWhenDerivedFloorUnderfills() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+
+        uint256 amountOut = 4 ether;
+        uint256 cashOutCount = 10 ether;
+        uint256 minimumSwapAmountOut = 5 ether;
+
+        projectToken.mint(address(hook), cashOutCount);
+        vm.deal(address(mockPm), amountOut);
+
+        // project token is currency1, native ETH is currency0, so selling project token is oneForZero.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(int128(uint128(amountOut)), -int128(uint128(cashOutCount)));
+
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: abi.encode(
+                minimumSwapAmountOut,
+                cashOutCount,
+                uint256(3 ether),
+                int24(0),
+                uint128(1_000_000 ether),
+                poolId,
+                uint256(6 ether),
+                false
+            ),
+            cashOutMetadata: ""
+        });
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, amountOut, minimumSwapAmountOut
+            )
+        );
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(context);
     }
 
     /// @notice When a wrapper splits cashOutCount into fee and non-fee tranches, the metadata-sourced count

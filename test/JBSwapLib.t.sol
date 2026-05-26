@@ -152,13 +152,15 @@ contract JBSwapLibTest is Test {
         assert(limitOfz < TickMath.MAX_SQRT_PRICE - 1);
     }
 
-    /// @notice Extreme ratio >= 2^128 should fall back to no limit.
+    /// @notice Extreme ratios should fall back to the normal direction-specific no-limit values.
     function test_sqrtPriceLimitExtremeRatioFallback() public pure {
-        // zeroForOne: num = minOut, den = amountIn → ratio = 2^128, triggers fallback.
+        // zeroForOne: num = minOut, den = amountIn. A ratio of 2^128 is outside the representable V4 range, so the
+        // library cannot express the floor as a sqrt price limit. Settlement code must enforce the actual output.
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(1, uint256(1) << 128, true);
         assertEq(limit, TickMath.MIN_SQRT_PRICE + 1);
 
-        // !zeroForOne: num = amountIn, den = minOut → ratio = 2^128, triggers fallback.
+        // !zeroForOne: num = amountIn, den = minOut. The same unrepresentable case falls back to the upper no-limit
+        // value for the opposite direction.
         limit = JBSwapLib.sqrtPriceLimitFromAmounts(uint256(1) << 128, 1, false);
         assertEq(limit, TickMath.MAX_SQRT_PRICE - 1);
     }

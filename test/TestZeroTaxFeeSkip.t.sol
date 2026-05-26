@@ -63,7 +63,7 @@ contract ForTest_ZeroTax is JBBuybackHook {
 ///   - When `cashOutTaxRate != 0` and the beneficiary is non-feeless, the terminal always charges the standard
 ///     fee on the full reclaim, so `netDirectCashOutAmount = gross - fee`.
 ///   - When `cashOutTaxRate == 0` and the beneficiary is non-feeless, the terminal charges the standard fee only
-///     up to `_feeFreeSurplusOf` (which the hook cannot read). For routing the hook uses the best-case net
+///     up to `feeFreeSurplusOf` (which the hook cannot read). For routing the hook uses the best-case net
 ///     (`= gross`) so it never directs to the AMM when the direct path could pay more.
 ///   - Feeless beneficiaries always settle at gross.
 /// Explicit minima in the no-pool fallback are still enforced against the worst-case net (`gross - fee`) so the
@@ -104,6 +104,7 @@ contract TestZeroTaxFeeSkip is Test {
         vm.etch(address(tokens), "0x01");
         vm.etch(address(controller), "0x01");
         vm.etch(terminal, "0x01");
+        vm.mockCall(terminal, abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0)));
 
         hook = new ForTest_ZeroTax({
             directory: directory,
@@ -237,15 +238,16 @@ contract TestZeroTaxFeeSkip is Test {
 
     /// @notice `cashOutTaxRate=0`, non-feeless beneficiary → routing uses GROSS (best case) so the
     /// hook never directs to the AMM when the direct path could pay more. The terminal's actual fee charge depends
-    /// on `_feeFreeSurplusOf` (which the hook cannot read); the best-case bound protects the user from being routed
+    /// on `feeFreeSurplusOf` (which the hook cannot read); the best-case bound protects the user from being routed
     /// to the AMM in cases where the direct path would settle at gross.
     function test_zeroTaxRate_nonFeelessUsesGrossForRouting() public {
         _mockRuleset(0);
         uint256 gross = 0.5 ether;
+        uint256 worstCaseNet = gross - JBFees.standardFeeAmountFrom(gross);
 
-        // AMM quote just below gross → noop, because the direct path could pay gross under the active
-        // fee/free-surplus semantics. Routing to the AMM would deny the user the better outcome.
-        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, gross - 1);
+        // AMM quote at the conservative direct bound → noop. The hook still uses gross for route scoring, but
+        // explicit user floors must also be satisfiable if the terminal charges the standard fee.
+        JBBeforeCashOutRecordedContext memory context = _buildContext(0, false, worstCaseNet);
 
         (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(context);
 

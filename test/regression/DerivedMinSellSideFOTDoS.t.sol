@@ -135,6 +135,8 @@ contract DerivedMinSellSideFOTDoSTest is Test {
         vm.etch(address(prices), "0x01");
         vm.etch(address(projects), "0x01");
         vm.etch(address(tokens), "0x01");
+        vm.etch(terminal, "0x01");
+        vm.mockCall(terminal, abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0)));
 
         hook = new DerivedMinFOTSellSideHook({
             directory: directory,
@@ -257,13 +259,25 @@ contract DerivedMinSellSideFOTDoSTest is Test {
 
         address beneficiary = makeAddr("beneficiary");
 
+        uint256 grossSwapOutput = 11 ether;
+        if (address(projectToken) < address(terminalToken)) {
+            // token0 in, token1 out
+            // forge-lint: disable-next-line(unsafe-typecast)
+            poolManager.setMockDeltas(-int128(uint128(CASH_OUT_COUNT)), int128(uint128(grossSwapOutput)));
+        } else {
+            // token1 in, token0 out
+            // forge-lint: disable-next-line(unsafe-typecast)
+            poolManager.setMockDeltas(int128(uint128(grossSwapOutput)), -int128(uint128(CASH_OUT_COUNT)));
+        }
+        terminalToken.mint(address(poolManager), grossSwapOutput - CASH_OUT_COUNT);
+
         JBAfterCashOutRecordedContext memory afterContext = _afterContext({hookMetadata: specs[0].metadata});
         afterContext.beneficiary = payable(beneficiary);
 
         vm.prank(terminal);
         hook.afterCashOutRecordedWith(afterContext);
 
-        uint256 expectedHookReceipt = CASH_OUT_COUNT * 9500 / 10_000;
+        uint256 expectedHookReceipt = grossSwapOutput * 9500 / 10_000;
         uint256 expectedBeneficiaryReceipt = expectedHookReceipt * 9500 / 10_000;
         assertEq(
             terminalToken.balanceOf(beneficiary),

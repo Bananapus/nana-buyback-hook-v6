@@ -106,6 +106,7 @@ script/
 
 - TWAP quality depends on the oracle hook having enough history and liquidity to be meaningful
 - route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima
+- explicit cash-out minima are checked against conservative direct or noop bounds when terminal fee-free-surplus state is hidden
 - programmatic callers can omit quote metadata, or provide a zero minimum, and let the hook derive its route from TWAP
 - hook configuration should usually be locked after validation, and pool choices should be treated as sticky once set
 - fee-on-transfer and partial-fill behaviors are part of the main threat model

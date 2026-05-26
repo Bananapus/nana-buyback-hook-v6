@@ -69,6 +69,9 @@ contract CrossCurrency_Unit is Test {
         vm.etch(address(tokens), "0x01");
         vm.etch(address(controller), "0x01");
         vm.etch(address(terminal), "0x01");
+        vm.mockCall(
+            address(terminal), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
+        );
         vm.etch(address(poolManager), "0x01");
 
         hook = new JBBuybackHook({
