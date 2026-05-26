@@ -58,6 +58,7 @@ cash out requested
   -> after-cash-out callback remints the chosen token amount to itself and sells it
   -> if the sell-side swap fails hard, reminted tokens are returned to the holder
   -> if protocol wins, the hook returns diagnostics but no active swap path
+  -> direct or noop sell paths with explicit minima must still satisfy the conservative net direct bound
 ```
 
 ## Accounting Model

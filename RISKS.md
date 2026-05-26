@@ -81,6 +81,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 ## 8. Invariants To Verify
 
 - users always get at least their specified explicit minimum
+- explicit minima are hard floors; direct or noop cash-out paths that cannot guarantee the floor under the conservative net bound must revert
 - cash-out beneficiaries always get at least their explicit minimum, and holders keep any project tokens the pool
   does not buy on a partial sell-side fill
 - cash-out sell count matches data-hook intent, not necessarily the terminal's full original count
