@@ -281,8 +281,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             return;
         }
 
-        // Re-check the minimum to fail closed if the pool returned less than expected.
-        if (shouldEnforceMinimumSwapAmountOut && amountReceived < minimumSwapAmountOut) {
+        // A derived floor can still fall back to project tokens if the pool reverts, but a successful pool fill must
+        // honor the non-zero floor that made this route preferable to the direct cash-out path.
+        if (minimumSwapAmountOut != 0 && amountReceived < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded({amount: amountReceived, minimum: minimumSwapAmountOut});
         }
 
@@ -302,7 +303,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 balBefore = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary);
             IERC20(context.reclaimedAmount.token).safeTransfer({to: context.beneficiary, value: amountReceived});
             uint256 delivered = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary) - balBefore;
-            if (shouldEnforceMinimumSwapAmountOut && delivered < minimumSwapAmountOut) {
+            if (minimumSwapAmountOut != 0 && delivered < minimumSwapAmountOut) {
                 revert JBBuybackHook_SpecifiedSlippageExceeded({amount: delivered, minimum: minimumSwapAmountOut});
             }
         }

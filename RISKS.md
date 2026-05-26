@@ -122,8 +122,9 @@ When `afterCashOutRecordedWith()` attempts to sell reminted project tokens throu
 
 If the pool only partially fills before hitting the hook's price limit, the swap proceeds are still sent to the
 beneficiary, but the unsold reminted project tokens are returned to the holder. This keeps a derived sell-side route
-from destroying the part of the holder's position that the AMM did not actually buy. Explicit user-supplied minimums
-still revert if the delivered terminal-token amount is below the requested floor.
+from destroying the part of the holder's position that the AMM did not actually buy. Any nonzero successful-swap floor,
+whether caller-supplied or derived during route selection, still reverts if the delivered terminal-token amount is below
+that floor. Only full pool reverts keep the derived-floor fallback behavior that returns project tokens to the holder.
 
 ### 9.7 Unpinned projects fall back to the mutable default hook
 

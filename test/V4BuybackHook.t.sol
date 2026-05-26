@@ -1714,6 +1714,64 @@ contract V4BuybackHookTest is Test {
         assertEq(beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive swap proceeds");
     }
 
+    function test_afterCashOutRecordedWith_revertsWhenDerivedFloorUnderfills() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+
+        uint256 amountOut = 4 ether;
+        uint256 cashOutCount = 10 ether;
+        uint256 minimumSwapAmountOut = 5 ether;
+
+        projectToken.mint(address(hook), cashOutCount);
+        vm.deal(address(mockPm), amountOut);
+
+        // project token is currency1, native ETH is currency0, so selling project token is oneForZero.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(int128(uint128(amountOut)), -int128(uint128(cashOutCount)));
+
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: abi.encode(
+                minimumSwapAmountOut,
+                cashOutCount,
+                uint256(3 ether),
+                int24(0),
+                uint128(1_000_000 ether),
+                poolId,
+                uint256(6 ether),
+                false
+            ),
+            cashOutMetadata: ""
+        });
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, amountOut, minimumSwapAmountOut
+            )
+        );
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(context);
+    }
+
     /// @notice When a wrapper splits cashOutCount into fee and non-fee tranches, the metadata-sourced count
     /// should be used for reminting/selling, NOT context.cashOutCount.
     function test_afterCashOutRecordedWith_usesMetadataCountNotContextCount() public {
