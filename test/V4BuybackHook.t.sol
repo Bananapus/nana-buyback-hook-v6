@@ -1587,7 +1587,7 @@ contract V4BuybackHookTest is Test {
         assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface gross zero-tax protocol minimum");
     }
 
-    function testFuzz_beforeCashOutRecordedWith_explicitMinimumAtOrBelowProtocolNoops(
+    function testFuzz_beforeCashOutRecordedWith_explicitMinimumAtOrBelowWorstCaseNetNoops(
         uint96 cashOutCountSeed,
         uint96 totalSupplySeed,
         uint96 surplusSeed,
@@ -1606,11 +1606,11 @@ contract V4BuybackHookTest is Test {
         uint256 grossDirect = JBCashOuts.cashOutFrom({
             surplus: surplus, cashOutCount: cashOutCount, totalSupply: totalSupply, cashOutTaxRate: 0
         });
-        // zero-tax non-feeless cash-outs use gross as the routing reference; the terminal's fee
-        // depends on `_feeFreeSurplusOf` which the hook cannot read, so the best-case direct (= gross) is used.
-        uint256 protocolMinimum = grossDirect;
-        uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
-        uint256 explicitMinimum = protocolMinimum - delta;
+        // Zero-tax non-feeless cash-outs use gross as the route-scoring reference, but explicit user floors must be
+        // satisfiable under the conservative feeable bound because the hook cannot read `_feeFreeSurplusOf`.
+        uint256 worstCaseNet = grossDirect - JBFees.standardFeeAmountFrom(grossDirect);
+        uint256 delta = bound(uint256(deltaSeed), 0, worstCaseNet);
+        uint256 explicitMinimum = worstCaseNet - delta;
 
         bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
         bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum));
@@ -1651,11 +1651,11 @@ contract V4BuybackHookTest is Test {
             abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumSwapAmountOut, explicitMinimum, "metadata should preserve explicit minimum");
         assertEq(cashOutCountInMetadata, cashOutCount, "metadata should encode the cash-out count for afterCashOut");
-        assertEq(minimumProtocolAmountOut, protocolMinimum, "metadata should surface gross zero-tax protocol minimum");
+        assertEq(minimumProtocolAmountOut, grossDirect, "metadata should surface gross zero-tax protocol minimum");
         assertLe(
             minimumSwapAmountOut,
-            minimumProtocolAmountOut,
-            "noop path should only happen at or below the zero-tax protocol minimum"
+            worstCaseNet,
+            "noop path with an explicit user floor should only happen at or below the conservative direct bound"
         );
     }
 

@@ -121,11 +121,9 @@ contract CashOutFeeComparisonMismatchTest is Test {
         hook.setPoolFor(PROJECT_ID, poolKey, 5 minutes, JBConstants.NATIVE_TOKEN);
     }
 
-    /// @notice with `cashOutTaxRate == 0` and non-feeless beneficiary the executable direct net is
-    /// somewhere in `[gross - standardFee, gross]` depending on the terminal's `_feeFreeSurplusOf`. Before the fix,
-    /// the hook treated direct as always net = gross - fee and would activate the AMM route whenever AMM beat that
-    /// over-discounted value — even when the direct path could pay gross and outperform the AMM.
-    function test_zeroTaxNonFeeless_doesNotRouteToAmmBelowGrossDirectReclaim() public view {
+    /// @notice With `cashOutTaxRate == 0` and non-feeless beneficiary, routing can compare against gross direct, but
+    /// explicit user floors must still be satisfiable if the terminal charges the standard fee.
+    function test_zeroTaxNonFeeless_revertsWhenExplicitMinimumExceedsWorstCaseNet() public {
         uint256 grossDirect = JBCashOuts.cashOutFrom({
             surplus: ZERO_TAX_SURPLUS, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
         });
@@ -136,12 +134,14 @@ contract CashOutFeeComparisonMismatchTest is Test {
         assertGt(grossDirect, AMM_BETWEEN_GROSS_AND_FULL_FEE_NET, "AMM minimum is below the gross direct");
         assertGt(AMM_BETWEEN_GROSS_AND_FULL_FEE_NET, fullFeeNet, "AMM minimum is above the full-fee net");
 
-        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
-            hook.beforeCashOutRecordedWith(_context(0, ZERO_TAX_SURPLUS, AMM_BETWEEN_GROSS_AND_FULL_FEE_NET));
-
-        // Post-fix: routing uses GROSS for direct in the zero-tax non-feeless case, so AMM below gross is rejected.
-        assertEq(cashOutTaxRate, 0, "hook must let the terminal complete the direct cash-out");
-        assertTrue(specs[0].noop, "hook must prefer the direct path: AMM is below gross direct");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector,
+                fullFeeNet,
+                AMM_BETWEEN_GROSS_AND_FULL_FEE_NET
+            )
+        );
+        hook.beforeCashOutRecordedWith(_context(0, ZERO_TAX_SURPLUS, AMM_BETWEEN_GROSS_AND_FULL_FEE_NET));
     }
 
     /// @notice with `cashOutTaxRate == 0` and non-feeless beneficiary, the AMM route is only chosen

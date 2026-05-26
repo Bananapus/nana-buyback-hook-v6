@@ -118,34 +118,30 @@ contract RegressionZeroTaxFeeFreeSurplusTest is Test {
         hook.setPoolFor(PROJECT_ID, poolKey, 5 minutes, JBConstants.NATIVE_TOKEN);
     }
 
-    /// @notice Routing supersedes the prior over-discounted behavior: when `cashOutTaxRate == 0` and the
-    /// beneficiary is non-feeless, the hook uses GROSS direct as the routing reference (best case under the active
-    /// fee/free-surplus semantics). The hook only routes to the AMM when AMM strictly beats gross direct — that
-    /// way the route swap is unambiguously better than any direct outcome.
-    function test_zeroTaxNonFeelessCashOutPrefersDirectWhenAmmFloorIsBelowGross() public {
+    /// @notice Routing uses gross direct as the zero-tax comparison amount, but explicit user floors must still be
+    /// satisfiable under the conservative net bound because the hook cannot read terminal fee-free-surplus state.
+    function test_zeroTaxNonFeelessCashOutRevertsWhenExplicitFloorExceedsWorstCaseNet() public {
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(hook)),
             dataToAdd: abi.encode(AMM_FLOOR)
         });
 
-        vm.prank(address(terminal));
-        (uint256 returnedTaxRate,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(
-            _context({cashOutTaxRate: 0, beneficiaryIsFeeless: false, metadata: metadata})
-        );
-
         uint256 grossDirect = JBCashOuts.cashOutFrom(SURPLUS, CASH_OUT_COUNT, TOTAL_SUPPLY, 0);
         uint256 netDirectAfterFee = grossDirect - JBFees.feeAmountFrom(grossDirect, TERMINAL_FEE);
 
-        // AMM floor is between the worst-case net and gross. Pre-fix the hook over-discounted direct (used net) and
-        // routed to AMM. Post-fix the hook uses gross direct and prefers the direct path because direct could
-        // settle at gross under the active fee/free-surplus semantics.
+        // The user floor is between worst-case net and gross. Route scoring would choose direct because direct could
+        // settle at gross, but the explicit floor cannot be guaranteed if the terminal charges the standard fee.
         assertGt(AMM_FLOOR, netDirectAfterFee, "AMM floor is above worst-case net");
         assertLt(AMM_FLOOR, grossDirect, "AMM floor is below gross direct");
 
-        assertEq(specs.length, 1, "one hook spec");
-        assertTrue(specs[0].noop, "hook must prefer the direct path: AMM is below gross direct");
-        assertEq(returnedTaxRate, 0, "direct path passes the original tax rate through");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, netDirectAfterFee, AMM_FLOOR
+            )
+        );
+        vm.prank(address(terminal));
+        hook.beforeCashOutRecordedWith(_context({cashOutTaxRate: 0, beneficiaryIsFeeless: false, metadata: metadata}));
     }
 
     function test_zeroTaxFeelessCashOutKeepsDirectPathBecauseNoFeeIsCharged() public {
