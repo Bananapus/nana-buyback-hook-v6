@@ -87,7 +87,7 @@ contract JBBuybackHook_Regressions is Test {
             address(deployedToken),
             "Token should be set after deployERC20For"
         );
-        assertTrue(address(deployedToken) != address(0), "Deployed token should be non-zero");
+        assertNotEq(address(deployedToken), address(0), "Deployed token should be non-zero");
 
         // Step 2: Attempt to call setTokenFor with a different token — must revert.
         MockExternalToken newToken = new MockExternalToken();
