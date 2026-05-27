@@ -225,7 +225,7 @@ library JBSwapLib {
 
     /// @notice Compute a sqrtPriceLimitX96 from input/output amounts so the swap stops
     ///         if the execution price would be worse than the minimum acceptable rate.
-    /// @dev When `minimumAmountOut == 0`, returns extreme values (no limit, current behaviour).
+    /// @dev When `minimumAmountOut == 0`, returns extreme values (no limit, current behavior).
     /// @param amountIn The amount of tokens to swap in.
     /// @param minimumAmountOut The minimum acceptable output (from payer quote or TWAP).
     /// @param zeroForOne True when selling token0 for token1 (price decreases).
