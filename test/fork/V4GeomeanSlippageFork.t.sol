@@ -348,7 +348,7 @@ contract V4GeomeanSlippageForkTest is Test {
                 );
 
                 uint256 adjustedMinimum =
-                    twapMinimum * (JBSwapLib.SLIPPAGE_DENOMINATOR - slippage) / JBSwapLib.SLIPPAGE_DENOMINATOR;
+                    twapMinimum * (JBSwapLib._SLIPPAGE_DENOMINATOR - slippage) / JBSwapLib._SLIPPAGE_DENOMINATOR;
 
                 // Execute the swap.
                 uint256 received = _executeNativeSwap(pid, key, projectToken, orders[o]);
@@ -387,7 +387,7 @@ contract V4GeomeanSlippageForkTest is Test {
         console.log("  Slippage: %s bps (MAX_SLIPPAGE = 8800)", _toString(slippage));
 
         assertGe(slippage, 8000, "Extreme impact slippage must be >= 8000 bps (80%)");
-        assertLe(slippage, JBSwapLib.MAX_SLIPPAGE, "Slippage must not exceed MAX_SLIPPAGE ceiling");
+        assertLe(slippage, JBSwapLib._MAX_SLIPPAGE, "Slippage must not exceed MAX_SLIPPAGE ceiling");
     }
 
     //*********************************************************************//
