@@ -16,22 +16,22 @@ library JBSwapLib {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
 
-    /// @notice The denominator used for slippage tolerance basis points.
-    uint256 internal constant _SLIPPAGE_DENOMINATOR = 10_000;
-
-    /// @notice The maximum slippage ceiling (88%).
-    uint256 internal constant _MAX_SLIPPAGE = 8800;
-
     /// @notice The precision multiplier for impact calculations.
     /// @dev Using 1e18 instead of 1e5 (10 * _SLIPPAGE_DENOMINATOR) gives 13 extra orders of magnitude,
     ///      preventing small-swap-in-deep-pool impacts from rounding to zero.
     uint256 internal constant _IMPACT_PRECISION = 1e18;
+
+    /// @notice The maximum slippage ceiling (88%).
+    uint256 internal constant _MAX_SLIPPAGE = 8800;
 
     /// @notice The K parameter for the sigmoid curve, scaled to match _IMPACT_PRECISION.
     /// @dev Preserves the same sigmoid shape as the original K=5000 with amplifier=1e5:
     ///      K_new / _IMPACT_PRECISION = K_old / (10 * _SLIPPAGE_DENOMINATOR)
     ///      → K_new = 5000 * 1e18 / 1e5 = 5e16
     uint256 internal constant _SIGMOID_K = 5e16;
+
+    /// @notice The denominator used for slippage tolerance basis points.
+    uint256 internal constant _SLIPPAGE_DENOMINATOR = 10_000;
 
     //*********************************************************************//
     // ----------------------- Oracle Query ------------------------------ //
