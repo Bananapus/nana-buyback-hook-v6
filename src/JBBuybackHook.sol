@@ -463,6 +463,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice Initialize a Uniswap V4 pool in the PoolManager and configure it as the buyback pool for a project.
     /// @dev Atomically initializes the pool (if not already initialized) and calls `_setPoolFor`.
+    /// @dev Operator-only. Configuring the pool turns on the floor + ceiling arbitrage routing above
+    /// for this `(projectId, terminalToken)` pair. Without a configured pool, the hook is a passthrough.
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
     /// @param tickSpacing The Uniswap V4 pool tick spacing.
@@ -534,6 +536,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// could interfere with swaps (e.g. manipulate pricing, revert, or extract value). Because this function is
     /// permissioned to the project owner (or a delegate with `SET_BUYBACK_POOL`), this is a self-harming-only risk.
     /// Callers MUST ensure the pool key — including its hooks field — references a trusted pool.
+    /// @dev Operator-only. Configuring the pool turns on the floor + ceiling arbitrage routing above
+    /// for this `(projectId, terminalToken)` pair. Without a configured pool, the hook is a passthrough.
     /// @param projectId The ID of the project to set the pool for.
     /// @param poolKey The V4 PoolKey identifying the pool.
     /// @param twapWindow The period of time over which the TWAP is computed.
@@ -572,6 +576,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Set the V4 pool to use for a given project and terminal token pair, constructing the PoolKey internally.
     /// @dev Uses address(0) for the hooks field. The hook sorts the project token and terminal token into the correct
     /// currency order. Pool keys are intentionally immutable once set.
+    /// @dev Operator-only. Configuring the pool turns on the floor + ceiling arbitrage routing above
+    /// for this `(projectId, terminalToken)` pair. Without a configured pool, the hook is a passthrough.
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
     /// @param tickSpacing The Uniswap V4 pool tick spacing.
@@ -732,11 +738,29 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Compares the expected output from selling project tokens in the pool against the bonding-curve reclaim
     /// amount. If the pool offers more (net of fees), routes the cash-out through the pool via
     /// `afterCashOutRecordedWith`.
+    /// @notice Data-hook callback consulted by the terminal during `cashOutTokensOf()`. Decides whether
+    /// to settle the user's cash-out through the bonding curve or through the Uniswap V4 pool.
     /// @dev Returns the protocol cash-out values unchanged unless selling the burned project tokens into the
     /// configured pool is expected to return more of the terminal token than the direct reclaim path.
     /// @dev If the sell path wins, the hook returns an active cash-out hook specification (`noop = false`) and
     /// maxes the tax rate so the terminal does not reclaim surplus itself. The actual sell is executed in
     /// `afterCashOutRecordedWith`.
+    /// @dev This function auto-applies the "floor arbitrage" path described in ARBITRAGE.md (Path 2,
+    /// in revnet-core-v6). When the AMM bid is HIGHER than the bonding-curve reclaim, the hook routes
+    /// the holder's burn through the pool — they get more ETH. When the AMM bid is LOWER, the hook
+    /// passes through to the terminal — the bonding-curve floor is what they receive. Either way, the
+    /// holder receives at least the bonding-curve reclaim.
+    ///
+    /// **Why this matters for protocol health:** when external actors arbitrage between the AMM and the
+    /// terminal cash-out path directly (buying tokens cheap on the AMM, then cashing out via terminal
+    /// at the higher floor), the cash-out tax (configured per ruleset, e.g. 10%) is retained in the
+    /// project surplus — boosting per-token backing for remaining holders. The AMM price corrects
+    /// upward toward fair value. This hook auto-captures the same incentive for ordinary users.
+    ///
+    /// **Diagnostic metadata in returned hook specs:** when the hook chooses to noop (passthrough),
+    /// the spec carries pool state (twapTick, liquidity, poolId, etc.) so off-chain clients can preview
+    /// what the routing decision would be. Do not optimize this away — it's the protocol's public
+    /// preview API for the buyback cash-out decision surface.
     /// @param context Standard Juicebox cash-out data-hook context.
     /// @return cashOutTaxRate The tax rate the terminal should use for the cash out.
     /// @return cashOutCount The number of project tokens to cash out.
@@ -875,6 +899,25 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice Compares the pool swap rate against the project's mint rate and chooses the better one. If the pool
     /// wins, returns weight=0 so all tokens come from the swap executed in `afterPayRecordedWith`.
+    /// @notice Data-hook callback consulted by the terminal during `pay()`. Decides whether to route
+    /// the user's payment through bonding-curve mint or through the configured Uniswap V4 pool.
+    ///
+    /// @dev This function auto-applies the "ceiling arbitrage" path described in ARBITRAGE.md (Path 3,
+    /// in revnet-core-v6). When the AMM ask is HIGHER than the terminal's pay rate (`weight × ETH`),
+    /// the hook returns `noop=true` and the terminal mints at the bonding-curve rate — saving the user
+    /// money. When the AMM ask is LOWER, the hook routes through the pool — the user gets more tokens
+    /// per ETH. Either way, the user receives at least the bonding-curve mint amount.
+    ///
+    /// The `noop` spec is intentionally returned with diagnostic metadata (twapTick, liquidity, poolId,
+    /// weight ratio, raw swap quote) so off-chain clients (frontends, arbitrage bots, indexers) can
+    /// preview what the routing decision would be without executing a pay. Do not optimize this away —
+    /// it's the protocol's public preview API for the buyback decision surface.
+    ///
+    /// **Why this matters for protocol health:** when external actors arbitrage between the terminal
+    /// pay path and the AMM directly (paying terminal at low weight, then selling on AMM at higher
+    /// price), the AMM price converges downward toward the issuance rate. Their payment lands in
+    /// project surplus, growing the protocol. This hook auto-captures the same incentive for ordinary
+    /// users transacting through the terminal — they never need to know whether to mint or swap.
     /// @param context Payment context passed to the data hook by `terminalStore.recordPaymentFrom(...)`.
     /// `context.metadata` can specify a Uniswap quote and specify how much of the payment should be used to swap.
     /// If `context.metadata` does not specify a quote, one will be calculated based on the TWAP.
