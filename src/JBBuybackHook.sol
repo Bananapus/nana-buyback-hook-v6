@@ -761,6 +761,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// the spec carries pool state (twapTick, liquidity, poolId, etc.) so off-chain clients can preview
     /// what the routing decision would be. Do not optimize this away — it's the protocol's public
     /// preview API for the buyback cash-out decision surface.
+    ///
+    /// **Caller-provided sell-side controls (via the `cashOutMinReclaimed` metadata entry,
+    /// encoded as `(uint256 minimumSwapAmountOut, bool skip)`):**
+    /// - `minimumSwapAmountOut`: a hard slippage floor on the net terminal-token output. It is a protection
+    ///   value, NOT a venue selector.
+    /// - `skip` (default false): when true, forces the cash-out through the protocol bonding-curve/terminal
+    ///   path and skips the pool entirely — even when the pool would pay more. The `minimumSwapAmountOut` floor
+    ///   is still enforced against the direct reclaim, so an unmeetable floor reverts rather than silently
+    ///   routing to the AMM.
     /// @param context Standard Juicebox cash-out data-hook context.
     /// @return cashOutTaxRate The tax rate the terminal should use for the cash out.
     /// @return cashOutCount The number of project tokens to cash out.
@@ -785,26 +794,34 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Load the project token that would be sold if the pool route is chosen.
         address projectToken = projectTokenOf[context.projectId];
 
-        // Read any user-specified minimum reclaimed amount from metadata up front so the no-pool
-        // fallback below can honor it. An explicit non-zero value is a hard floor — when no
-        // pool/project-token is available, falling back to direct reclaim must still satisfy it.
+        // Read the caller-provided sell-side controls from the `cashOutMinReclaimed` metadata entry. The entry
+        // packs two values: `(uint256 minimumSwapAmountOut, bool skip)`.
+        //  - `minimumSwapAmountOut` is a hard slippage floor on the net terminal-token output — a protection
+        //    value, NOT a venue selector. A non-zero value is honored even on the no-pool fallback below.
+        //  - `skip` (default false) forces the cash-out through the protocol bonding-curve/terminal path and
+        //    skips the pool entirely, even if selling into the pool would return more of the terminal token.
         uint256 minimumSwapAmountOut;
         bool hasUserSpecifiedMinimumSwapAmountOut;
+        bool skip;
         (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
             id: JBMetadataResolver.getId("cashOutMinReclaimed"), metadata: context.metadata
         });
         if (exists) {
-            minimumSwapAmountOut = abi.decode(minData, (uint256));
+            (minimumSwapAmountOut, skip) = abi.decode(minData, (uint256, bool));
             // Only honor user minimum when they specify an explicit value.
             // minimumSwapAmountOut=0 (programmatic orders) falls through to TWAP oracle.
             hasUserSpecifiedMinimumSwapAmountOut = minimumSwapAmountOut != 0;
         }
 
-        // Fall back to the protocol cash-out path if no pool is configured, no project token is known,
-        // or no project tokens are being cashed out. When the user supplied an explicit minimum, the
-        // fallback must still satisfy it — otherwise revert so the user does not silently receive less
-        // than they asked for.
-        if (!_poolIsSet[context.projectId][terminalToken] || projectToken == address(0) || context.cashOutCount == 0) {
+        // Fall back to the protocol cash-out path if the caller forced it via `skip`, if no pool is
+        // configured, if no project token is known, or if no project tokens are being cashed out. When the
+        // user supplied an explicit minimum, the fallback must still satisfy it — otherwise revert so the
+        // user does not silently receive less than they asked for. This holds for the `skip` case too:
+        // forcing the terminal path never waives the slippage floor.
+        if (
+            skip || !_poolIsSet[context.projectId][terminalToken] || projectToken == address(0)
+                || context.cashOutCount == 0
+        ) {
             if (hasUserSpecifiedMinimumSwapAmountOut) {
                 uint256 fallbackReclaim = JBCashOuts.cashOutFrom({
                     surplus: context.surplus.value,

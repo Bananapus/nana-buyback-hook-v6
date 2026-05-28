@@ -193,7 +193,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(noPoolHook)),
-            dataToAdd: abi.encode(EXPLICIT_MIN_BETWEEN_GROSS_AND_NET)
+            dataToAdd: abi.encode(EXPLICIT_MIN_BETWEEN_GROSS_AND_NET, false)
         });
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
             terminal: address(terminal),
@@ -242,7 +242,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(noPoolHook)),
-            dataToAdd: abi.encode(safeMinimum)
+            dataToAdd: abi.encode(safeMinimum, false)
         });
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
             terminal: address(terminal),
@@ -282,7 +282,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(hook)),
-            dataToAdd: abi.encode(minimum)
+            dataToAdd: abi.encode(minimum, false)
         });
 
         context = JBBeforeCashOutRecordedContext({

@@ -52,7 +52,9 @@ payment arrives
 
 ```text
 cash out requested
-  -> hook compares protocol reclaim value with pool sell value
+  -> if the caller set skip=true, the hook short-circuits to the protocol cash-out path (no pool quote, no swap)
+       and still enforces any explicit minimum against the direct net reclaim
+  -> otherwise hook compares protocol reclaim value with pool sell value
   -> hook always returns sell-side diagnostics in metadata so preview clients can inspect the comparison
   -> if pool wins, hook maxes the cash-out tax so the terminal does not reclaim surplus directly
   -> after-cash-out callback remints the chosen token amount to itself and sells it
@@ -60,6 +62,8 @@ cash out requested
   -> if protocol wins, the hook returns diagnostics but no active swap path
   -> direct or noop sell paths with explicit minima must still satisfy the conservative net direct bound
 ```
+
+The sell-side `"cashOutMinReclaimed"` metadata entry encodes `(uint256 minimumSwapAmountOut, bool skip)`. `minimumSwapAmountOut` is a slippage floor (a protection value); `skip` is a venue override that forces terminal settlement regardless of pool pricing. The two are independent: `skip` never waives the floor, so an unmeetable floor reverts rather than routing to the pool.
 
 ## Accounting Model
 

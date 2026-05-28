@@ -522,7 +522,7 @@ contract TestRegressionGaps is Test {
 
         bytes4 minReclaimedId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
         bytes memory metadata = JBMetadataResolver.addToMetadata({
-            originalMetadata: bytes(""), idToAdd: minReclaimedId, dataToAdd: abi.encode(uint256(10e6))
+            originalMetadata: bytes(""), idToAdd: minReclaimedId, dataToAdd: abi.encode(uint256(10e6), false)
         });
 
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
