@@ -762,7 +762,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// what the routing decision would be. Do not optimize this away — it's the protocol's public
     /// preview API for the buyback cash-out decision surface.
     ///
-    /// **Caller-provided sell-side controls (via the `cashOutMinReclaimed` metadata entry,
+    /// **Caller-provided sell-side controls (via the `cashOut` metadata entry,
     /// encoded as `(uint256 minimumSwapAmountOut, bool skip)`):**
     /// - `minimumSwapAmountOut`: a hard slippage floor on the net terminal-token output. It is a protection
     ///   value, NOT a venue selector.
@@ -794,7 +794,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Load the project token that would be sold if the pool route is chosen.
         address projectToken = projectTokenOf[context.projectId];
 
-        // Read the caller-provided sell-side controls from the `cashOutMinReclaimed` metadata entry. The entry
+        // Read the caller-provided sell-side controls from the `cashOut` metadata entry. The entry
         // packs two values: `(uint256 minimumSwapAmountOut, bool skip)`.
         //  - `minimumSwapAmountOut` is a hard slippage floor on the net terminal-token output — a protection
         //    value, NOT a venue selector. A non-zero value is honored even on the no-pool fallback below.
@@ -803,9 +803,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 minimumSwapAmountOut;
         bool hasUserSpecifiedMinimumSwapAmountOut;
         bool skip;
-        (bool exists, bytes memory minData) = JBMetadataResolver.getDataFor({
-            id: JBMetadataResolver.getId("cashOutMinReclaimed"), metadata: context.metadata
-        });
+        (bool exists, bytes memory minData) =
+            JBMetadataResolver.getDataFor({id: JBMetadataResolver.getId("cashOut"), metadata: context.metadata});
         if (exists) {
             (minimumSwapAmountOut, skip) = abi.decode(minData, (uint256, bool));
             // Only honor user minimum when they specify an explicit value.
@@ -963,7 +962,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 amountToSwapWith;
 
         // Unpack the quote specified by the payer/client (typically from the pool).
-        bytes4 metadataId = JBMetadataResolver.getId("quote");
+        bytes4 metadataId = JBMetadataResolver.getId("pay");
         (bool quoteExists, bytes memory metadata) =
             JBMetadataResolver.getDataFor({id: metadataId, metadata: context.metadata});
         if (quoteExists) {

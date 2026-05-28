@@ -223,7 +223,7 @@ contract RegressionSellSideFOTOutputDoSTest is Test {
 
     function test_beforeCashOut_canStillSelectSellPath_withExplicitMinimumForFeeOnTransferTerminalToken() public {
         uint256 quotedAmountOut = 12 ether;
-        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("cashOut", address(hook));
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: bytes(""), idToAdd: metadataId, dataToAdd: abi.encode(quotedAmountOut, false)
         });

@@ -331,7 +331,7 @@ contract V4ForkTest is Test {
         uint256 pid = _nextProjectId();
         _setupProjectWithPool(pid, 100_000 ether);
 
-        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("cashOut", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1), false));
 
         JBBeforeCashOutRecordedContext memory beforeCtx = JBBeforeCashOutRecordedContext({
@@ -757,7 +757,7 @@ contract V4ForkTest is Test {
         {
             uint256 payerMinOut = (orderSize * 9) / 10;
             bytes memory quoteMetadata = abi.encode(orderSize, payerMinOut);
-            bytes4 metadataId = JBMetadataResolver.getId("quote");
+            bytes4 metadataId = JBMetadataResolver.getId("pay");
             fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
         }
 
@@ -848,7 +848,7 @@ contract V4ForkTest is Test {
         {
             uint256 payerMinOut = (orderSize * 9) / 10;
             bytes memory quoteMetadata = abi.encode(orderSize, payerMinOut);
-            bytes4 metadataId = JBMetadataResolver.getId("quote");
+            bytes4 metadataId = JBMetadataResolver.getId("pay");
             fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
         }
 
@@ -1017,7 +1017,7 @@ contract V4ForkTest is Test {
         internal
         returns (uint256 received)
     {
-        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("cashOut", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1), false));
 
         bytes memory specMetadata;

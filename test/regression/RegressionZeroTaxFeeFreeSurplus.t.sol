@@ -125,7 +125,7 @@ contract RegressionZeroTaxFeeFreeSurplusTest is Test {
         // For feeless beneficiaries the direct path pays gross. AMM_FLOOR < grossDirect means the direct path wins.
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
-            idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(hook)),
+            idToAdd: JBMetadataResolver.getId("cashOut", address(hook)),
             dataToAdd: abi.encode(AMM_FLOOR, false)
         });
 
