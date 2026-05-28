@@ -2,13 +2,18 @@
 
 `@bananapus/buyback-hook-v6` is a data hook that compares Juicebox's native mint or cash-out path with a Uniswap V4 pool and routes through whichever produces the better result for the project at that moment.
 
-Docs: <https://docs.juicebox.money>
-Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)  
-User journeys: [USER_JOURNEYS.md](./USER_JOURNEYS.md)  
-Skills: [SKILLS.md](./SKILLS.md)  
-Risks: [RISKS.md](./RISKS.md)  
-Administration: [ADMINISTRATION.md](./ADMINISTRATION.md)  
-Audit instructions: [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md)
+
+## Documentation
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — system overview, modules, trust boundaries, buy- and sell-side flows.
+- [INVARIANTS.md](./INVARIANTS.md) — per-contract enumeration of user, operator, and cross-cutting invariants with file:line references.
+- [USER_JOURNEYS.md](./USER_JOURNEYS.md) — primary actor flows: attach routing, pay, cash out, operate.
+- [RISKS.md](./RISKS.md) — routing, MEV, and composition risk register with accepted behaviors.
+- [ADMINISTRATION.md](./ADMINISTRATION.md) — privileged surfaces, roles, irreversible actions, and recovery posture.
+- [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md) — scope, attack surfaces, and verification steps for auditors.
+- [SKILLS.md](./SKILLS.md) — quick-reference index for agents and contributors.
+- [CHANGELOG.md](./CHANGELOG.md) — verified v5 → v6 deltas and major-change notes.
+- [STYLE_GUIDE.md](./STYLE_GUIDE.md) — Solidity and repo-layout conventions across the V6 ecosystem.
 
 ## Overview
 

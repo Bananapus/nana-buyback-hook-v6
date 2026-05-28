@@ -128,7 +128,7 @@ that floor. Only full pool reverts keep the derived-floor fallback behavior that
 
 ### 9.7 Unpinned projects fall back to the mutable default hook
 
-Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookOf()` fall back to the mutable `defaultHook`, but only if created after the default was set (`projectId > defaultHookProjectIdThreshold`). Changing the default hook does not retroactively affect existing projects. Always call `setHookOf(projectId, hook)` to pin your project's hook.
+Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookFor()` fall back to the mutable `defaultHook`, but only if created after the default was set (`projectId > defaultHookProjectIdThreshold`). Changing the default hook does not retroactively affect existing projects. Always call `setHookFor(projectId, hook)` to pin your project's hook.
 
 ### 9.8 Sell-Side AMM Proceeds Are Not Fee-Metered
 
