@@ -4,6 +4,7 @@
 
 Docs: <https://docs.juicebox.money>
 Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)  
+Invariants: [INVARIANTS.md](./INVARIANTS.md)  
 User journeys: [USER_JOURNEYS.md](./USER_JOURNEYS.md)  
 Skills: [SKILLS.md](./SKILLS.md)  
 Risks: [RISKS.md](./RISKS.md)  
