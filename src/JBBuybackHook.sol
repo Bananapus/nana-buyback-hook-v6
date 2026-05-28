@@ -977,11 +977,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 amountToMintWith = totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith;
             bool noop = tokenCountWithoutHook >= minimumSwapAmountOut;
 
+            // When minting wins, the terminal does not need an after-pay callback. Skip the spec entirely
+            // so JBMultiTerminal's `hookSpecifications.length != 0` guard short-circuits and avoids both
+            // the abi.encode of all the metadata fields and the _fulfillPayHookSpecificationsFor call frame.
+            if (noop) return (weight, hookSpecifications); // hookSpecifications.length == 0
+
             hookSpecifications = new JBPayHookSpecification[](1);
             hookSpecifications[0] = JBPayHookSpecification({
                 hook: IJBPayHook(this),
-                noop: noop,
-                amount: noop ? 0 : amountToSwapWith,
+                noop: false,
+                amount: amountToSwapWith,
                 metadata: abi.encode(
                     projectTokenIs0,
                     amountToMintWith,
@@ -1000,7 +1005,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
 
             // All the minting will be done in `afterPayRecordedWith`. Return a weight of 0.
-            if (!noop) return (0, hookSpecifications);
+            return (0, hookSpecifications);
         } else if (hasUserSpecifiedQuote && tokenCountWithoutHook < minimumSwapAmountOut) {
             // User supplied an explicit pool quote with a non-zero minimum, but no pool is configured —
             // the direct mint alone cannot satisfy the requested minimum. Revert so the user does not

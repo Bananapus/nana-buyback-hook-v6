@@ -583,15 +583,13 @@ contract V4BuybackHookTest is Test {
         });
 
         // When oracle reverts, _getQuote returns 0, meaning minimumSwapAmountOut = 0.
-        // Since tokenCountWithoutHook > 0, mint path is chosen. A noop spec is returned so pool metadata can still
-        // be surfaced without triggering afterPay.
+        // Since tokenCountWithoutHook > 0, mint path is chosen. An empty specifications array is returned so the
+        // terminal short-circuits and skips the after-pay callback entirely (no diagnostic spec is emitted).
         (uint256 weight, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
         // Weight should be returned unchanged (mint path).
         assertEq(weight, 1e18, "Weight should be unchanged when oracle is unavailable (mint path)");
-        assertEq(specs.length, 1, "A noop hook specification should carry mint-path pool diagnostics");
-        assertTrue(specs[0].noop, "Mint path specification should be marked noop");
-        assertEq(specs[0].amount, 0, "Mint path noop specification should not forward funds");
+        assertEq(specs.length, 0, "Mint-path should return an empty hook specifications array");
     }
 
     /// @notice Deterministic formula regression test at known fee tiers and key points.
@@ -967,12 +965,15 @@ contract V4BuybackHookTest is Test {
             abi.encode(ruleset, meta)
         );
 
-        // Payer provides an explicit quote that should be used as-is.
-        uint256 badPayerQuote = 1;
+        // Payer provides an explicit quote that should be used as-is. Pick a value HIGH enough that the swap path
+        // wins (mint cannot satisfy it), so we can still observe the quote in the returned spec metadata.
+        // (A small `badPayerQuote` like `1` would be satisfied by tokenCountWithoutHook and trigger the A2 noop
+        // short-circuit, which returns an empty specs array — making "is the quote honored?" untestable on that path.)
+        uint256 highPayerQuote = 5e18;
         uint256 amountToSwapWith = 1 ether;
 
-        // Encode the payer's bad quote as metadata.
-        bytes memory quoteMetadata = abi.encode(amountToSwapWith, badPayerQuote);
+        // Encode the payer's quote as metadata.
+        bytes memory quoteMetadata = abi.encode(amountToSwapWith, highPayerQuote);
         bytes4 metadataId = JBMetadataResolver.getId("quote", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
 
@@ -995,9 +996,9 @@ contract V4BuybackHookTest is Test {
 
         (, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(beforeCtx);
 
-        assertEq(specs.length, 1, "explicit payer quote should still produce a hook spec");
+        assertEq(specs.length, 1, "explicit payer quote that beats minting should produce a swap-path hook spec");
         (,, uint256 minOut,,) = abi.decode(specs[0].metadata, (bool, uint256, uint256, bool, IJBController));
-        assertEq(minOut, badPayerQuote, "explicit payer quote should be honored");
+        assertEq(minOut, highPayerQuote, "explicit payer quote should be honored");
     }
 
     /// @notice A quote metadata item with a zero minimum behaves like a programmatic no-quote call.

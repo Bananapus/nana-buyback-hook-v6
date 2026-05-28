@@ -528,16 +528,22 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
         if (projectId > defaultHookProjectIdThreshold) return defaultHook;
 
-        // Project ID was issued before the current default was set. Walk the history segments to find the default
-        // that was active at this project's creation. Segments are appended in chronological order; each one covers a
-        // half-open range of project IDs `(minProjectIdExclusive, maxProjectId]`. A projectId is matched by exactly
-        // one segment (or none, in which case the project pre-dates every recorded default).
-        uint256 len = _defaultHookHistory.length;
-        for (uint256 i; i < len; ++i) {
-            DefaultHookSegment storage segment = _defaultHookHistory[i];
-            if (projectId > segment.minProjectIdExclusive && projectId <= segment.maxProjectId) {
-                return segment.hook;
+        // Segments are appended in chronological order with monotonically non-decreasing `maxProjectId`
+        // (see setDefaultHook: `maxProjectId = PROJECTS.count()` which is monotone). Binary search for the
+        // first segment whose `maxProjectId >= projectId`, then verify the projectId falls in its open-low range.
+        uint256 lo;
+        uint256 hi = _defaultHookHistory.length;
+        while (lo < hi) {
+            uint256 mid = (lo + hi) >> 1;
+            if (_defaultHookHistory[mid].maxProjectId < projectId) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
             }
         }
+        if (lo == _defaultHookHistory.length) return IJBRulesetDataHook(address(0));
+        DefaultHookSegment storage segment = _defaultHookHistory[lo];
+        if (projectId > segment.minProjectIdExclusive) return segment.hook;
+        // Project predates every recorded default — return address(0).
     }
 }
