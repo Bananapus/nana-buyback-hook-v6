@@ -1,7 +1,5 @@
 # Invariants of `nana-buyback-hook-v6`
 
-Last updated: 2026-05-28.
-
 Scope: the two production contracts in `src/` — `JBBuybackHook` and `JBBuybackHookRegistry` — plus the helpers in `src/libraries/JBSwapLib.sol`. The hook is a data hook + pay hook + cash-out hook that compares the Juicebox-native bonding-curve route against a Uniswap V4 pool route on every pay and cash out, and routes through whichever benefits the user more. The registry is the project-facing data hook: it resolves which `JBBuybackHook` implementation applies to a given project (project-specific pin, default cohort, or none), forwards the data-hook callbacks to that resolved hook, and exposes mint permission only for the resolved hook.
 
 This file is the per-repo scoped invariants doc. The protocol-wide guarantees for the seven deployed revnets live in [`../INVARIANTS.md`](../INVARIANTS.md); section C.11 there summarizes this repo from the protocol's perspective.
@@ -230,7 +228,7 @@ Audit pass over the eight existing top-level docs:
 - **ADMINISTRATION.md** — current; permission matrix matches Section B.
 - **AUDIT_INSTRUCTIONS.md** — current.
 - **SKILLS.md** — current; entry-point map matches source.
-- **CHANGELOG.md** — current (`0.0.46` notes are the most recent entry; the current `package.json` version is `0.0.60`, so the file does not narrate every patch bump but that is consistent with how other repos in the workspace track major-change-only entries).
+- **CHANGELOG.md** — `0.0.46` notes are the most recent narrated entry while the current `package.json` version is `0.0.61`. The file narrates major changes only, consistent with how other repos in the workspace track entries; the unwritten `0.0.47` – `0.0.61` patch bumps are out of scope for this doc pass.
 - **STYLE_GUIDE.md** — repo-internal style ref, unaffected.
 
 No duplications worth deleting. No staleness corrections needed.
