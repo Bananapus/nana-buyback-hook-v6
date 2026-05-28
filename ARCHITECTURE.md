@@ -63,7 +63,7 @@ cash out requested
   -> direct or noop sell paths with explicit minima must still satisfy the conservative net direct bound
 ```
 
-The sell-side `"cashOutMinReclaimed"` metadata entry encodes `(uint256 minimumSwapAmountOut, bool skip)`. `minimumSwapAmountOut` is a slippage floor (a protection value); `skip` is a venue override that forces terminal settlement regardless of pool pricing. The two are independent: `skip` never waives the floor, so an unmeetable floor reverts rather than routing to the pool.
+The sell-side `"cashOut"` metadata entry encodes `(uint256 minimumSwapAmountOut, bool skip)`. `minimumSwapAmountOut` is a slippage floor (a protection value); `skip` is a venue override that forces terminal settlement regardless of pool pricing. The two are independent: `skip` never waives the floor, so an unmeetable floor reverts rather than routing to the pool.
 
 ## Accounting Model
 

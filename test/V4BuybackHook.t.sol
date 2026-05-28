@@ -973,7 +973,7 @@ contract V4BuybackHookTest is Test {
 
         // Encode the payer's bad quote as metadata.
         bytes memory quoteMetadata = abi.encode(amountToSwapWith, badPayerQuote);
-        bytes4 metadataId = JBMetadataResolver.getId("quote", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("pay", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
 
         JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
@@ -1011,7 +1011,7 @@ contract V4BuybackHookTest is Test {
 
         uint256 amountToSwapWith = 1 ether;
         bytes memory quoteMetadata = abi.encode(amountToSwapWith, uint256(0));
-        bytes4 metadataId = JBMetadataResolver.getId("quote", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("pay", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
 
         JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
@@ -1270,7 +1270,7 @@ contract V4BuybackHookTest is Test {
 
         bytes memory quoteMetadata = abi.encode(amountToSwapWith, highPayerQuote);
         // Use the hook's address for the metadata ID, since the hook decodes using its own address(this).
-        bytes4 metadataId = JBMetadataResolver.getId("quote", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("pay", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
 
         JBBeforePayRecordedContext memory beforeCtx = JBBeforePayRecordedContext({
@@ -1417,7 +1417,7 @@ contract V4BuybackHookTest is Test {
 
         uint256 cashOutCount = 10 ether;
         uint256 explicitMinimumReclaimed = 0.5 ether + 1;
-        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("cashOut", address(hook));
         bytes memory fullMetadata =
             JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimumReclaimed, false));
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
@@ -1548,7 +1548,7 @@ contract V4BuybackHookTest is Test {
         uint256 protocolMinimum = grossDirect;
         uint256 explicitMinimum = protocolMinimum + bound(uint256(deltaSeed), 1, 1_000_000 ether);
 
-        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("cashOut", address(hook));
         bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum, false));
 
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
@@ -1615,7 +1615,7 @@ contract V4BuybackHookTest is Test {
         uint256 delta = bound(uint256(deltaSeed), 0, protocolMinimum);
         uint256 explicitMinimum = protocolMinimum - delta;
 
-        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("cashOut", address(hook));
         bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum, false));
 
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({

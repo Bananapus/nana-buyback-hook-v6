@@ -49,9 +49,9 @@ Operational bugs often come from the second part. Economic bugs often come from 
 
 Callers can shape the route through `JBMetadataResolver`-keyed entries in the terminal's `metadata` argument. Address the entry to the hook (or to the registry, which rekeys it to the resolved hook).
 
-**Buy side (`pay`), key `"quote"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)`. A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle.
+**Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle.
 
-**Sell side (`cashOut`), key `"cashOutMinReclaimed"`** — encodes `(uint256 minimumSwapAmountOut, bool skip)`:
+**Sell side, key `"cashOut"`** — encodes `(uint256 minimumSwapAmountOut, bool skip)`:
 
 - `minimumSwapAmountOut` is a hard slippage floor on the net terminal-token output. It is a protection value, **not** a venue selector. A non-zero floor is enforced even when the hook falls back to the direct protocol cash-out.
 - `skip` (defaults to `false`) forces the cash-out through the protocol bonding-curve/terminal path and skips the pool entirely — **even when the pool would pay more**. The floor still applies: a `skip` cash-out whose `minimumSwapAmountOut` the direct reclaim cannot meet reverts rather than silently routing to the AMM. Use `skip` when you want deterministic terminal settlement (e.g. predictable accounting, or avoiding pool exposure) regardless of momentary pool pricing. Note this is distinct from setting a low `minimumSwapAmountOut`: that would surrender your slippage protection to coax a terminal route, whereas `skip` decouples venue choice from the floor.

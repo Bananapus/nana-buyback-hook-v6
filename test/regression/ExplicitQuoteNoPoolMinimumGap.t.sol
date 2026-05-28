@@ -108,7 +108,7 @@ contract ExplicitQuoteNoPoolMinimumGapTest is Test {
     function test_explicitQuoteMinimumRevertsWhenNoPoolIsSet() public {
         bytes memory quoteMetadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
-            idToAdd: JBMetadataResolver.getId({purpose: "quote", target: address(hook)}),
+            idToAdd: JBMetadataResolver.getId({purpose: "pay", target: address(hook)}),
             dataToAdd: abi.encode(PAYMENT_AMOUNT, EXPLICIT_MINIMUM)
         });
 
@@ -129,7 +129,7 @@ contract ExplicitQuoteNoPoolMinimumGapTest is Test {
 
         bytes memory quoteMetadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
-            idToAdd: JBMetadataResolver.getId({purpose: "quote", target: address(registry)}),
+            idToAdd: JBMetadataResolver.getId({purpose: "pay", target: address(registry)}),
             dataToAdd: abi.encode(PAYMENT_AMOUNT, EXPLICIT_MINIMUM)
         });
 
