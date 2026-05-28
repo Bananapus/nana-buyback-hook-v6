@@ -12,6 +12,15 @@ This file describes the verified change from `nana-buyback-hook-v5` to the curre
 - `IJBBuybackHookRegistry`
 - `JBSwapLib`
 
+## 0.0.63 — Rename metadata purpose keys to lifecycle-phase names
+
+Renamed the two caller-provided metadata purpose strings to match the lifecycle-phase convention used by the 721 hook (`"pay"` / `"cashOut"`), so a project that stacks multiple data hooks reads one consistent key per phase.
+
+- Buy side: `getId("quote")` → `getId("pay")` (read in `JBBuybackHook.beforePayRecordedWith`; rekeyed by `JBBuybackHookRegistry.beforePayRecordedWith`). Payload unchanged: `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)`.
+- Sell side: `getId("cashOutMinReclaimed")` → `getId("cashOut")` (read in `JBBuybackHook.beforeCashOutRecordedWith`; rekeyed by `JBBuybackHookRegistry.beforeCashOutRecordedWith`). Payload unchanged: `(uint256 minimumSwapAmountOut, bool skip)`.
+- **Breaking metadata-key change** (acceptable pre-deploy): every off-chain client and consumer contract that builds buyback metadata must use the new purpose strings. Each lifecycle phase reads exactly one purpose, so the phase-based names collide with nothing. Registry rekey, NatSpec, README/ARCHITECTURE/INVARIANTS/USER_JOURNEYS, and all tests updated; the registry's internal id variables renamed (`registryPayId`/`hookPayId`, `registryCashOutId`/`hookCashOutId`).
+- `package.json`: version 0.0.62 -> 0.0.63.
+
 ## 0.0.62 — Sell-side `skip` cash-out flag
 
 Added a caller-provided sell-side override that forces cash-outs through the protocol bonding-curve/terminal path and skips the Uniswap V4 pool entirely, even when the pool would return more.

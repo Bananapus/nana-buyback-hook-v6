@@ -351,17 +351,17 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
             );
         }
 
-        // Remap any cashOutMinReclaimed metadata addressed to the registry into metadata addressed to the resolved
+        // Remap any `cashOut` metadata addressed to the registry into metadata addressed to the resolved
         // hook. This single entry packs both the slippage floor and the `skip` venue override, so one remap
         // forwards the entire caller-provided sell-side intent.
-        bytes4 registryCashOutMinId = JBMetadataResolver.getId({purpose: "cashOutMinReclaimed", target: address(this)});
+        bytes4 registryCashOutId = JBMetadataResolver.getId({purpose: "cashOut", target: address(this)});
         (bool found, bytes memory minData) =
-            JBMetadataResolver.getDataFor({id: registryCashOutMinId, metadata: context.metadata});
+            JBMetadataResolver.getDataFor({id: registryCashOutId, metadata: context.metadata});
 
         if (found) {
-            bytes4 hookCashOutMinId = JBMetadataResolver.getId({purpose: "cashOutMinReclaimed", target: address(hook)});
+            bytes4 hookCashOutId = JBMetadataResolver.getId({purpose: "cashOut", target: address(hook)});
             bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata({
-                originalMetadata: context.metadata, idToAdd: hookCashOutMinId, dataToAdd: minData
+                originalMetadata: context.metadata, idToAdd: hookCashOutId, dataToAdd: minData
             });
             JBBeforeCashOutRecordedContext memory modifiedContext = JBBeforeCashOutRecordedContext({
                 terminal: context.terminal,
@@ -409,18 +409,18 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // projects from selecting it via setHookFor; it does not override existing assignments.
         // The registry admin should not be able to unilaterally degrade a project's payment flow.
 
-        // Remap any metadata addressed to the registry into metadata addressed to the resolved hook.
-        // This lets payers scope their quote to the registry address while the underlying hook receives
+        // Remap any `pay` metadata addressed to the registry into metadata addressed to the resolved hook.
+        // This lets payers scope their swap quote to the registry address while the underlying hook receives
         // it under its own ID.
-        bytes4 registryQuoteId = JBMetadataResolver.getId({purpose: "quote", target: address(this)});
+        bytes4 registryPayId = JBMetadataResolver.getId({purpose: "pay", target: address(this)});
         (bool found, bytes memory quoteData) =
-            JBMetadataResolver.getDataFor({id: registryQuoteId, metadata: context.metadata});
+            JBMetadataResolver.getDataFor({id: registryPayId, metadata: context.metadata});
 
         if (found) {
-            // Build rekeyed metadata with the hook-scoped quote ID.
-            bytes4 hookQuoteId = JBMetadataResolver.getId({purpose: "quote", target: address(hook)});
+            // Build rekeyed metadata with the hook-scoped `pay` ID.
+            bytes4 hookPayId = JBMetadataResolver.getId({purpose: "pay", target: address(hook)});
             bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata({
-                originalMetadata: context.metadata, idToAdd: hookQuoteId, dataToAdd: quoteData
+                originalMetadata: context.metadata, idToAdd: hookPayId, dataToAdd: quoteData
             });
 
             // Forward a context copy with the rekeyed metadata via staticcall (view-safe).

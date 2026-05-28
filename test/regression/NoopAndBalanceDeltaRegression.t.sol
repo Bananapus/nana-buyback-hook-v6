@@ -380,7 +380,7 @@ contract NoopAndBalanceDeltaRegressionTest is Test {
 
         // Set explicit minimum below direct reclaim to trigger noop.
         uint256 explicitMinimum = 1 ether; // less than 2 ether direct reclaim
-        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes4 metadataId = JBMetadataResolver.getId("cashOut", address(hook));
         bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum, false));
 
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({

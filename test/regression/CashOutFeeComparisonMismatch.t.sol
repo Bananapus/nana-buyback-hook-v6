@@ -192,7 +192,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
         // Build a context that targets the no-pool hook so the explicit minimum check fires.
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
-            idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(noPoolHook)),
+            idToAdd: JBMetadataResolver.getId("cashOut", address(noPoolHook)),
             dataToAdd: abi.encode(EXPLICIT_MIN_BETWEEN_GROSS_AND_NET, false)
         });
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
@@ -241,7 +241,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
         uint256 safeMinimum = 0.26 ether;
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
-            idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(noPoolHook)),
+            idToAdd: JBMetadataResolver.getId("cashOut", address(noPoolHook)),
             dataToAdd: abi.encode(safeMinimum, false)
         });
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({
@@ -281,7 +281,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
     {
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
-            idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(hook)),
+            idToAdd: JBMetadataResolver.getId("cashOut", address(hook)),
             dataToAdd: abi.encode(minimum, false)
         });
 

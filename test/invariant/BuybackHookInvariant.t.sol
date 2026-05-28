@@ -312,7 +312,7 @@ contract BuybackHookHandler is Test {
         bytes memory metadata;
         if (payerQuote > 0 && amountToSwapWith > 0) {
             // Encode the quote using JBMetadataResolver format.
-            bytes4 quoteId = JBMetadataResolver.getId("quote", address(hook));
+            bytes4 quoteId = JBMetadataResolver.getId("pay", address(hook));
             bytes4[] memory ids = new bytes4[](1);
             ids[0] = quoteId;
             bytes[] memory datas = new bytes[](1);

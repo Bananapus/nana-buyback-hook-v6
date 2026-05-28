@@ -566,7 +566,7 @@ contract V4SandwichForkTest is Test {
         bytes memory fullMetadata;
         {
             bytes memory quoteMetadata = abi.encode(victimAmount, payerMinOut);
-            bytes4 metadataId = JBMetadataResolver.getId("quote");
+            bytes4 metadataId = JBMetadataResolver.getId("pay");
             fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
         }
 

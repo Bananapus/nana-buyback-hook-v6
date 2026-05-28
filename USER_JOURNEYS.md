@@ -84,7 +84,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 2. Execute whichever route is better under current conditions.
 3. Use registry and expected-hook checks to ensure the intended routing surface is active.
 
-**Opt-out variant:** a holder who wants deterministic terminal settlement can set `skip=true` in the `cashOutMinReclaimed` metadata entry (`(uint256 minimumSwapAmountOut, bool skip)`). The hook then skips the pool comparison entirely and settles through the bonding-curve/terminal path even if the pool would pay more. Any `minimumSwapAmountOut` floor is still enforced against the direct reclaim, so it reverts rather than under-delivering.
+**Opt-out variant:** a holder who wants deterministic terminal settlement can set `skip=true` in the `cashOut` metadata entry (`(uint256 minimumSwapAmountOut, bool skip)`). The hook then skips the pool comparison entirely and settles through the bonding-curve/terminal path even if the pool would pay more. Any `minimumSwapAmountOut` floor is still enforced against the direct reclaim, so it reverts rather than under-delivering.
 
 **Failure Modes**
 - leftover balances or partial swap settlement

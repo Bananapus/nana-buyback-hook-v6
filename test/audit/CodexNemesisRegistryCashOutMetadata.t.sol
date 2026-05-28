@@ -179,7 +179,7 @@ contract CodexNemesisRegistryCashOutMetadataTest is Test {
     function _metadataFor(address target, uint256 minimumSwapAmountOut) internal pure returns (bytes memory) {
         return JBMetadataResolver.addToMetadata({
             originalMetadata: "",
-            idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", target),
+            idToAdd: JBMetadataResolver.getId("cashOut", target),
             dataToAdd: abi.encode(minimumSwapAmountOut, false)
         });
     }
@@ -187,7 +187,7 @@ contract CodexNemesisRegistryCashOutMetadataTest is Test {
     function _skipMetadataFor(address target) internal pure returns (bytes memory) {
         return JBMetadataResolver.addToMetadata({
             originalMetadata: "",
-            idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", target),
+            idToAdd: JBMetadataResolver.getId("cashOut", target),
             dataToAdd: abi.encode(uint256(0), true)
         });
     }

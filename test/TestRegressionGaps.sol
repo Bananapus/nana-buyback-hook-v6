@@ -520,7 +520,7 @@ contract TestRegressionGaps is Test {
         vm.prank(owner);
         hook.setPoolFor({projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: address(usdc)});
 
-        bytes4 minReclaimedId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes4 minReclaimedId = JBMetadataResolver.getId("cashOut", address(hook));
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: bytes(""), idToAdd: minReclaimedId, dataToAdd: abi.encode(uint256(10e6), false)
         });
