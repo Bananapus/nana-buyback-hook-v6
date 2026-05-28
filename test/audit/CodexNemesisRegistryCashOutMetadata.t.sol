@@ -139,6 +139,22 @@ contract CodexNemesisRegistryCashOutMetadataTest is Test {
         assertFalse(registrySpecs[0].noop, "registry-scoped min is rekeyed for cash-out");
     }
 
+    /// @notice A registry-scoped `skip=true` (packed into the cashOutMinReclaimed entry) is rekeyed to the
+    /// resolved hook and forces the terminal path — proving the packed bool survives the registry remap.
+    function test_registryScopedSkipRoutesToTerminal() public view {
+        (uint256 hookTaxRate,,,, JBCashOutHookSpecification[] memory hookSpecs) =
+            registry.beforeCashOutRecordedWith(_context(_skipMetadataFor(address(hook))));
+
+        (uint256 registryTaxRate,,,, JBCashOutHookSpecification[] memory registrySpecs) =
+            registry.beforeCashOutRecordedWith(_context(_skipMetadataFor(address(registry))));
+
+        assertEq(hookTaxRate, 0, "hook-scoped skip keeps the terminal tax rate");
+        assertEq(hookSpecs.length, 0, "hook-scoped skip returns no hook spec (passthrough)");
+
+        assertEq(registryTaxRate, 0, "registry-scoped skip is rekeyed and keeps the terminal tax rate");
+        assertEq(registrySpecs.length, 0, "registry-scoped skip is rekeyed to a terminal-path passthrough");
+    }
+
     function _context(bytes memory metadata) internal view returns (JBBeforeCashOutRecordedContext memory) {
         return JBBeforeCashOutRecordedContext({
             terminal: terminal,
@@ -164,7 +180,15 @@ contract CodexNemesisRegistryCashOutMetadataTest is Test {
         return JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", target),
-            dataToAdd: abi.encode(minimumSwapAmountOut)
+            dataToAdd: abi.encode(minimumSwapAmountOut, false)
+        });
+    }
+
+    function _skipMetadataFor(address target) internal pure returns (bytes memory) {
+        return JBMetadataResolver.addToMetadata({
+            originalMetadata: "",
+            idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", target),
+            dataToAdd: abi.encode(uint256(0), true)
         });
     }
 }

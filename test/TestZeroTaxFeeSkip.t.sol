@@ -207,7 +207,7 @@ contract TestZeroTaxFeeSkip is Test {
         returns (JBBeforeCashOutRecordedContext memory)
     {
         bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
-        bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum));
+        bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum, false));
 
         return JBBeforeCashOutRecordedContext({
             terminal: terminal,

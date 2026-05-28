@@ -352,7 +352,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         }
 
         // Remap any cashOutMinReclaimed metadata addressed to the registry into metadata addressed to the resolved
-        // hook.
+        // hook. This single entry packs both the slippage floor and the `skip` venue override, so one remap
+        // forwards the entire caller-provided sell-side intent.
         bytes4 registryCashOutMinId = JBMetadataResolver.getId({purpose: "cashOutMinReclaimed", target: address(this)});
         (bool found, bytes memory minData) =
             JBMetadataResolver.getDataFor({id: registryCashOutMinId, metadata: context.metadata});

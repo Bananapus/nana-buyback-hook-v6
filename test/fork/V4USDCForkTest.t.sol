@@ -283,7 +283,7 @@ abstract contract V4USDCForkTestBase is Test {
         _setupProjectWithUsdcPool(pid, usdc, 100_000e6);
 
         bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
-        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1)));
+        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1), false));
 
         JBBeforeCashOutRecordedContext memory beforeCtx = JBBeforeCashOutRecordedContext({
             terminal: address(terminal),
@@ -744,7 +744,7 @@ abstract contract V4USDCForkTestBase is Test {
         returns (uint256 received)
     {
         bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
-        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1)));
+        bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(uint256(1), false));
 
         bytes memory specMetadata;
         {

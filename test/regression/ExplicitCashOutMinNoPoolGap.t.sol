@@ -57,7 +57,7 @@ contract ExplicitCashOutMinNoPoolGapTest is Test {
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId({purpose: "cashOutMinReclaimed", target: address(hook)}),
-            dataToAdd: abi.encode(EXPLICIT_MINIMUM)
+            dataToAdd: abi.encode(EXPLICIT_MINIMUM, false)
         });
 
         _assertFallbackRevertsBelowMinimum();
@@ -79,7 +79,7 @@ contract ExplicitCashOutMinNoPoolGapTest is Test {
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId({purpose: "cashOutMinReclaimed", target: address(registry)}),
-            dataToAdd: abi.encode(EXPLICIT_MINIMUM)
+            dataToAdd: abi.encode(EXPLICIT_MINIMUM, false)
         });
 
         _assertFallbackRevertsBelowMinimum();

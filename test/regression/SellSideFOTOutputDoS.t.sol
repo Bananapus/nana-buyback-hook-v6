@@ -225,7 +225,7 @@ contract RegressionSellSideFOTOutputDoSTest is Test {
         uint256 quotedAmountOut = 12 ether;
         bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
         bytes memory metadata = JBMetadataResolver.addToMetadata({
-            originalMetadata: bytes(""), idToAdd: metadataId, dataToAdd: abi.encode(quotedAmountOut)
+            originalMetadata: bytes(""), idToAdd: metadataId, dataToAdd: abi.encode(quotedAmountOut, false)
         });
 
         JBBeforeCashOutRecordedContext memory context = JBBeforeCashOutRecordedContext({

@@ -126,7 +126,7 @@ contract RegressionZeroTaxFeeFreeSurplusTest is Test {
         bytes memory metadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId("cashOutMinReclaimed", address(hook)),
-            dataToAdd: abi.encode(AMM_FLOOR)
+            dataToAdd: abi.encode(AMM_FLOOR, false)
         });
 
         vm.prank(address(terminal));

@@ -12,6 +12,15 @@ This file describes the verified change from `nana-buyback-hook-v5` to the curre
 - `IJBBuybackHookRegistry`
 - `JBSwapLib`
 
+## 0.0.62 — Sell-side `skip` cash-out flag
+
+Added a caller-provided sell-side override that forces cash-outs through the protocol bonding-curve/terminal path and skips the Uniswap V4 pool entirely, even when the pool would return more.
+
+- The `"cashOutMinReclaimed"` metadata entry read in `JBBuybackHook.beforeCashOutRecordedWith` is now encoded as `(uint256 minimumSwapAmountOut, bool skip)` instead of a bare `uint256`. `skip` defaults to `false`. **This is a breaking metadata-encoding change** (acceptable pre-deploy). The same metadata id is reused rather than introducing a new key, so the existing `JBBuybackHookRegistry` remap forwards both values in a single rekey.
+- When `skip == true`, the hook short-circuits to the direct protocol cash-out (no pool quote, no swap, empty hook spec). Any non-zero `minimumSwapAmountOut` is still enforced against the direct net reclaim, so an unmeetable floor reverts with `JBBuybackHook_SpecifiedSlippageExceeded` rather than silently routing to the AMM — `skip` is a venue selector, not a waiver of slippage protection.
+- No new metadata id, no interface/ABI signature changes, no storage changes.
+- Tests: added `test_skip_*` to `TestSellSideNetComparison.t.sol` (passthrough, floor-still-enforced, and a control proving the pool would otherwise win) and `test_registryScopedSkipRoutesToTerminal` to the registry metadata audit test (proves the packed bool survives the registry remap). Updated all existing `cashOutMinReclaimed` test encoders to the 2-tuple form.
+
 ## 0.0.46 — Bump nana-core-v6 to 0.0.52
 
 `nana-core-v6@0.0.52` centralized the protocol fee constant into `JBConstants.FEE` and dropped `IJBFeeTerminal.FEE()`. Updated `JBBuybackHook` accordingly:

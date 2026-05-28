@@ -231,7 +231,7 @@ contract TestSellSideNetComparison is Test {
         returns (JBBeforeCashOutRecordedContext memory)
     {
         bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
-        bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum));
+        bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum, false));
 
         return JBBeforeCashOutRecordedContext({
             terminal: address(terminal),
@@ -293,5 +293,88 @@ contract TestSellSideNetComparison is Test {
         (,, uint256 minimumProtocolAmountOut,,,) =
             abi.decode(specs[0].metadata, (uint256, uint256, uint256, int24, uint128, PoolId));
         assertEq(minimumProtocolAmountOut, GROSS, "feeless metadata should encode gross reclaim");
+    }
+
+    /// @notice skip=true forces the terminal path even when the pool quote genuinely beats the net direct
+    /// reclaim and the holder set no floor — the headline guarantee. A control with skip=false proves the
+    /// pool would otherwise win for the exact same inputs.
+    function test_skip_forcesTerminalEvenWhenAmmWouldWin() public {
+        // Calibrate the oracle so a min=0 cash-out quote beats the net direct reclaim (tick 0 == 1:1 price,
+        // full-window liquidity). This is the same calibration the routing tests in V4BuybackHook.t.sol use.
+        mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
+
+        // Control: without skip, the pool wins — tax is maxed and an active (non-noop) sell spec is returned.
+        JBBeforeCashOutRecordedContext memory routed = _buildSkipContext({explicitMinimum: 0, skip: false});
+        (uint256 routedTax,,,, JBCashOutHookSpecification[] memory routedSpecs) = hook.beforeCashOutRecordedWith(routed);
+        assertEq(routedTax, JBConstants.MAX_CASH_OUT_TAX_RATE, "control: pool wins when skip is off");
+        assertFalse(routedSpecs[0].noop, "control: sell-side route is active when skip is off");
+
+        // With skip, the same winning pool quote is ignored and the cash-out settles at the terminal.
+        JBBeforeCashOutRecordedContext memory skipped = _buildSkipContext({explicitMinimum: 0, skip: true});
+        (uint256 skipTax,,,, JBCashOutHookSpecification[] memory skipSpecs) = hook.beforeCashOutRecordedWith(skipped);
+        assertEq(skipTax, 5000, "skip: terminal tax rate despite a winning pool quote");
+        assertEq(skipSpecs.length, 0, "skip: no hook spec - pure passthrough to the terminal");
+    }
+
+    /// @notice skip=true with no explicit minimum is a clean passthrough to the bonding-curve cash-out.
+    function test_skip_noMinimum_passesThrough() public view {
+        JBBeforeCashOutRecordedContext memory context = _buildSkipContext({explicitMinimum: 0, skip: true});
+
+        (
+            uint256 cashOutTaxRate,
+            uint256 cashOutCount,
+            uint256 totalSupply,
+            uint256 surplus,
+            JBCashOutHookSpecification[] memory specs
+        ) = hook.beforeCashOutRecordedWith(context);
+
+        assertEq(cashOutTaxRate, 5000, "tax rate unchanged");
+        assertEq(cashOutCount, 10 ether, "cash-out count unchanged");
+        assertEq(totalSupply, 100 ether, "total supply unchanged");
+        assertEq(surplus, 5 ether, "surplus unchanged");
+        assertEq(specs.length, 0, "no hook spec on skip passthrough");
+    }
+
+    /// @notice skip does NOT waive the slippage floor: an explicit minimum the direct reclaim cannot meet
+    /// reverts rather than silently settling the holder for less.
+    function test_skip_stillEnforcesUnmeetableMinimum() public {
+        // 0.30 ether is above the net direct reclaim (0.268125), so the terminal path cannot satisfy it.
+        JBBeforeCashOutRecordedContext memory context = _buildSkipContext({explicitMinimum: 0.3 ether, skip: true});
+
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, NET, 0.3 ether)
+        );
+        hook.beforeCashOutRecordedWith(context);
+    }
+
+    function _buildSkipContext(
+        uint256 explicitMinimum,
+        bool skip
+    )
+        internal
+        view
+        returns (JBBeforeCashOutRecordedContext memory)
+    {
+        bytes4 metadataId = JBMetadataResolver.getId("cashOutMinReclaimed", address(hook));
+        bytes memory metadata = JBMetadataResolver.addToMetadata("", metadataId, abi.encode(explicitMinimum, skip));
+
+        return JBBeforeCashOutRecordedContext({
+            terminal: address(terminal),
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: 10 ether,
+            totalSupply: 100 ether,
+            surplus: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 5 ether,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            scopeCashOutsToLocalBalances: true,
+            cashOutTaxRate: 5000,
+            beneficiaryIsFeeless: false,
+            metadata: metadata
+        });
     }
 }
