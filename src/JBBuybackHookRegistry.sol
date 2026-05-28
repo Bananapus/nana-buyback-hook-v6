@@ -355,13 +355,13 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // hook. This single entry packs both the slippage floor and the `skip` venue override, so one remap
         // forwards the entire caller-provided sell-side intent.
         bytes4 registryCashOutId = JBMetadataResolver.getId({purpose: "cashOut", target: address(this)});
-        (bool found, bytes memory minData) =
+        (bool found, bytes memory cashOutData) =
             JBMetadataResolver.getDataFor({id: registryCashOutId, metadata: context.metadata});
 
         if (found) {
             bytes4 hookCashOutId = JBMetadataResolver.getId({purpose: "cashOut", target: address(hook)});
             bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata({
-                originalMetadata: context.metadata, idToAdd: hookCashOutId, dataToAdd: minData
+                originalMetadata: context.metadata, idToAdd: hookCashOutId, dataToAdd: cashOutData
             });
             JBBeforeCashOutRecordedContext memory modifiedContext = JBBeforeCashOutRecordedContext({
                 terminal: context.terminal,

@@ -803,10 +803,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 minimumSwapAmountOut;
         bool hasUserSpecifiedMinimumSwapAmountOut;
         bool skip;
-        (bool exists, bytes memory minData) =
+        (bool exists, bytes memory metadata) =
             JBMetadataResolver.getDataFor({id: JBMetadataResolver.getId("cashOut"), metadata: context.metadata});
         if (exists) {
-            (minimumSwapAmountOut, skip) = abi.decode(minData, (uint256, bool));
+            (minimumSwapAmountOut, skip) = abi.decode(metadata, (uint256, bool));
             // Only honor user minimum when they specify an explicit value.
             // minimumSwapAmountOut=0 (programmatic orders) falls through to TWAP oracle.
             hasUserSpecifiedMinimumSwapAmountOut = minimumSwapAmountOut != 0;
