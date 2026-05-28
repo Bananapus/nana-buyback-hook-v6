@@ -413,14 +413,14 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // This lets payers scope their swap quote to the registry address while the underlying hook receives
         // it under its own ID.
         bytes4 registryPayId = JBMetadataResolver.getId({purpose: "pay", target: address(this)});
-        (bool found, bytes memory quoteData) =
+        (bool found, bytes memory payData) =
             JBMetadataResolver.getDataFor({id: registryPayId, metadata: context.metadata});
 
         if (found) {
             // Build rekeyed metadata with the hook-scoped `pay` ID.
             bytes4 hookPayId = JBMetadataResolver.getId({purpose: "pay", target: address(hook)});
             bytes memory rekeyedMetadata = JBMetadataResolver.addToMetadata({
-                originalMetadata: context.metadata, idToAdd: hookPayId, dataToAdd: quoteData
+                originalMetadata: context.metadata, idToAdd: hookPayId, dataToAdd: payData
             });
 
             // Forward a context copy with the rekeyed metadata via staticcall (view-safe).
