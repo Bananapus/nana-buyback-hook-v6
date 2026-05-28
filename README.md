@@ -2,7 +2,6 @@
 
 `@bananapus/buyback-hook-v6` is a data hook that compares Juicebox's native mint or cash-out path with a Uniswap V4 pool and routes through whichever produces the better result for the project at that moment.
 
-External docs: <https://docs.juicebox.money>
 
 ## Documentation
 
