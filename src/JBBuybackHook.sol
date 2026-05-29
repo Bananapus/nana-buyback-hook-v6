@@ -117,6 +117,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // -------------- internal immutable stored properties -------------- //
     //*********************************************************************//
 
+    /// @notice Pre-computed metadata ID for the "cashOut" purpose (the cash-out reclaim/skip directive).
+    /// @dev Hoisted to an immutable so the string is hashed once at deployment instead of on every
+    /// `beforeCashOutRecordedWith` call. Keyed to `address(this)` (the value `getId("cashOut")` resolves to), which is
+    /// deterministic under CREATE2 — so this immutable is byte-identical on every chain.
+    bytes4 internal immutable _CASH_OUT_ID;
+
     /// @notice The deployer authorized to set the chain-specific Uniswap V4 PoolManager and oracle hook.
     /// @dev Held as immutable so the constructor inputs are byte-identical on every chain. The chain-specific
     /// Uniswap V4 PoolManager (and the matching oracle hook deployed against it) are set by this
@@ -124,6 +130,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// `JBOptimismSuckerDeployer.setChainSpecificConstants` pattern in nana-suckers-v6, and makes this
     /// contract's CREATE2 address identical across chains.
     address internal immutable _DEPLOYER;
+
+    /// @notice Pre-computed metadata ID for the "pay" purpose (the pay-phase swap quote).
+    /// @dev Hoisted to an immutable so the string is hashed once at deployment instead of on every
+    /// `beforePayRecordedWith` call. Keyed to `address(this)` (the value `getId("pay")` resolves to), which is
+    /// deterministic under CREATE2 — so
+    /// this immutable is byte-identical on every chain and does not break the unified address.
+    bytes4 internal immutable _PAY_ID;
 
     //*********************************************************************//
     // --------------------- public stored properties -------------------- //
@@ -187,6 +200,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         PROJECTS = projects;
         PRICES = prices;
         _DEPLOYER = deployer;
+
+        // Pre-compute the metadata IDs so the purpose strings are hashed once here rather than on every hook call.
+        _CASH_OUT_ID = JBMetadataResolver.getId("cashOut");
+        _PAY_ID = JBMetadataResolver.getId("pay");
     }
 
     //*********************************************************************//
@@ -804,7 +821,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool hasUserSpecifiedMinimumSwapAmountOut;
         bool skip;
         (bool exists, bytes memory metadata) =
-            JBMetadataResolver.getDataFor({id: JBMetadataResolver.getId("cashOut"), metadata: context.metadata});
+            JBMetadataResolver.getDataFor({id: _CASH_OUT_ID, metadata: context.metadata});
         if (exists) {
             (minimumSwapAmountOut, skip) = abi.decode(metadata, (uint256, bool));
             // Only honor user minimum when they specify an explicit value.
@@ -962,9 +979,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 amountToSwapWith;
 
         // Unpack the quote specified by the payer/client (typically from the pool).
-        bytes4 metadataId = JBMetadataResolver.getId("pay");
         (bool quoteExists, bytes memory metadata) =
-            JBMetadataResolver.getDataFor({id: metadataId, metadata: context.metadata});
+            JBMetadataResolver.getDataFor({id: _PAY_ID, metadata: context.metadata});
         if (quoteExists) {
             (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
             // Only honor user quote when they specify an explicit minimum.

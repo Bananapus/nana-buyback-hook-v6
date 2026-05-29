@@ -12,6 +12,21 @@ This file describes the verified change from `nana-buyback-hook-v5` to the curre
 - `IJBBuybackHookRegistry`
 - `JBSwapLib`
 
+## 0.0.64 — Pre-compute metadata IDs as constructor immutables
+
+Hoists the `getId` purpose-string hashing out of the per-call hot path into deployment-time immutables, mirroring the
+pattern in `JBRouterTerminal`. Pure gas/internal-cleanup change — **no ABI, metadata layout, or behavioral change**, so
+consumers do not need to re-bump for correctness (only to pick up the gas savings).
+
+- `JBBuybackHook`: added internal immutables `_CASH_OUT_ID = getId("cashOut")` and `_PAY_ID = getId("pay")`, set in the
+  constructor. `beforeCashOutRecordedWith` and `beforePayRecordedWith` now read these immutables instead of hashing the
+  purpose string on every call. Both are keyed to `address(this)`, which is deterministic under CREATE2, so the
+  immutables are byte-identical on every chain (the unified address is preserved).
+- `JBBuybackHookRegistry`: added internal immutables `_REGISTRY_CASH_OUT_ID` and `_REGISTRY_PAY_ID` (the registry's own
+  `address(this)`-scoped IDs), set in the constructor. The per-call re-key into the resolved hook's ID
+  (`getId(purpose, address(hook))`) stays computed inline because the resolved hook address varies per call.
+- Self-target lookups use the single-argument `getId(purpose)` shorthand (which resolves `target: address(this)`).
+
 ## 0.0.63 — Rename metadata purpose keys to lifecycle-phase names
 
 Renamed the two caller-provided metadata purpose strings to match the lifecycle-phase convention used by the 721 hook (`"pay"` / `"cashOut"`), so a project that stacks multiple data hooks reads one consistent key per phase.
