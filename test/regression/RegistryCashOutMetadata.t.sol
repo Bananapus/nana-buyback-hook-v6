@@ -28,9 +28,9 @@ import {JBBuybackHookRegistry} from "src/JBBuybackHookRegistry.sol";
 import {MockOracleHook} from "test/mock/MockOracleHook.sol";
 import {MockPoolManager} from "test/mock/MockPoolManager.sol";
 
-contract CodexNemesisProjectToken {}
+contract MockProjectToken {}
 
-contract CodexNemesisRegistryCashOutMetadataTest is Test {
+contract RegistryCashOutMetadataTest is Test {
     using PoolIdLibrary for PoolKey;
 
     uint256 internal constant PROJECT_ID = 919;
@@ -50,7 +50,7 @@ contract CodexNemesisRegistryCashOutMetadataTest is Test {
 
     MockPoolManager internal poolManager;
     MockOracleHook internal oracleHook;
-    CodexNemesisProjectToken internal projectToken;
+    MockProjectToken internal projectToken;
 
     JBBuybackHook internal hook;
     JBBuybackHookRegistry internal registry;
@@ -58,7 +58,7 @@ contract CodexNemesisRegistryCashOutMetadataTest is Test {
     function setUp() public {
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
-        projectToken = new CodexNemesisProjectToken();
+        projectToken = new MockProjectToken();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
