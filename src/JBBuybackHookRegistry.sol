@@ -47,6 +47,22 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     IJBProjects public immutable override PROJECTS;
 
     //*********************************************************************//
+    // -------------- internal immutable stored properties -------------- //
+    //*********************************************************************//
+
+    /// @notice Pre-computed metadata ID for the registry's own "cashOut" purpose.
+    /// @dev Only the registry-scoped ID (`getId("cashOut", address(this))`) is hoisted here — callers key their
+    /// sell-side directive to the registry address, so this is constant for a deployed registry and deterministic
+    /// under CREATE2. The hook-scoped ID it re-keys into (`getId("cashOut", resolvedHook)`) depends on the per-call
+    /// resolved hook address and therefore stays computed inline.
+    bytes4 internal immutable _REGISTRY_CASH_OUT_ID;
+
+    /// @notice Pre-computed metadata ID for the registry's own "pay" purpose.
+    /// @dev Same rationale as `_REGISTRY_CASH_OUT_ID`: the registry-scoped ID is constant and hoisted; the hook-scoped
+    /// re-key target varies per call and stays inline.
+    bytes4 internal immutable _REGISTRY_PAY_ID;
+
+    //*********************************************************************//
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
@@ -103,6 +119,11 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         Ownable(owner)
     {
         PROJECTS = projects;
+
+        // Pre-compute the registry-scoped metadata IDs so their purpose strings are hashed once here rather than on
+        // every cash-out/pay re-key. The hook-scoped IDs cannot be hoisted because they depend on the resolved hook.
+        _REGISTRY_CASH_OUT_ID = JBMetadataResolver.getId("cashOut");
+        _REGISTRY_PAY_ID = JBMetadataResolver.getId("pay");
     }
 
     //*********************************************************************//
@@ -354,9 +375,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Remap any `cashOut` metadata addressed to the registry into metadata addressed to the resolved
         // hook. This single entry packs both the slippage floor and the `skip` venue override, so one remap
         // forwards the entire caller-provided sell-side intent.
-        bytes4 registryCashOutId = JBMetadataResolver.getId({purpose: "cashOut", target: address(this)});
         (bool found, bytes memory cashOutData) =
-            JBMetadataResolver.getDataFor({id: registryCashOutId, metadata: context.metadata});
+            JBMetadataResolver.getDataFor({id: _REGISTRY_CASH_OUT_ID, metadata: context.metadata});
 
         if (found) {
             bytes4 hookCashOutId = JBMetadataResolver.getId({purpose: "cashOut", target: address(hook)});
@@ -412,9 +432,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Remap any `pay` metadata addressed to the registry into metadata addressed to the resolved hook.
         // This lets payers scope their swap quote to the registry address while the underlying hook receives
         // it under its own ID.
-        bytes4 registryPayId = JBMetadataResolver.getId({purpose: "pay", target: address(this)});
         (bool found, bytes memory payData) =
-            JBMetadataResolver.getDataFor({id: registryPayId, metadata: context.metadata});
+            JBMetadataResolver.getDataFor({id: _REGISTRY_PAY_ID, metadata: context.metadata});
 
         if (found) {
             // Build rekeyed metadata with the hook-scoped `pay` ID.
