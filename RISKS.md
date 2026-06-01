@@ -22,7 +22,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **The oracle hook is trusted.** TWAP integrity depends on the `hooks` field in the pool key and the configured `ORACLE_HOOK`.
 - **Oracle failure degrades safely.** When `observe()` reverts, oracle-dependent flows return a zero quote and can fall back toward the protocol path.
 - **JB core contracts behave correctly.** The hook trusts `DIRECTORY`, `controller`, and token operations in core.
-- **Registry owner centralization is scoped.** Changing the default hook only affects projects created after the change (`projectId > defaultHookProjectIdThreshold`). Existing projects must explicitly opt in via `setHookFor`.
+- **Registry owner centralization is scoped.** The first-ever default hook applies to every project that already exists when it is set (so pre-existing, non-pinned projects resolve to it). After that, *changing* the default only affects projects created after the change (`projectId > defaultHookProjectIdThreshold`); earlier cohorts keep their creation-time default and a project can pin its own hook via `setHookFor`.
 
 ## 2. Economic Risks
 
@@ -121,14 +121,16 @@ When a swap fails and leftover terminal tokens return through `addToBalanceOf`, 
 When `afterCashOutRecordedWith()` attempts to sell reminted project tokens through the pool and the swap reverts (e.g., zero liquidity, pool unavailable), the hook transfers the reminted project tokens back to the **holder** (not the beneficiary) instead of reverting the entire cash-out. The holder retains their project tokens and can sell them manually or retry. A `SellSwapReverted` event is emitted for offchain monitoring.
 
 If the pool only partially fills before hitting the hook's price limit, the swap proceeds are still sent to the
-beneficiary, but the unsold reminted project tokens are returned to the holder. This keeps a derived sell-side route
-from destroying the part of the holder's position that the AMM did not actually buy. Any nonzero successful-swap floor,
-whether caller-supplied or derived during route selection, still reverts if the delivered terminal-token amount is below
-that floor. Only full pool reverts keep the derived-floor fallback behavior that returns project tokens to the holder.
+beneficiary, but the unsold reminted project tokens are returned to the holder. This keeps a sell-side route from
+destroying the part of the holder's position that the AMM did not actually buy. The underfill check is symmetric with
+the full-revert fallback above: only a caller-specified minimum hard-reverts when the delivered terminal-token amount
+falls below the floor. A floor derived during route selection (no explicit caller minimum) soft-lands the partial
+fill — the partial proceeds reach the beneficiary and the unsold residue returns to the holder — exactly as the
+full-revert branch returns project tokens to the holder rather than blocking the cash-out.
 
 ### 9.7 Unpinned projects fall back to the mutable default hook
 
-Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookFor()` fall back to the mutable `defaultHook`, but only if created after the default was set (`projectId > defaultHookProjectIdThreshold`). Changing the default hook does not retroactively affect existing projects. Always call `setHookFor(projectId, hook)` to pin your project's hook.
+Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookFor()` resolve to the mutable `defaultHook`. The first-ever default applies to every project that exists when it is set (including projects created before any default existed); afterward, a *new* default only applies to projects created after the change (`projectId > defaultHookProjectIdThreshold`), and earlier cohorts keep their creation-time default. A later default change never retroactively re-routes an earlier project. Always call `setHookFor(projectId, hook)` to pin your project's hook if you want it fixed.
 
 ### 9.8 Sell-Side AMM Proceeds Are Not Fee-Metered
 

@@ -1717,7 +1717,71 @@ contract V4BuybackHookTest is Test {
         assertEq(beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive swap proceeds");
     }
 
-    function test_afterCashOutRecordedWith_revertsWhenDerivedFloorUnderfills() public {
+    /// @notice A successful-but-partial fill that lands below a DERIVED floor (`shouldEnforceMinimumSwapAmountOut`
+    /// is `false`) soft-lands instead of reverting: the partial proceeds reach the beneficiary, mirroring the
+    /// soft-land the swap-failed branch already performs for a derived floor. Only a caller-specified minimum
+    /// hard-reverts on an underfill.
+    function test_afterCashOutRecordedWith_softLandsWhenDerivedFloorUnderfills() public {
+        vm.prank(owner);
+        hook.setPoolFor({
+            projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
+        });
+
+        uint256 amountOut = 4 ether;
+        uint256 cashOutCount = 10 ether;
+        uint256 minimumSwapAmountOut = 5 ether; // amountOut (4) < derived floor (5): an underfill.
+
+        projectToken.mint(address(hook), cashOutCount);
+        vm.deal(address(mockPm), amountOut);
+
+        // project token is currency1, native ETH is currency0, so selling project token is oneForZero.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(int128(uint128(amountOut)), -int128(uint128(cashOutCount)));
+
+        JBAfterCashOutRecordedContext memory context = JBAfterCashOutRecordedContext({
+            holder: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            cashOutCount: cashOutCount,
+            reclaimedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                value: 0,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            }),
+            cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
+            beneficiary: payable(beneficiary),
+            hookMetadata: abi.encode(
+                minimumSwapAmountOut,
+                cashOutCount,
+                uint256(3 ether),
+                int24(0),
+                uint128(1_000_000 ether),
+                poolId,
+                uint256(6 ether),
+                false
+            ),
+            cashOutMetadata: ""
+        });
+
+        uint256 balanceBefore = beneficiary.balance;
+
+        vm.prank(address(terminal));
+        hook.afterCashOutRecordedWith(context);
+
+        assertTrue(mockPm.swapCalled(), "sell-side swap should hit the pool manager");
+        assertEq(beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive the partial swap proceeds");
+    }
+
+    /// @notice An EXPLICIT caller-specified minimum (`shouldEnforceMinimumSwapAmountOut` is `true`) must still
+    /// hard-revert when a successful-but-partial fill lands below it.
+    function test_afterCashOutRecordedWith_revertsWhenExplicitMinimumUnderfills() public {
         vm.prank(owner);
         hook.setPoolFor({
             projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
@@ -1761,7 +1825,7 @@ contract V4BuybackHookTest is Test {
                 uint128(1_000_000 ether),
                 poolId,
                 uint256(6 ether),
-                false
+                true
             ),
             cashOutMetadata: ""
         });

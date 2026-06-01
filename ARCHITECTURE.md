@@ -37,6 +37,17 @@ The TWAP oracle surface comes from `univ4-router-v6`, while settlement truth rem
 
 ## Critical Flows
 
+### Hook Resolution
+
+```text
+registry resolves a project's hook (_resolvedHookOf)
+  -> if the project pinned a hook via setHookFor, return that pin (pins always win)
+  -> else if the project's id is above the current threshold, return the current default hook
+  -> else walk the cohort history and return the default that was active when the project was created
+```
+
+The first-ever `setDefaultHook` records a history segment mapping the projects that already existed to that new default, so a pre-existing, non-pinned project resolves to it instead of resolving to nothing. Every later default change records the outgoing default for the window it covered, so a change never retroactively re-routes an earlier cohort. A per-project pin always takes precedence over any default.
+
 ### Buy Side
 
 ```text
@@ -59,6 +70,8 @@ cash out requested
   -> if pool wins, hook maxes the cash-out tax so the terminal does not reclaim surplus directly
   -> after-cash-out callback remints the chosen token amount to itself and sells it
   -> if the sell-side swap fails hard, reminted tokens are returned to the holder
+  -> on a successful-but-partial fill below the floor, explicit caller minima still revert but a derived floor
+       soft-lands: partial proceeds go to the beneficiary and the unsold reminted residue returns to the holder
   -> if protocol wins, the hook returns diagnostics but no active swap path
   -> direct or noop sell paths with explicit minima must still satisfy the conservative net direct bound
 ```

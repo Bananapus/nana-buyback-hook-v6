@@ -136,6 +136,87 @@ contract Test_BuybackHookRegistry_Unit is Test {
         registry.setDefaultHook(hookA);
     }
 
+    /// @notice The first default hook ever set should also apply to projects that already existed when it was set
+    /// (and that have not pinned a hook of their own). Without this, projects created before any default existed
+    /// would never resolve a buyback hook.
+    function test_setDefaultHook_firstDefaultAppliesToPreExistingProjects() public {
+        // Pretend 7 projects already exist when the first default is set.
+        vm.mockCall(address(projects), abi.encodeWithSignature("count()"), abi.encode(uint256(7)));
+
+        // Set the first-ever default hook.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // A pre-existing, non-pinned project (id <= 7) should resolve to the new default.
+        assertEq(
+            address(registry.hookOf(3)), address(hookA), "pre-existing project should resolve to the first default"
+        );
+        assertEq(
+            address(registry.hookOf(7)),
+            address(hookA),
+            "the last pre-existing project should resolve to the first default"
+        );
+
+        // A project created after the default (id > 7) should also resolve to it.
+        assertEq(address(registry.hookOf(8)), address(hookA), "post-default project should resolve to the default");
+    }
+
+    /// @notice A pre-existing project that pinned its own hook keeps its pin even after the first default is set —
+    /// the pin always takes precedence over the default.
+    function test_setDefaultHook_firstDefaultDoesNotOverridePinnedPreExistingProject() public {
+        uint256 pinnedProjectId = 4;
+
+        // Mock ownership for the pinned project so it can pin a hook.
+        vm.mockCall(
+            address(projects),
+            abi.encodeWithSelector(IERC721.ownerOf.selector, pinnedProjectId),
+            abi.encode(projectOwner)
+        );
+
+        // Pin hookB on the pre-existing project before any default is set.
+        vm.prank(owner);
+        registry.allowHook(hookB);
+        vm.prank(projectOwner);
+        registry.setHookFor(pinnedProjectId, hookB);
+
+        // Pretend 7 projects already exist when the first default is set.
+        vm.mockCall(address(projects), abi.encodeWithSignature("count()"), abi.encode(uint256(7)));
+
+        // Set the first-ever default hook to hookA.
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // The pinned project keeps its pin; the non-pinned sibling resolves to the new default.
+        assertEq(address(registry.hookOf(pinnedProjectId)), address(hookB), "pinned project should keep its pin");
+        assertEq(address(registry.hookOf(3)), address(hookA), "non-pinned sibling should resolve to the default");
+    }
+
+    /// @notice A later default change must NOT retroactively re-route projects from an earlier default's cohort. The
+    /// first default's cohort keeps the first default; only projects created after the change get the new default.
+    function test_setDefaultHook_laterChangeDoesNotRetroactivelyReroute() public {
+        // 7 projects exist when the first default (hookA) is set — its cohort is (0, 7].
+        vm.mockCall(address(projects), abi.encodeWithSignature("count()"), abi.encode(uint256(7)));
+        vm.prank(owner);
+        registry.setDefaultHook(hookA);
+
+        // 12 projects exist when the second default (hookB) is set — its cohort is (7, 12].
+        vm.mockCall(address(projects), abi.encodeWithSignature("count()"), abi.encode(uint256(12)));
+        vm.prank(owner);
+        registry.setDefaultHook(hookB);
+
+        // The first cohort keeps hookA (not retroactively re-routed to hookB).
+        assertEq(address(registry.hookOf(3)), address(hookA), "first-cohort project should keep the first default");
+        assertEq(address(registry.hookOf(7)), address(hookA), "first-cohort boundary should keep the first default");
+
+        // Projects created while hookA was still the active default (ids 8..12, before hookB was set at count 12)
+        // belong to hookA's cohort — they are NOT retroactively re-routed to hookB either.
+        assertEq(address(registry.hookOf(8)), address(hookA), "second-window project should keep hookA");
+        assertEq(address(registry.hookOf(12)), address(hookA), "second-window boundary should keep hookA");
+
+        // Only projects created after hookB became the default (ids > 12) resolve to hookB.
+        assertEq(address(registry.hookOf(13)), address(hookB), "post-change project should resolve to hookB");
+    }
+
     //*********************************************************************//
     // --- setHookFor ---------------------------------------------------- //
     //*********************************************************************//

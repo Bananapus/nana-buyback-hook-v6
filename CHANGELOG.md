@@ -12,6 +12,61 @@ This file describes the verified change from `nana-buyback-hook-v5` to the curre
 - `IJBBuybackHookRegistry`
 - `JBSwapLib`
 
+## 0.0.66 — Soft-land a derived sell-side floor; apply the first default hook to pre-existing projects
+
+This release bundles two fixes.
+
+### Soft-land a derived sell-side floor on a successful-but-partial fill
+
+Makes the sell-side cash-out path treat a non-caller-specified (oracle/quote-derived) floor consistently across both
+swap-outcome branches. Previously `JBBuybackHook.afterCashOutRecordedWith` was asymmetric: a *fully reverted* pool swap
+soft-landed a derived floor (returning the reminted project tokens to the holder so the cash-out still completed), but a
+*successful-but-partial* fill hard-reverted whenever `amountReceived < minimumSwapAmountOut`, regardless of whether the
+floor was an explicit caller minimum or one the hook derived during route selection. A price-limited swap that filled
+successfully but stopped short of a derived floor therefore reverted the entire cash-out even though the floor was only
+an internal preference.
+
+- The successful-but-underfilled revert now fires only when `shouldEnforceMinimumSwapAmountOut == true` (an explicit
+  caller minimum), matching the swap-failed branch. A derived floor (`shouldEnforceMinimumSwapAmountOut == false`)
+  soft-lands the partial fill: the partial proceeds are forwarded to the beneficiary and the unsold reminted residue is
+  returned to the holder (the residue transfer already existed on the success path). The same gating is applied to the
+  ERC-20 fee-on-transfer delivery check so a derived floor cannot re-trigger the hard revert there either.
+- An explicit caller-specified minimum still hard-reverts on an underfill — the user-specified-minimum protection is
+  unchanged. No funds are stranded on the hook; the terminal has already burned the holder's project tokens before the
+  hook runs.
+- No interface, ABI, metadata-layout, or storage changes.
+- Tests: added `test/regression/SellSidePartialFillDerivedFloor.t.sol` (derived-floor partial fill soft-lands;
+  explicit-minimum partial fill still reverts; floor-met fill settles to the beneficiary). Updated
+  `test/V4BuybackHook.t.sol`: the prior `test_afterCashOutRecordedWith_revertsWhenDerivedFloorUnderfills` (which encoded
+  the old hard-revert-on-derived-floor behavior) is now `test_afterCashOutRecordedWith_softLandsWhenDerivedFloorUnderfills`,
+  plus a new `test_afterCashOutRecordedWith_revertsWhenExplicitMinimumUnderfills` proving the explicit-minimum path still
+  reverts. Updated `INVARIANTS.md` (A.2.4), `RISKS.md` (§9.6), and `ARCHITECTURE.md` (sell-side flow) to describe the
+  derived-vs-explicit soft/hard floor behavior.
+
+### Apply the first default hook to projects that already existed
+
+The first-ever `setDefaultHook` call now also applies to projects that were created before any default hook existed (as
+long as they have not pinned a hook of their own). Previously, `setDefaultHook` only recorded a history segment when it
+was *replacing* an existing default; the first-ever call recorded nothing, so every project whose ID was already issued
+at that moment resolved to `address(0)` in `_resolvedHookOf` / `hookOf` and never picked up the default buyback hook
+unless it was individually pinned via `setHookFor`. Projects created before the first default hook was set therefore got
+no buyback hook at all.
+
+- `JBBuybackHookRegistry.setDefaultHook` now always pushes exactly one `_defaultHookHistory` segment covering the
+  cohort `(defaultHookProjectIdThreshold, PROJECTS.count()]`. On the first-ever call (no prior default) the segment is
+  mapped to the NEW hook, so the already-existing, non-pinned cohort resolves to it. On every later call the segment is
+  mapped to the OUTGOING default — preserving today's behavior, where a default *change* does not retroactively re-route
+  an earlier cohort. A per-project pin (`setHookFor`) still always takes precedence over any default.
+- No interface, ABI, metadata-layout, or storage-layout changes — only the value written into the existing
+  `_defaultHookHistory` array on the first call, plus NatSpec.
+- Tests: added `test_setDefaultHook_firstDefaultAppliesToPreExistingProjects`,
+  `test_setDefaultHook_firstDefaultDoesNotOverridePinnedPreExistingProject`, and
+  `test_setDefaultHook_laterChangeDoesNotRetroactivelyReroute` to `test/Registry.t.sol`. Updated `INVARIANTS.md` (D.2,
+  `setDefaultHook`), `RISKS.md` (§9.7 and the trust-assumptions note), `ARCHITECTURE.md` (new "Hook Resolution" flow),
+  and `ADMINISTRATION.md`.
+
+- `package.json`: version 0.0.65 -> 0.0.66.
+
 ## 0.0.64 — Pre-compute metadata IDs as constructor immutables
 
 Hoists the `getId` purpose-string hashing out of the per-call hot path into deployment-time immutables, mirroring the
