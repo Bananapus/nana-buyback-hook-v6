@@ -1776,9 +1776,7 @@ contract V4BuybackHookTest is Test {
         hook.afterCashOutRecordedWith(context);
 
         assertTrue(mockPm.swapCalled(), "sell-side swap should hit the pool manager");
-        assertEq(
-            beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive the partial swap proceeds"
-        );
+        assertEq(beneficiary.balance - balanceBefore, amountOut, "beneficiary should receive the partial swap proceeds");
     }
 
     /// @notice An EXPLICIT caller-specified minimum (`shouldEnforceMinimumSwapAmountOut` is `true`) must still

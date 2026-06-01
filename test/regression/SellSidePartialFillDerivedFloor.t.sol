@@ -107,7 +107,8 @@ contract SSPF_Hook is JBBuybackHook {
 }
 
 /// @notice A sell-side cash-out that fills successfully but only partially — stopping short of a non-zero floor that
-/// the hook itself derived (no caller minimum) — should soft-land instead of reverting the whole cash-out: the partial
+/// the hook itself derived (no caller minimum) — should soft-land instead of reverting the whole cash-out: the
+/// partial
 /// proceeds go to the beneficiary and the unsold reminted residue is returned to the holder. This mirrors the
 /// already-existing soft-land that the pool-revert branch performs for a derived floor. When the caller explicitly
 /// specified the minimum, an underfill must still hard-revert.
@@ -221,7 +222,10 @@ contract SellSidePartialFillDerivedFloor is Test {
         );
     }
 
-    function _buildCashOutContext(uint256 cashOutCount, bytes memory hookMetadata)
+    function _buildCashOutContext(
+        uint256 cashOutCount,
+        bytes memory hookMetadata
+    )
         internal
         view
         returns (JBAfterCashOutRecordedContext memory)
