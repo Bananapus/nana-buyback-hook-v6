@@ -59,6 +59,8 @@ cash out requested
   -> if pool wins, hook maxes the cash-out tax so the terminal does not reclaim surplus directly
   -> after-cash-out callback remints the chosen token amount to itself and sells it
   -> if the sell-side swap fails hard, reminted tokens are returned to the holder
+  -> on a successful-but-partial fill below the floor, explicit caller minima still revert but a derived floor
+       soft-lands: partial proceeds go to the beneficiary and the unsold reminted residue returns to the holder
   -> if protocol wins, the hook returns diagnostics but no active swap path
   -> direct or noop sell paths with explicit minima must still satisfy the conservative net direct bound
 ```

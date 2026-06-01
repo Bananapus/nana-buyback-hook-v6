@@ -298,9 +298,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             return;
         }
 
-        // A derived floor can still fall back to project tokens if the pool reverts, but a successful pool fill must
-        // honor the non-zero floor that made this route preferable to the direct cash-out path.
-        if (minimumSwapAmountOut != 0 && amountReceived < minimumSwapAmountOut) {
+        // Only a caller-specified minimum hard-reverts on an underfill. A derived floor (the oracle/quote-derived
+        // value that made this route preferable to the direct cash-out path) soft-lands a successful-but-partial fill
+        // the same way the swap-failed branch above soft-lands by returning project tokens: the partial proceeds are
+        // forwarded to the beneficiary and the unsold reminted residue is returned to the holder below.
+        if (shouldEnforceMinimumSwapAmountOut && minimumSwapAmountOut != 0 && amountReceived < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded({amount: amountReceived, minimum: minimumSwapAmountOut});
         }
 
@@ -320,7 +322,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 balBefore = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary);
             IERC20(context.reclaimedAmount.token).safeTransfer({to: context.beneficiary, value: amountReceived});
             uint256 delivered = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary) - balBefore;
-            if (minimumSwapAmountOut != 0 && delivered < minimumSwapAmountOut) {
+            // As with the underfill check above, only a caller-specified minimum hard-reverts when a fee-on-transfer
+            // token delivers less than the floor. A derived floor soft-lands the partial delivery instead.
+            if (shouldEnforceMinimumSwapAmountOut && minimumSwapAmountOut != 0 && delivered < minimumSwapAmountOut) {
                 revert JBBuybackHook_SpecifiedSlippageExceeded({amount: delivered, minimum: minimumSwapAmountOut});
             }
         }

@@ -121,10 +121,12 @@ When a swap fails and leftover terminal tokens return through `addToBalanceOf`, 
 When `afterCashOutRecordedWith()` attempts to sell reminted project tokens through the pool and the swap reverts (e.g., zero liquidity, pool unavailable), the hook transfers the reminted project tokens back to the **holder** (not the beneficiary) instead of reverting the entire cash-out. The holder retains their project tokens and can sell them manually or retry. A `SellSwapReverted` event is emitted for offchain monitoring.
 
 If the pool only partially fills before hitting the hook's price limit, the swap proceeds are still sent to the
-beneficiary, but the unsold reminted project tokens are returned to the holder. This keeps a derived sell-side route
-from destroying the part of the holder's position that the AMM did not actually buy. Any nonzero successful-swap floor,
-whether caller-supplied or derived during route selection, still reverts if the delivered terminal-token amount is below
-that floor. Only full pool reverts keep the derived-floor fallback behavior that returns project tokens to the holder.
+beneficiary, but the unsold reminted project tokens are returned to the holder. This keeps a sell-side route from
+destroying the part of the holder's position that the AMM did not actually buy. The underfill check is symmetric with
+the full-revert fallback above: only a caller-specified minimum hard-reverts when the delivered terminal-token amount
+falls below the floor. A floor derived during route selection (no explicit caller minimum) soft-lands the partial
+fill — the partial proceeds reach the beneficiary and the unsold residue returns to the holder — exactly as the
+full-revert branch returns project tokens to the holder rather than blocking the cash-out.
 
 ### 9.7 Unpinned projects fall back to the mutable default hook
 
