@@ -37,6 +37,17 @@ The TWAP oracle surface comes from `univ4-router-v6`, while settlement truth rem
 
 ## Critical Flows
 
+### Hook Resolution
+
+```text
+registry resolves a project's hook (_resolvedHookOf)
+  -> if the project pinned a hook via setHookFor, return that pin (pins always win)
+  -> else if the project's id is above the current threshold, return the current default hook
+  -> else walk the cohort history and return the default that was active when the project was created
+```
+
+The first-ever `setDefaultHook` records a history segment mapping the projects that already existed to that new default, so a pre-existing, non-pinned project resolves to it instead of resolving to nothing. Every later default change records the outgoing default for the window it covered, so a change never retroactively re-routes an earlier cohort. A per-project pin always takes precedence over any default.
+
 ### Buy Side
 
 ```text

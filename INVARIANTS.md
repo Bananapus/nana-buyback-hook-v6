@@ -112,7 +112,7 @@ Operator surface is granted via `JBPermissions` per project ID. The matrix below
 ### Owner-only (Ownable)
 - **`allowHook(IJBRulesetDataHook hook)`** — adds to allowlist. Allowing `address(0)` is intentional: it lets operators clear a project's pinned hook back to default resolution.
 - **`disallowHook(IJBRulesetDataHook hook)`** — removes from allowlist. **Reverts `CannotDisallowDefaultHook` if `hook == defaultHook`** — disallowing the current default would brick payments for every project relying on the default.
-- **`setDefaultHook(IJBRulesetDataHook hook)`** — sets the protocol-wide default. Reverts `ZeroHook` on `address(0)`. Snapshots the outgoing default into `_defaultHookHistory` with `maxProjectId = PROJECTS.count()` so the existing cohort keeps resolving to its creation-time default. Sets `defaultHookProjectIdThreshold = PROJECTS.count()` so the new default only applies to projects created strictly after this call. Also allowlists the new default.
+- **`setDefaultHook(IJBRulesetDataHook hook)`** — sets the protocol-wide default. Reverts `ZeroHook` on `address(0)`. Pushes one `_defaultHookHistory` segment with `maxProjectId = PROJECTS.count()`: on the first-ever call (no prior default) the segment maps the already-existing cohort `(0, count]` to the NEW hook, so pre-existing non-pinned projects resolve to it; on every later call the segment maps the just-closed window to the OUTGOING default, so the existing cohort keeps resolving to its creation-time default. Sets `defaultHookProjectIdThreshold = PROJECTS.count()`, so a default CHANGE only applies to projects created strictly after this call. Also allowlists the new default.
 
 ### Permissioned (project-scoped)
 - **`setHookFor(projectId, hook)`** — `SET_BUYBACK_HOOK`. See B.2.
@@ -136,7 +136,7 @@ Operator surface is granted via `JBPermissions` per project ID. The matrix below
 # Section D — Cross-Cutting Invariants
 
 - **D.1 Mint authority is registry-resolved only.** `JBBuybackHook.hasMintPermissionFor` returns `false` unconditionally. The only path by which a `JBBuybackHook` instance gains mint permission is through `JBBuybackHookRegistry.hasMintPermissionFor`, which returns `true` iff the queried address equals `_resolvedHookOf(projectId)` (project pin, cohort default, or `address(0)`). The controller routes mint-permission checks to the project's data hook (the registry), so a hook implementation that is not the resolved hook cannot mint, even if allowlisted.
-- **D.2 Cohort-stable defaults.** `_defaultHookHistory` snapshots every outgoing default with the project-ID window it applied to. A project whose ID falls within a historical segment continues to resolve to that segment's hook forever, unless it explicitly pins via `setHookFor`. This means a registry-owner default change can never silently re-route the existing cohort. NatSpec at `src/JBBuybackHookRegistry.sol:78–85` and the resolver at lines 520–542 implement this.
+- **D.2 Cohort-stable defaults.** `_defaultHookHistory` records, for each cohort of projects, the default hook that applied to it. The first-ever `setDefaultHook` maps the cohort of projects that already existed to the new default, so a pre-existing non-pinned project resolves to it (rather than to `address(0)`). Every subsequent change snapshots the outgoing default for the window it covered. A project whose ID falls within a historical segment continues to resolve to that segment's hook forever, unless it explicitly pins via `setHookFor`. This means a registry-owner default CHANGE can never silently re-route an earlier cohort. The resolver `_resolvedHookOf` implements this.
 - **D.3 Lock makes project sovereign.** Once `lockHookFor` runs, `_hookOf[projectId]` is populated and `hasLockedHook[projectId] = true`. Subsequent `setHookFor` calls revert `HookLocked`; default-hook changes are bypassed because `_resolvedHookOf` returns the pinned `_hookOf[projectId]` first.
 - **D.4 Cold/uninitialized pools degrade to mint.** A `(projectId, terminalToken)` pair with `_poolIsSet == false` causes `beforeCashOutRecordedWith` to return the protocol cash-out values unchanged (subject to A.2.2) and causes `beforePayRecordedWith` to fall through to the no-pool branch (subject to the A.1.1 mint floor + explicit-minimum revert at `src/JBBuybackHook.sol:1047–1054`). A pool with no liquidity or no TWAP history makes `_getQuote` return zero (A.4.1), so the hook again degrades to mint.
 - **D.5 Pool currencies match project + terminal.** A.3.3 plus A.3.5 mean every configured pool is initialized, in the right pair, with the right project's token.
@@ -155,7 +155,7 @@ The registry is `Ownable`. The owner can:
 
 1. **Allowlist hooks** via `allowHook`. New hooks must be reviewed before allowlisting; an allowlisted-but-malicious hook can be selected by any project owner via `setHookFor`.
 2. **Disallow hooks** via `disallowHook`, **except** the current default (which is structurally protected to prevent default-using projects from breaking, see Section C.2).
-3. **Rotate the default hook** via `setDefaultHook`. **The rotation only affects projects created strictly after the call** (`projectId > defaultHookProjectIdThreshold`); the existing cohort is snapshotted into `_defaultHookHistory` and continues to resolve to its creation-time default (D.2).
+3. **Set / rotate the default hook** via `setDefaultHook`. The **first-ever** default applies to every project that already exists (so pre-existing, non-pinned projects resolve to it). Each later **change** only affects projects created strictly after the call (`projectId > defaultHookProjectIdThreshold`); the earlier cohort is recorded in `_defaultHookHistory` and continues to resolve to its creation-time default (D.2).
 
 The owner **cannot**:
 
@@ -210,7 +210,7 @@ In the production V6 deploy, the registry owner is `_CRITICAL_INFRA_OWNER` (the 
 | C.2 cannot-disallow-default | `src/JBBuybackHookRegistry.sol:128–131` |
 | C.2 setHookFor, lockHookFor | `src/JBBuybackHookRegistry.sol:190–214`, `260–275` |
 | D.1 registry-resolved mint permission | `src/JBBuybackHookRegistry.sol:462–477` |
-| D.2 cohort-stable default snapshots | `src/JBBuybackHookRegistry.sol:78–85`, `223–253`, `520–542` |
+| D.2 cohort-stable default snapshots | `src/JBBuybackHookRegistry.sol` — `setDefaultHook`, `_defaultHookHistory`, `_resolvedHookOf` |
 | D.3 lock → default-change immune | `src/JBBuybackHookRegistry.sol:520–542` |
 | D.6 reentrancy gate on unlockCallback | `src/JBBuybackHook.sol:654–656` |
 | E.1 registry Ownable | `src/JBBuybackHookRegistry.sol:30–106` |

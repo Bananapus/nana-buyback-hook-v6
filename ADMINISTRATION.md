@@ -48,7 +48,7 @@
 ## Operational Notes
 
 - keep the registry allowlist narrow
-- changing the default hook only affects projects created after the change (those with `projectId > defaultHookProjectIdThreshold`); existing projects must explicitly opt in via `setHookFor`
+- the first-ever default hook applies to every project that already exists (so pre-existing, non-pinned projects resolve to it); after that, *changing* the default only affects projects created after the change (those with `projectId > defaultHookProjectIdThreshold`), and earlier cohorts keep their creation-time default — pin per project via `setHookFor` to fix it
 - lock project hooks only after validating pool setup and expected runtime behavior
 - treat TWAP window changes as oracle-quality changes, not cosmetic tuning
 - remember that failed swaps can degrade into mint fallback behavior

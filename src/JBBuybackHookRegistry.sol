@@ -25,8 +25,10 @@ import {DefaultHookSegment} from "./structs/DefaultHookSegment.sol";
 /// inherit the protocol default. Hooks can be locked to prevent changes. Acts as the data hook for the terminal —
 /// it resolves the correct buyback hook for each project and forwards `beforePayRecordedWith` /
 /// `beforeCashOutRecordedWith` calls to it.
-/// @dev The default hook only applies to projects created AFTER the default was set (threshold-gated), preventing the
-/// registry owner from unilaterally granting mint permission to existing projects.
+/// @dev The first-ever default hook applies to every project that exists when it is set (so pre-existing, non-pinned
+/// projects resolve to it). After that, a default CHANGE only applies to projects created after the change — earlier
+/// cohorts keep the default that was active when they were created, preventing the registry owner from unilaterally
+/// re-routing the mint permission of projects that pre-date the change.
 contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPermissioned, Ownable {
     //*********************************************************************//
     // --------------------------- custom errors ------------------------- //
@@ -69,10 +71,11 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @notice The default buyback hook used when a project hasn't set a project-specific one.
     IJBRulesetDataHook public override defaultHook;
 
-    /// @notice The project ID threshold below which the default hook does not apply.
-    /// @dev When the default hook changes, this is set to the current project count. Only projects with IDs above this
-    /// threshold get the new default. This prevents the registry owner from unilaterally changing the hook (and its
-    /// mint permission) for existing projects.
+    /// @notice The project ID threshold at or below which the CURRENT default hook does not apply directly.
+    /// @dev Set to the project count whenever the default is set or changed. Only projects with IDs above this
+    /// threshold resolve to the current default; projects at or below it resolve via `_defaultHookHistory` to the
+    /// default that was active when they were created. This prevents the registry owner from unilaterally re-routing
+    /// the hook (and its mint permission) of projects that pre-date a default change.
     uint256 public override defaultHookProjectIdThreshold;
 
     /// @notice Whether the hook for the given project is locked.
@@ -91,13 +94,14 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     /// @custom:param projectId The ID of the project to get the hook for.
     mapping(uint256 projectId => IJBRulesetDataHook) internal _hookOf;
 
-    /// @notice Snapshots of every previously-active default hook, keyed by the project-count window each one applied
-    /// to. @dev Each time `setDefaultHook` overwrites an existing default, the outgoing default is pushed here with
-    /// `maxProjectId` set to the project count at that moment. A project whose ID is `<= defaultHookProjectIdThreshold`
-    /// (i.e. one that was already issued the last time the default changed) walks this list to find the segment whose
-    /// `maxProjectId` covers it. The first call ever — when `defaultHook == 0` — skips the push so the resolver
-    /// continues to return `address(0)` for project IDs that pre-dated any default, preserving the documented "the
-    /// default only applies to projects created AFTER it was set" guarantee at registry cold-start.
+    /// @notice Snapshots of the default hook that applied to each past cohort of projects, keyed by the project-count
+    /// window each one covered. @dev Each `setDefaultHook` call pushes one segment whose `maxProjectId` is the project
+    /// count at that moment. On the first-ever call the segment covers the already-existing projects and maps them to
+    /// the new default, so projects that existed before the first default still resolve to it. On every later call the
+    /// segment maps the just-closed window to the OUTGOING default, so a project whose ID is
+    /// `<= defaultHookProjectIdThreshold` (i.e. one already issued the last time the default changed) walks this list
+    /// to find the default that was active when it was created — a default change never retroactively re-routes an
+    /// earlier cohort.
     DefaultHookSegment[] internal _defaultHookHistory;
 
     //*********************************************************************//
@@ -234,32 +238,32 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         emit JBBuybackHookRegistry_LockHook({projectId: projectId, caller: _msgSender()});
     }
 
-    /// @notice Sets the protocol-wide default buyback hook. Only affects projects created AFTER this call — existing
-    /// projects keep their previously-active default (or their explicitly-set hook) unless they explicitly call
-    /// `setHookFor`.
-    /// @dev Only the owner can set the default hook. Snapshots the outgoing default into `_defaultHookHistory` so the
-    /// cohort that was created while the previous default was active continues to resolve to that default rather than
-    /// being orphaned to `address(0)`.
+    /// @notice Sets the protocol-wide default buyback hook. The first-ever default also applies to projects that
+    /// already existed when it was set (so pre-existing, non-pinned projects resolve to it). A later default change
+    /// only affects projects created AFTER it — earlier cohorts keep their previously-active default, and any project
+    /// that pinned its own hook via `setHookFor` keeps that pin.
+    /// @dev Only the owner can set the default hook. Pushes one `_defaultHookHistory` segment per call: the first call
+    /// maps the already-existing cohort to the new hook; later calls map the just-closed window to the outgoing
+    /// default so a default change never retroactively re-routes an earlier cohort to `address(0)` or a newer hook.
     /// @param hook The hook to set as the default.
     function setDefaultHook(IJBRulesetDataHook hook) external onlyOwner {
         // Prevent setting address(0) as the default hook — it would mark address(0) as allowed,
         // causing payments to revert when projects without a specific hook try to use the default.
         if (address(hook) == address(0)) revert JBBuybackHookRegistry_ZeroHook(hook);
 
-        // Snapshot the OUTGOING default so projects whose IDs were issued while it was active keep resolving to it.
-        // The segment encodes the half-open range `(prevThreshold, currentCount]` — i.e. the cohort that was assigned
-        // the outgoing default at creation time. The first call ever has `defaultHook == 0` and nothing to snapshot;
-        // in that case projects whose IDs already exist remain unaffected by the new default, matching the documented
-        // "default only applies to projects created AFTER it was set" property.
-        if (address(defaultHook) != address(0)) {
-            _defaultHookHistory.push(
-                DefaultHookSegment({
-                    minProjectIdExclusive: defaultHookProjectIdThreshold,
-                    maxProjectId: PROJECTS.count(),
-                    hook: defaultHook
-                })
-            );
-        }
+        // Record a history segment covering the cohort `(prevThreshold, currentCount]` — the projects whose IDs were
+        // issued while the current threshold was in effect. On the FIRST-EVER call (`defaultHook == 0`) this cohort is
+        // the set of already-existing projects `(0, currentCount]`; map it to the NEW hook so those pre-existing,
+        // non-pinned projects resolve to it instead of `address(0)`. On every later call there IS an outgoing default,
+        // so the segment is mapped to that outgoing hook: this keeps the earlier cohort on its original default and
+        // prevents a default change from retroactively re-routing projects that pre-dated it.
+        _defaultHookHistory.push(
+            DefaultHookSegment({
+                minProjectIdExclusive: defaultHookProjectIdThreshold,
+                maxProjectId: PROJECTS.count(),
+                hook: address(defaultHook) == address(0) ? hook : defaultHook
+            })
+        );
 
         // Set the default hook.
         defaultHook = hook;

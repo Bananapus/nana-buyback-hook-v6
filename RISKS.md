@@ -22,7 +22,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **The oracle hook is trusted.** TWAP integrity depends on the `hooks` field in the pool key and the configured `ORACLE_HOOK`.
 - **Oracle failure degrades safely.** When `observe()` reverts, oracle-dependent flows return a zero quote and can fall back toward the protocol path.
 - **JB core contracts behave correctly.** The hook trusts `DIRECTORY`, `controller`, and token operations in core.
-- **Registry owner centralization is scoped.** Changing the default hook only affects projects created after the change (`projectId > defaultHookProjectIdThreshold`). Existing projects must explicitly opt in via `setHookFor`.
+- **Registry owner centralization is scoped.** The first-ever default hook applies to every project that already exists when it is set (so pre-existing, non-pinned projects resolve to it). After that, *changing* the default only affects projects created after the change (`projectId > defaultHookProjectIdThreshold`); earlier cohorts keep their creation-time default and a project can pin its own hook via `setHookFor`.
 
 ## 2. Economic Risks
 
@@ -130,7 +130,7 @@ full-revert branch returns project tokens to the holder rather than blocking the
 
 ### 9.7 Unpinned projects fall back to the mutable default hook
 
-Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookFor()` fall back to the mutable `defaultHook`, but only if created after the default was set (`projectId > defaultHookProjectIdThreshold`). Changing the default hook does not retroactively affect existing projects. Always call `setHookFor(projectId, hook)` to pin your project's hook.
+Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookFor()` resolve to the mutable `defaultHook`. The first-ever default applies to every project that exists when it is set (including projects created before any default existed); afterward, a *new* default only applies to projects created after the change (`projectId > defaultHookProjectIdThreshold`), and earlier cohorts keep their creation-time default. A later default change never retroactively re-routes an earlier project. Always call `setHookFor(projectId, hook)` to pin your project's hook if you want it fixed.
 
 ### 9.8 Sell-Side AMM Proceeds Are Not Fee-Metered
 
