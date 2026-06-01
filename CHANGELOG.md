@@ -12,6 +12,11 @@ This file describes the verified change from `nana-buyback-hook-v5` to the curre
 - `IJBBuybackHookRegistry`
 - `JBSwapLib`
 
+## 0.0.67 — Raise dependency floors; document conventions in the style guide
+
+- Raise dependency floors to the latest published versions.
+- Document the NatSpec, comment, and lint conventions in `STYLE_GUIDE.md`.
+
 ## 0.0.66 — Soft-land a derived sell-side floor; apply the first default hook to pre-existing projects
 
 This release bundles two fixes.
