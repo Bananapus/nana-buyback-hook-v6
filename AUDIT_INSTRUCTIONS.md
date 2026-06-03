@@ -2,7 +2,7 @@
 
 This repo routes Juicebox payments or cash outs toward a Uniswap V4 market when the market is better than native protocol pricing. Audit it as an economic-routing primitive with fallback behavior.
 
-## Audit Objective
+## Audit objective
 
 There is a billion dollars of well-meaning projects' money in the Juicebox Money Engine, growing exponentially. Your job is to hack it before anyone else. Whoever hacks it first saves/steals the money, and you are obsessed with being this winner, while also being a steward of the protocol and wanting it to keep growing safely.
 
@@ -30,13 +30,13 @@ Key dependencies:
 - `nana-core-v6`
 - `univ4-router-v6`
 
-## Start Here
+## Start here
 
 1. `src/JBBuybackHook.sol`
 2. `src/JBBuybackHookRegistry.sol`
 3. `src/libraries/JBSwapLib.sol`
 
-## Security Model
+## Security model
 
 The buyback hook is used during Juicebox payment and cash-out flows. It:
 
@@ -47,7 +47,7 @@ The buyback hook is used during Juicebox payment and cash-out flows. It:
 
 The registry governs which hook configuration a project uses.
 
-## Roles And Privileges
+## Roles and privileges
 
 | Role | Powers | How constrained |
 |------|--------|-----------------|
@@ -55,14 +55,14 @@ The registry governs which hook configuration a project uses.
 | Registry controller | Set defaults or project overrides | Must not widen trust to arbitrary hooks or pools |
 | Router or oracle hook | Supply estimates and execution path | Must not make fallback logic unsafe |
 
-## Integration Assumptions
+## Integration assumptions
 
 | Dependency | Assumption | What breaks if wrong |
 |------------|------------|----------------------|
 | `nana-core-v6` | Native previews reflect executable economics | Best-path selection breaks |
 | `univ4-router-v6` | Oracle and route estimates are directionally sound | Users can be forced onto the worse path |
 
-## Critical Invariants
+## Critical invariants
 
 1. Best-path routing must not create value.  
    Choosing swap versus native protocol should only change where value is sourced, not increase user output beyond what either real path can support.
@@ -73,7 +73,7 @@ The registry governs which hook configuration a project uses.
 4. Registry trust is narrow.  
    Projects must not accidentally inherit an unsafe default hook or a hook whose expected external oracle or router is not actually set.
 
-## Attack Surfaces
+## Attack surfaces
 
 - `beforePayRecordedWith` and `beforeCashOutRecordedWith`
 - quote computation and swap settlement deltas
@@ -82,7 +82,7 @@ The registry governs which hook configuration a project uses.
 - sell-side execution after `MAX_CASH_OUT_TAX_RATE` routing, especially hard-failure behavior
 - any path that assumes a valid oracle hook or initialized pool exists
 
-## Accepted Risks Or Behaviors
+## Accepted risks or behaviors
 
 - Falling back to native protocol behavior is preferable to trapping funds when an external market path fails.
 

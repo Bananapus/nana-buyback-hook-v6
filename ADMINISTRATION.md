@@ -1,6 +1,6 @@
 # Administration
 
-## At A Glance
+## At a glance
 
 | Item | Details |
 | --- | --- |
@@ -13,7 +13,7 @@
 
 `nana-buyback-hook-v6` splits administration between a global registry and project-local pool configuration. The registry owner controls which hook implementations are available and which one is the default. Project owners or delegates control which hook they use, whether they lock it, and how their pool and TWAP settings are configured.
 
-## Control Model
+## Control model
 
 - `JBBuybackHookRegistry` is globally `Ownable`
 - projects opt into an allowlisted hook through the registry
@@ -28,7 +28,7 @@
 | Project owner | `JBProjects.ownerOf(projectId)` | Per project | May delegate through `JBPermissions` |
 | Hook delegate | `JBPermissions` grant | Per project | Usually `SET_BUYBACK_HOOK`, `SET_BUYBACK_POOL`, or `SET_BUYBACK_TWAP` |
 
-## Privileged Surfaces
+## Privileged surfaces
 
 | Contract | Function | Who Can Call | Effect |
 | --- | --- | --- | --- |
@@ -38,14 +38,14 @@
 | `JBBuybackHook` | `setPoolFor(...)`, `initializePoolFor(...)` | Project owner or `SET_BUYBACK_POOL` delegate | One-time pool setup per project and terminal token |
 | `JBBuybackHook` | `setTwapWindowOf(...)` | Project owner or `SET_BUYBACK_TWAP` delegate | Adjusts TWAP window after pool setup |
 
-## Immutable And One-Way
+## Immutable and one-way
 
 - `lockHookFor(...)` is irreversible
 - pool setup for a project and terminal token is a one-time commitment
 - registry disallowing a hook does not evict projects already using or locking it
 - constructor dependencies such as directory, projects, tokens, prices, pool manager, and oracle hook are immutable
 
-## Operational Notes
+## Operational notes
 
 - keep the registry allowlist narrow
 - the first-ever default hook applies to every project that already exists (so pre-existing, non-pinned projects resolve to it); after that, *changing* the default only affects projects created after the change (those with `projectId > defaultHookProjectIdThreshold`), and earlier cohorts keep their creation-time default — pin per project via `setHookFor` to fix it
@@ -53,7 +53,7 @@
 - treat TWAP window changes as oracle-quality changes, not cosmetic tuning
 - remember that failed swaps can degrade into mint fallback behavior
 
-## Machine Notes
+## Machine notes
 
 - do not assume registry ownership implies project override power; locked projects remain locked
 - treat `src/JBBuybackHookRegistry.sol` and `src/JBBuybackHook.sol` as separate control surfaces with different actors
@@ -67,14 +67,14 @@
 - bad pool configuration usually means a new hook path or broader project migration rather than in-place repair
 - a broken swap path may still leave the project operational through mint fallback, but that is not the same as a healthy buyback configuration
 
-## Admin Boundaries
+## Admin boundaries
 
 - the registry owner cannot force a new hook onto a locked project
 - project operators cannot set a hook that is not allowlisted
 - project operators cannot rewrite a pool key once the pool is set
 - nobody can hot-edit the runtime route-selection logic of an already deployed hook
 
-## Source Map
+## Source map
 
 - `src/JBBuybackHook.sol`
 - `src/JBBuybackHookRegistry.sol`

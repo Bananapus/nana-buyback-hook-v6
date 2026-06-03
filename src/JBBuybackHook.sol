@@ -70,18 +70,43 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
+    /// @notice Thrown when setting the chain-specific constants after they have already been configured.
     error JBBuybackHook_AlreadyConfigured();
+
+    /// @notice Thrown when the unlock callback is called by an address other than the Uniswap V4 PoolManager.
     error JBBuybackHook_CallerNotPoolManager(address caller);
+
+    /// @notice Thrown when the hook is triggered by an address that is not one of the project's payment terminals.
     error JBBuybackHook_CallerNotTerminal(address caller);
+
+    /// @notice Thrown when the amount to swap with exceeds the total amount paid in.
     error JBBuybackHook_InsufficientPayAmount(uint256 swapAmount, uint256 totalPaid);
+
+    /// @notice Thrown when the specified TWAP window is outside the allowed minimum and maximum bounds.
     error JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max);
+
+    /// @notice Thrown when attempting to set a pool for a project/terminal token pair that already has one.
     error JBBuybackHook_PoolAlreadySet(PoolId poolId);
+
+    /// @notice Thrown when the pool is initialized at a price other than the one the caller expected.
     error JBBuybackHook_PoolInitializedAtWrongPrice(uint160 actualSqrtPriceX96, uint160 expectedSqrtPriceX96);
+
+    /// @notice Thrown when the pool has not been initialized in the Uniswap V4 PoolManager.
     error JBBuybackHook_PoolNotInitialized(PoolId poolId);
+
+    /// @notice Thrown when no pool has been configured for the given project and terminal token pair.
     error JBBuybackHook_PoolNotSet(uint256 projectId, address terminalToken);
+
+    /// @notice Thrown when the swap output is less than the specified minimum amount out.
     error JBBuybackHook_SpecifiedSlippageExceeded(uint256 amount, uint256 minimum);
+
+    /// @notice Thrown when the terminal token is the same as the project token.
     error JBBuybackHook_TerminalTokenIsProjectToken(address terminalToken, address projectToken);
+
+    /// @notice Thrown when the caller is not authorized to perform the action.
     error JBBuybackHook_Unauthorized(address caller);
+
+    /// @notice Thrown when the project has not issued a token.
     error JBBuybackHook_ZeroProjectToken(uint256 projectId);
 
     //*********************************************************************//
@@ -169,6 +194,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     //*********************************************************************//
 
     /// @notice Tracks whether a pool has been set for a project/terminal token pair.
+    /// @custom:param projectId The ID of the project the pool belongs to.
+    /// @custom:param terminalToken The terminal token paired with the project's token in the pool.
     mapping(uint256 projectId => mapping(address terminalToken => bool)) private _poolIsSet;
 
     //*********************************************************************//
@@ -421,7 +448,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 balanceBeforeAdd = _terminalTokenBalance(context.forwardedAmount.token);
 
             // Add the paid amount back to the project's balance in the terminal.
-            // Note: `leftoverAmountInThisContract` is already a measured balance delta (line 314), so it
+            // Note: `leftoverAmountInThisContract` is already a measured balance delta, so it
             // reflects the real tokens held. The terminal's `_acceptFundsFor` independently measures
             // its own balance delta, so fee-on-transfer tokens are correctly accounted for on both sides.
             IJBMultiTerminal(msg.sender).addToBalanceOf{value: payValue}({
@@ -756,11 +783,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
-    /// @notice Compares the expected output from selling project tokens in the pool against the bonding-curve reclaim
-    /// amount. If the pool offers more (net of fees), routes the cash-out through the pool via
-    /// `afterCashOutRecordedWith`.
-    /// @notice Data-hook callback consulted by the terminal during `cashOutTokensOf()`. Decides whether
-    /// to settle the user's cash-out through the bonding curve or through the Uniswap V4 pool.
+    /// @notice Data-hook callback consulted by the terminal during `cashOutTokensOf()`. Compares the expected output
+    /// from selling project tokens in the pool against the bonding-curve reclaim amount, and if the pool offers more
+    /// (net of fees) routes the cash-out through the pool via `afterCashOutRecordedWith`.
     /// @dev Returns the protocol cash-out values unchanged unless selling the burned project tokens into the
     /// configured pool is expected to return more of the terminal token than the direct reclaim path.
     /// @dev If the sell path wins, the hook returns an active cash-out hook specification (`noop = false`) and
@@ -934,10 +959,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         return (JBConstants.MAX_CASH_OUT_TAX_RATE, context.cashOutCount, context.totalSupply, 0, hookSpecifications);
     }
 
-    /// @notice Compares the pool swap rate against the project's mint rate and chooses the better one. If the pool
-    /// wins, returns weight=0 so all tokens come from the swap executed in `afterPayRecordedWith`.
-    /// @notice Data-hook callback consulted by the terminal during `pay()`. Decides whether to route
-    /// the user's payment through bonding-curve mint or through the configured Uniswap V4 pool.
+    /// @notice Data-hook callback consulted by the terminal during `pay()`. Compares the pool swap rate against the
+    /// project's mint rate and chooses the better one. If the pool wins, returns weight=0 so all tokens come from the
+    /// swap executed in `afterPayRecordedWith`.
     ///
     /// @dev This function auto-applies the "ceiling arbitrage" path described in ARBITRAGE.md (Path 3,
     /// in revnet-core-v6). When the AMM ask is HIGHER than the terminal's pay rate (`weight × ETH`),
@@ -1417,6 +1441,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     }
 
     /// @notice The message's sender. Preferred to use over `msg.sender`.
+    /// @return sender The address which sent this call.
     function _msgSender() internal view override(ERC2771Context, Context) returns (address sender) {
         return ERC2771Context._msgSender();
     }

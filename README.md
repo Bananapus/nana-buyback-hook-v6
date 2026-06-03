@@ -14,6 +14,8 @@
 - [SKILLS.md](./SKILLS.md) — quick-reference index for agents and contributors.
 - [CHANGELOG.md](./CHANGELOG.md) — verified v5 → v6 deltas and major-change notes.
 - [STYLE_GUIDE.md](./STYLE_GUIDE.md) — Solidity and repo-layout conventions across the V6 ecosystem.
+- [references/operations.md](./references/operations.md) — configuration surface, change checklist, and common failure modes.
+- [references/runtime.md](./references/runtime.md) — contract roles, the runtime routing path, and high-risk areas.
 
 ## Overview
 
@@ -28,7 +30,7 @@ Use this repo when a project wants market-aware issuance and redemption routing.
 
 If the question is "how does the pool-side routing primitive work?" you may need to start in `univ4-router-v6` first. This repo is where Juicebox chooses whether to use that market path.
 
-## Key Contracts
+## Key contracts
 
 | Contract | Role |
 | --- | --- |
@@ -36,7 +38,7 @@ If the question is "how does the pool-side routing primitive work?" you may need
 | `JBBuybackHookRegistry` | Registry that stores which hook and pool a project uses and exposes locking controls. |
 | `JBSwapLib` | Shared swap-path helper logic. |
 
-## Mental Model
+## Mental model
 
 There are two separate responsibilities here:
 
@@ -45,7 +47,7 @@ There are two separate responsibilities here:
 
 Operational bugs often come from the second part. Economic bugs often come from the first.
 
-## Caller-Provided Metadata
+## Caller-provided metadata
 
 Callers can shape the route through `JBMetadataResolver`-keyed entries in the terminal's `metadata` argument. Address the entry to the hook (or to the registry, which rekeys it to the resolved hook).
 
@@ -56,14 +58,14 @@ Callers can shape the route through `JBMetadataResolver`-keyed entries in the te
 - `minimumSwapAmountOut` is a hard slippage floor on the net terminal-token output. It is a protection value, **not** a venue selector. A non-zero floor is enforced even when the hook falls back to the direct protocol cash-out.
 - `skip` (defaults to `false`) forces the cash-out through the protocol bonding-curve/terminal path and skips the pool entirely — **even when the pool would pay more**. The floor still applies: a `skip` cash-out whose `minimumSwapAmountOut` the direct reclaim cannot meet reverts rather than silently routing to the AMM. Use `skip` when you want deterministic terminal settlement (e.g. predictable accounting, or avoiding pool exposure) regardless of momentary pool pricing. Note this is distinct from setting a low `minimumSwapAmountOut`: that would surrender your slippage protection to coax a terminal route, whereas `skip` decouples venue choice from the floor.
 
-## Read These Files First
+## Read these files first
 
 1. `src/JBBuybackHook.sol`
 2. `src/JBBuybackHookRegistry.sol`
 3. `src/libraries/JBSwapLib.sol`
 4. `univ4-router-v6/src/JBUniswapV4Hook.sol`
 
-## Integration Traps
+## Integration traps
 
 - this hook can fall back between market and protocol paths, so preview behavior is not the same as guaranteed execution
 - oracle-derived minima and caller-supplied minima have intentionally different failure behavior
@@ -71,7 +73,7 @@ Callers can shape the route through `JBMetadataResolver`-keyed entries in the te
 - registry configuration is part of the economic surface because it determines which hook and pool are even eligible
 - fee-on-transfer and partial-fill behavior are central threat-model concerns
 
-## Where State Lives
+## Where state lives
 
 - route choice and execution behavior: `JBBuybackHook`
 - per-project pool and hook selection: `JBBuybackHookRegistry`
@@ -98,11 +100,11 @@ Useful scripts:
 - `npm run deploy:mainnets`
 - `npm run deploy:testnets`
 
-## Deployment Notes
+## Deployment notes
 
 This package is meant to compose with [`@bananapus/univ4-router-v6`](https://www.npmjs.com/package/@bananapus/univ4-router-v6), which provides the Uniswap V4 hook and TWAP oracle surface used for market comparison and protection.
 
-## Repository Layout
+## Repository layout
 
 ```text
 src/
@@ -118,7 +120,7 @@ script/
   helpers/
 ```
 
-## Risks And Notes
+## Risks and notes
 
 - TWAP quality depends on the oracle hook having enough history and liquidity to be meaningful
 - route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima
@@ -127,8 +129,10 @@ script/
 - hook configuration should usually be locked after validation, and pool choices should be treated as sticky once set
 - fee-on-transfer and partial-fill behaviors are part of the main threat model
 
-## For AI Agents
+## For AI agents
 
 - Treat this repo as a route selector between Juicebox-native and market-native execution.
 - If the question is about pool swap mechanics or oracle observations, move to `univ4-router-v6`.
 - Use the registry tests and FOT/partial-fill tests before claiming a path is safe or deterministic.
+
+When a project wants the market to set the price but never wants to lose to it, reach for this hook.

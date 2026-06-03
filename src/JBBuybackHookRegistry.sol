@@ -34,11 +34,22 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
+    /// @notice Thrown when attempting to disallow the hook that is currently set as the protocol-wide default.
     error JBBuybackHookRegistry_CannotDisallowDefaultHook(IJBRulesetDataHook hook);
+
+    /// @notice Thrown when attempting to change a project's hook after it has been locked.
     error JBBuybackHookRegistry_HookLocked(uint256 projectId);
+
+    /// @notice Thrown when the project's resolved hook does not match the hook the caller expected to lock.
     error JBBuybackHookRegistry_HookMismatch(IJBRulesetDataHook currentHook, IJBRulesetDataHook expectedHook);
+
+    /// @notice Thrown when attempting to set a hook for a project that is not on the allowed list.
     error JBBuybackHookRegistry_HookNotAllowed(IJBRulesetDataHook hook);
+
+    /// @notice Thrown when a project has no hook set and no default hook applies.
     error JBBuybackHookRegistry_HookNotSet(uint256 projectId);
+
+    /// @notice Thrown when attempting to set the zero address as the protocol-wide default hook.
     error JBBuybackHookRegistry_ZeroHook(IJBRulesetDataHook hook);
 
     //*********************************************************************//
@@ -136,9 +147,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
 
     /// @notice Adds a buyback hook implementation to the allowlist so projects can select it.
     /// @dev Only the owner can allow a hook.
-    // By design — allowing address(0) provides a mechanism for authorized operators to clear a
-    // project's hook assignment via setHookFor, returning to the default hook. This is the intended way to "unset" a
-    // project-specific hook.
+    /// @dev Allowing address(0) lets authorized operators clear a project's hook assignment via setHookFor, returning
+    /// it to the default hook. This is the intended way to "unset" a project-specific hook.
     /// @param hook The hook to allow.
     function allowHook(IJBRulesetDataHook hook) external onlyOwner {
         // Allow the hook.
@@ -161,13 +171,6 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         emit JBBuybackHookRegistry_DisallowHook({hook: hook, caller: _msgSender()});
     }
 
-    /// @notice Permanently locks a project's buyback hook assignment, preventing future changes. Once locked, the
-    /// project is also immune to default-hook changes.
-    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
-    /// owner can lock a hook for a project.
-    // By design — atomic set-and-lock (calling setHookFor then lockHookFor in one transaction) is a
-    // feature, not a bug. It allows trusted operators to configure and finalize hook settings in a single transaction,
-    // reducing the window for front-running or configuration changes between set and lock.
     /// @notice Initialize a Uniswap V4 pool and configure it as the buyback pool for a project, forwarding to the
     /// resolved buyback hook implementation.
     /// @param projectId The ID of the project to set the pool for.
@@ -209,6 +212,13 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         });
     }
 
+    /// @notice Permanently locks a project's buyback hook assignment, preventing future changes. Once locked, the
+    /// project is also immune to default-hook changes.
+    /// @dev Only the project's owner or an address with the `JBPermissionIds.SET_BUYBACK_HOOK` permission from the
+    /// owner can lock a hook for a project.
+    /// @dev Atomic set-and-lock (calling setHookFor then lockHookFor in one transaction) lets trusted operators
+    /// configure and finalize hook settings in a single transaction, reducing the window for front-running or
+    /// configuration changes between set and lock.
     /// @param projectId The ID of the project to lock the hook for.
     /// @param expectedHook The hook the caller expects to lock. Prevents race conditions where the hook changes
     /// between transaction submission and execution.

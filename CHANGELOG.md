@@ -12,12 +12,12 @@ This file describes the verified change from `nana-buyback-hook-v5` to the curre
 - `IJBBuybackHookRegistry`
 - `JBSwapLib`
 
-## 0.0.67 — Raise dependency floors; document conventions in the style guide
+## 0.0.67 — raise dependency floors; document conventions in the style guide
 
 - Raise dependency floors to the latest published versions.
 - Document the NatSpec, comment, and lint conventions in `STYLE_GUIDE.md`.
 
-## 0.0.66 — Soft-land a derived sell-side floor; apply the first default hook to pre-existing projects
+## 0.0.66 — soft-land a derived sell-side floor; apply the first default hook to pre-existing projects
 
 This release bundles two fixes.
 
@@ -72,7 +72,7 @@ no buyback hook at all.
 
 - `package.json`: version 0.0.65 -> 0.0.66.
 
-## 0.0.64 — Pre-compute metadata IDs as constructor immutables
+## 0.0.64 — pre-compute metadata IDs as constructor immutables
 
 Hoists the `getId` purpose-string hashing out of the per-call hot path into deployment-time immutables, mirroring the
 pattern in `JBRouterTerminal`. Pure gas/internal-cleanup change — **no ABI, metadata layout, or behavioral change**, so
@@ -87,7 +87,7 @@ consumers do not need to re-bump for correctness (only to pick up the gas saving
   (`getId(purpose, address(hook))`) stays computed inline because the resolved hook address varies per call.
 - Self-target lookups use the single-argument `getId(purpose)` shorthand (which resolves `target: address(this)`).
 
-## 0.0.63 — Rename metadata purpose keys to lifecycle-phase names
+## 0.0.63 — rename metadata purpose keys to lifecycle-phase names
 
 Renamed the two caller-provided metadata purpose strings to match the lifecycle-phase convention used by the 721 hook (`"pay"` / `"cashOut"`), so a project that stacks multiple data hooks reads one consistent key per phase.
 
@@ -96,7 +96,7 @@ Renamed the two caller-provided metadata purpose strings to match the lifecycle-
 - **Breaking metadata-key change** (acceptable pre-deploy): every off-chain client and consumer contract that builds buyback metadata must use the new purpose strings. Each lifecycle phase reads exactly one purpose, so the phase-based names collide with nothing. Registry rekey, NatSpec, README/ARCHITECTURE/INVARIANTS/USER_JOURNEYS, and all tests updated; the registry's internal id variables renamed (`registryPayId`/`hookPayId`, `registryCashOutId`/`hookCashOutId`).
 - `package.json`: version 0.0.62 -> 0.0.63.
 
-## 0.0.62 — Sell-side `skip` cash-out flag
+## 0.0.62 — sell-side `skip` cash-out flag
 
 Added a caller-provided sell-side override that forces cash-outs through the protocol bonding-curve/terminal path and skips the Uniswap V4 pool entirely, even when the pool would return more.
 
@@ -105,7 +105,7 @@ Added a caller-provided sell-side override that forces cash-outs through the pro
 - No new metadata id, no interface/ABI signature changes, no storage changes.
 - Tests: added `test_skip_*` to `TestSellSideNetComparison.t.sol` (passthrough, floor-still-enforced, and a control proving the pool would otherwise win) and `test_registryScopedSkipRoutesToTerminal` to the registry metadata audit test (proves the packed bool survives the registry remap). Updated all existing `cashOutMinReclaimed` test encoders to the 2-tuple form.
 
-## 0.0.46 — Bump nana-core-v6 to 0.0.52
+## 0.0.46 — bump nana-core-v6 to 0.0.52
 
 `nana-core-v6@0.0.52` centralized the protocol fee constant into `JBConstants.FEE` and dropped `IJBFeeTerminal.FEE()`. Updated `JBBuybackHook` accordingly:
 

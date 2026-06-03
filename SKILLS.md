@@ -1,11 +1,11 @@
 # Juicebox Buyback Hook
 
-## Use This File For
+## Use this file for
 
 - Use this file when the task involves buyback-vs-mint routing, cash-out-vs-swap routing, Uniswap V4 pool configuration, TWAP settings, or the hook registry.
 - Start here, then decide whether the issue is route selection, sell-side callback execution, pool or TWAP configuration, or registry choice.
 
-## Read This Next
+## Read this next
 
 | If you need... | Open this next |
 |---|---|
@@ -17,7 +17,7 @@
 | Execution-path, oracle, and MEV coverage | [`test/V4BuybackHook.t.sol`](./test/V4BuybackHook.t.sol), [`test/TestOracleRevertBehavior.t.sol`](./test/TestOracleRevertBehavior.t.sol), [`test/MEVScenarios.t.sol`](./test/MEVScenarios.t.sol), [`test/JBBuybackHook_Regressions.t.sol`](./test/JBBuybackHook_Regressions.t.sol) |
 | Registry, math, and edge-case coverage | [`test/Registry.t.sol`](./test/Registry.t.sol), [`test/JBSwapLib.t.sol`](./test/JBSwapLib.t.sol), [`test/CrossCurrency_Unit.t.sol`](./test/CrossCurrency_Unit.t.sol), [`test/TestBuybackFOT.t.sol`](./test/TestBuybackFOT.t.sol), [`test/TestRegressionGaps.sol`](./test/TestRegressionGaps.sol) |
 
-## Repo Map
+## Repo map
 
 | Area | Where to look |
 |---|---|
@@ -30,12 +30,12 @@
 
 Market-aware buyback hook for Juicebox V6. This repo compares protocol-native mint or cash-out behavior against a Uniswap-backed route, then executes the better path for the project while preserving project-level hook and pool configuration.
 
-## Reference Files
+## Reference files
 
 - Open [`references/runtime.md`](./references/runtime.md) when you need hook and registry roles, route-selection flow, TWAP and pool assumptions, or the main safety properties.
 - Open [`references/operations.md`](./references/operations.md) when you need configuration steps, permission and lock behavior, test breadcrumbs, or common stale assumptions.
 
-## Working Rules
+## Working rules
 
 - Start in [`src/JBBuybackHook.sol`](./src/JBBuybackHook.sol) for route comparison and execution.
 - The buy-side and sell-side paths are intentionally asymmetric. Re-check both before simplifying quote or callback handling.
