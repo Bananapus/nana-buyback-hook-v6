@@ -17,17 +17,17 @@ library JBSwapLib {
     using PoolIdLibrary for PoolKey;
 
     /// @notice The precision multiplier for impact calculations.
-    /// @dev Using 1e18 instead of 1e5 (10 * _SLIPPAGE_DENOMINATOR) gives 13 extra orders of magnitude,
-    ///      preventing small-swap-in-deep-pool impacts from rounding to zero.
+    /// @dev 1e18 precision (13 orders of magnitude above the 1e5 = 10 * _SLIPPAGE_DENOMINATOR scale that slippage
+    ///      basis points use) keeps a small swap in a deep pool from rounding its impact to zero.
     uint256 internal constant _IMPACT_PRECISION = 1e18;
 
     /// @notice The maximum slippage ceiling (88%).
     uint256 internal constant _MAX_SLIPPAGE = 8800;
 
     /// @notice The K parameter for the sigmoid curve, scaled to match _IMPACT_PRECISION.
-    /// @dev Preserves the same sigmoid shape as the original K=5000 with amplifier=1e5:
-    ///      K_new / _IMPACT_PRECISION = K_old / (10 * _SLIPPAGE_DENOMINATOR)
-    ///      → K_new = 5000 * 1e18 / 1e5 = 5e16
+    /// @dev Sets the half-saturation point of the tolerance curve: impact == K yields exactly the midpoint between
+    ///      the minimum and maximum slippage. The value is K / _IMPACT_PRECISION = 5e16 / 1e18 = 0.05, so impact
+    ///      crosses the curve's midpoint at 5% of the impact scale.
     uint256 internal constant _SIGMOID_K = 5e16;
 
     /// @notice The denominator used for slippage tolerance basis points.
@@ -172,8 +172,8 @@ library JBSwapLib {
         if (liquidity == 0 || sqrtP == 0) return 0;
 
         // Base ratio: amountIn * _IMPACT_PRECISION / liquidity
-        // _IMPACT_PRECISION (1e18) gives 13 more orders of magnitude than the old 1e5 amplifier,
-        // so a 1 ETH swap in a 1M ETH pool returns 1e12 instead of rounding to 0.
+        // _IMPACT_PRECISION (1e18) carries 13 orders of magnitude below a basis point,
+        // so a 1 ETH swap in a 1M ETH pool returns 1e12 rather than rounding to 0.
         uint256 base = FullMath.mulDiv({a: amountIn, b: _IMPACT_PRECISION, denominator: uint256(liquidity)});
 
         // Normalize by sqrtP for direction.
@@ -225,7 +225,7 @@ library JBSwapLib {
 
     /// @notice Compute a sqrtPriceLimitX96 from input/output amounts so the swap stops
     ///         if the execution price would be worse than the minimum acceptable rate.
-    /// @dev When `minimumAmountOut == 0`, returns extreme values (no limit, current behavior).
+    /// @dev When `minimumAmountOut == 0`, returns the direction's extreme price bound (no swap-price limit).
     /// @param amountIn The amount of tokens to swap in.
     /// @param minimumAmountOut The minimum acceptable output (from payer quote or TWAP).
     /// @param zeroForOne True when selling token0 for token1 (price decreases).
@@ -323,6 +323,8 @@ library JBSwapLib {
     //*********************************************************************//
 
     /// @notice Build a uint32[] array of [twapWindow, 0] for the oracle observe call.
+    /// @param twapWindow The TWAP window in seconds.
+    /// @return secondsAgos The seconds-ago offsets [twapWindow, 0] for the oracle observe call.
     function _makeSecondsAgos(uint32 twapWindow) private pure returns (uint32[] memory secondsAgos) {
         secondsAgos = new uint32[](2);
         secondsAgos[0] = twapWindow;

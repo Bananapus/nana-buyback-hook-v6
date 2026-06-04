@@ -2,13 +2,13 @@
 
 This file covers the routing, MEV, and composition risks in the buyback hook that compares Juicebox minting or cash-out against external AMM execution.
 
-## How To Use This File
+## How to use this file
 
 - Read `Priority risks` first. Those are the routing failures with the largest user impact.
 - Use the later sections for economic, MEV, and same-pool composition reasoning.
 - Treat `Invariants to verify` as hard requirements before relying on this hook in production routing.
 
-## Priority Risks
+## Priority risks
 
 | Priority | Risk | Why it matters | Primary controls |
 |----------|------|----------------|------------------|
@@ -16,7 +16,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 | P1 | Same-pool recursion and composition complexity | Buyback composition with the V4 router creates deep call chains where an ordering bug can cascade. | Explicit recursion guards, fallback-to-mint behavior, and composition-focused tests. |
 | P1 | MEV around route selection | Buyback routing gives attackers an incentive to manipulate the comparison boundary, especially in low-liquidity or stale-price conditions. | TWAP use, slippage controls, and operational caution on thin markets. |
 
-## 1. Trust Assumptions
+## 1. Trust assumptions
 
 - **Uniswap V4 PoolManager is trusted.** All swap settlement flows through it.
 - **The oracle hook is trusted.** TWAP integrity depends on the `hooks` field in the pool key and the configured `ORACLE_HOOK`.
@@ -24,7 +24,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **JB core contracts behave correctly.** The hook trusts `DIRECTORY`, `controller`, and token operations in core.
 - **Registry owner centralization is scoped.** The first-ever default hook applies to every project that already exists when it is set (so pre-existing, non-pinned projects resolve to it). After that, *changing* the default only affects projects created after the change (`projectId > defaultHookProjectIdThreshold`); earlier cohorts keep their creation-time default and a project can pin its own hook via `setHookFor`.
 
-## 2. Economic Risks
+## 2. Economic risks
 
 - **Mint-vs-swap routing can be manipulated.** The comparison at `beforePayRecordedWith` depends on either explicit caller quote data or TWAP-derived quoting.
 - **TWAP window selection is a tradeoff.** Short windows are easier to manipulate. Long windows lag real markets.
@@ -36,7 +36,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **Pool key `hooks` is trusted owner input.** A project can point itself at a bad or malicious pool hook.
 - **Dynamic-fee pool LP fees can move between preview and execution.** Final minimum-output and price-limit checks still protect value.
 
-## 3. MEV And Sandwich Risks
+## 3. MEV and sandwich risks
 
 - **There is a three-layer protection pipeline.** The hook combines explicit minima or TWAP floors, sigmoid slippage, and a `sqrtPriceLimit` circuit breaker.
 - **Sandwich attacks can force mint fallback.** When the circuit breaker trips, the intended result is mint fallback rather than silent overpayment.
@@ -44,7 +44,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **Oracle warmup creates a mint-only period for no-quote flows.** This is intentional. Explicit quote metadata can still use the swap path during warmup.
 - **Attackers can front-run the routing decision.** TWAP and explicit minima reduce the practical value of that manipulation but do not remove the incentive.
 
-## 4. Composition With `JBUniswapV4Hook`
+## 4. Composition with `JBUniswapV4Hook`
 
 - **Same-pool composition is expected.** In production, the buyback hook often queries the oracle and swaps against the same V4 hook-backed pool.
 - **Reentrancy path matters.** Router-hook recursion is blocked by the `_routing` guard in `JBUniswapV4Hook`.
@@ -52,7 +52,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **Double fallback exists by design.** If the swap path cannot execute safely, the buyback hook catches the failure and falls back to minting on the buy side.
 - **Oracle warmup interacts with composition.** During early pool life, both layers degrade conservatively rather than falling back to unsafe spot behavior.
 
-## 5. Multi-Pool Risks
+## 5. Multi-pool risks
 
 - **Each terminal token has an independent pool configuration.**
 - **TWAP window is per-project and per-terminal-token.**
@@ -60,7 +60,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **There is no pool migration path.**
 - **The shared oracle hook is immutable at construction unless a custom pool key is set manually.**
 
-## 6. Access Control
+## 6. Access control
 
 - **`SET_BUYBACK_POOL` controls pool setup.** It is required at both registry and hook level.
 - **`SET_BUYBACK_TWAP` controls TWAP changes.** It is bounded, repeatable, and project-scoped.
@@ -70,7 +70,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **`afterPayRecordedWith` and `afterCashOutRecordedWith` are gated to verified terminals.**
 - **Registry pool setup requires explicit permission grant.** Non-revnet integrators who use `JBBuybackHookRegistry` to manage buyback pools must grant `SET_BUYBACK_POOL` permission to the registry contract for their project. The `REVDeployer` handles this automatically for revnet deployments (it grants this permission in its constructor with a wildcard project ID). Custom deployers that bypass `REVDeployer` need to explicitly grant this permission or pool setup calls through the registry will fail.
 
-## 7. DoS Vectors
+## 7. DoS vectors
 
 - **`JBPrices` can revert.** Cross-currency buyback-routed payments then halt.
 - **Controller mint or burn can revert.** There is no fallback around that.
@@ -78,7 +78,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **Pool state can become unusable.** If quotes collapse to zero, the hook can fall back to mint-only behavior.
 - **Gas exhaustion can force the fallback branch.** Explicit caller minima can still turn that failure into a revert.
 
-## 8. Invariants To Verify
+## 8. Invariants to verify
 
 - users always get at least their specified explicit minimum
 - explicit minima are hard floors; direct or noop cash-out paths that cannot guarantee the floor under the conservative net bound must revert
@@ -93,7 +93,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - TWAP window bounds stay enforced
 - registry lock prevents later hook changes
 
-## 9. Accepted Behaviors
+## 9. Accepted behaviors
 
 ### 9.1 Oracle warmup forces a mint-only period for no-quote flows
 
@@ -132,7 +132,7 @@ full-revert branch returns project tokens to the holder rather than blocking the
 
 Projects using `JBBuybackHookRegistry` as their data hook without explicitly calling `setHookFor()` resolve to the mutable `defaultHook`. The first-ever default applies to every project that exists when it is set (including projects created before any default existed); afterward, a *new* default only applies to projects created after the change (`projectId > defaultHookProjectIdThreshold`), and earlier cohorts keep their creation-time default. A later default change never retroactively re-routes an earlier project. Always call `setHookFor(projectId, hook)` to pin your project's hook if you want it fixed.
 
-### 9.8 Sell-Side AMM Proceeds Are Not Fee-Metered
+### 9.8 Sell-side AMM proceeds are not fee-metered
 
 When the buyback hook routes a cash-out through the AMM sell path, the swap proceeds go directly to the beneficiary without passing through the terminal's fee meter. This is by design — protocol fees apply only to actual terminal cashouts, not AMM market operations. The hook's `hookSpecifications.amount = 0` reflects this intent.
 

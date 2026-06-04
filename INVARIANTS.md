@@ -6,7 +6,7 @@ This file is the per-repo scoped invariants doc. The protocol-wide guarantees fo
 
 ---
 
-# Section A — Guarantees to Paying Users + Token Holders
+## Section A — Guarantees to paying users + token holders
 
 ## A.1 Pay path
 
@@ -48,7 +48,7 @@ This file is the per-repo scoped invariants doc. The protocol-wide guarantees fo
 
 ---
 
-# Section B — Guarantees to Operators (per-project)
+## Section B — Guarantees to operators (per-project)
 
 Operator surface is granted via `JBPermissions` per project ID. The matrix below shows which permission ID gates which entry point.
 
@@ -74,7 +74,7 @@ Operator surface is granted via `JBPermissions` per project ID. The matrix below
 
 ---
 
-# Section C — Per-Contract Operation Inventory
+## Section C — Per-contract operation inventory
 
 ## C.1 `JBBuybackHook` — `src/JBBuybackHook.sol`
 
@@ -133,7 +133,7 @@ Operator surface is granted via `JBPermissions` per project ID. The matrix below
 
 ---
 
-# Section D — Cross-Cutting Invariants
+## Section D — Cross-cutting invariants
 
 - **D.1 Mint authority is registry-resolved only.** `JBBuybackHook.hasMintPermissionFor` returns `false` unconditionally. The only path by which a `JBBuybackHook` instance gains mint permission is through `JBBuybackHookRegistry.hasMintPermissionFor`, which returns `true` iff the queried address equals `_resolvedHookOf(projectId)` (project pin, cohort default, or `address(0)`). The controller routes mint-permission checks to the project's data hook (the registry), so a hook implementation that is not the resolved hook cannot mint, even if allowlisted.
 - **D.2 Cohort-stable defaults.** `_defaultHookHistory` records, for each cohort of projects, the default hook that applied to it. The first-ever `setDefaultHook` maps the cohort of projects that already existed to the new default, so a pre-existing non-pinned project resolves to it (rather than to `address(0)`). Every subsequent change snapshots the outgoing default for the window it covered. A project whose ID falls within a historical segment continues to resolve to that segment's hook forever, unless it explicitly pins via `setHookFor`. This means a registry-owner default CHANGE can never silently re-route an earlier cohort. The resolver `_resolvedHookOf` implements this.
@@ -147,7 +147,7 @@ Operator surface is granted via `JBPermissions` per project ID. The matrix below
 
 ---
 
-# Section E — Centralization Caveats
+## Section E — Centralization caveats
 
 ## E.1 `JBBuybackHookRegistry` Ownable
 
@@ -174,7 +174,7 @@ In the production V6 deploy, the registry owner is `_CRITICAL_INFRA_OWNER` (the 
 
 ---
 
-# Section F — Key Code References
+## Section F — Key code references
 
 | Invariant | File:lines |
 |---|---|
@@ -218,7 +218,7 @@ In the production V6 deploy, the registry owner is `_CRITICAL_INFRA_OWNER` (the 
 
 ---
 
-# Doc audit notes
+## Doc audit notes
 
 Audit pass over the eight existing top-level docs:
 

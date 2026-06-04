@@ -1,24 +1,24 @@
 # User Journeys
 
-## Repo Purpose
+## Repo purpose
 
 This repo decides whether a project-facing buy or sell should execute through Juicebox-native economics or a UniV4 market path. It owns route comparison and registry-level pool selection. It does not own the lower-level UniV4 hook it depends on for market execution and oracle observations.
 
-## Primary Actors
+## Primary actors
 
 - projects that want market-aware routing on buys and sells
 - operators selecting and locking a project's hook and pool configuration
 - traders or supporters whose route may go through Juicebox or UniV4 depending on price
 - auditors reviewing comparison logic, minima, and pool-selection governance
 
-## Key Surfaces
+## Key surfaces
 
 - `JBBuybackHook`: compares protocol and market routes and executes the better one
 - `JBBuybackHookRegistry`: stores and optionally locks which hook and pool a project uses
 - `setHookFor(...)` / `setPoolFor(...)`: main project-configuration entrypoints
 - `JBSwapLib`: shared swap and oracle helper logic
 
-## Journey 1: Attach Buyback Routing To A Project
+## Journey 1: Attach buyback routing to a project
 
 **Actor:** project operator.
 
@@ -43,7 +43,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 **Postconditions**
 - the project's buyback routing surface is registered and can be treated as the canonical comparison path
 
-## Journey 2: Pay Through The Better Of Juicebox Or The Pool
+## Journey 2: Pay through the better of Juicebox or the pool
 
 **Actor:** payer or router or integration acting for a payer.
 
@@ -69,7 +69,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 **Postconditions**
 - the payment uses whichever route is better under the hook's configured comparison model
 
-## Journey 3: Cash Out Through The Better Exit Path
+## Journey 3: Cash out through the better exit path
 
 **Actor:** holder exiting a position.
 
@@ -94,7 +94,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 **Postconditions**
 - the holder exits through the higher-value permitted path under current market and protocol conditions
 
-## Journey 4: Operate Oracle And Pool Assumptions Safely
+## Journey 4: Operate oracle and pool assumptions safely
 
 **Actor:** operator or auditor.
 
@@ -115,13 +115,13 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 **Postconditions**
 - operators know whether the project's routing assumptions still justify leaving the configured pool live
 
-## Trust Boundaries
+## Trust boundaries
 
 - this repo trusts the UniV4 hook and oracle surface for market-side estimation
 - this repo trusts core terminals for protocol-side mint and cash-out truth
 - registry governance is part of the economic safety model, not just metadata
 
-## Hand-Offs
+## Hand-offs
 
 - Use [univ4-router-v6](../univ4-router-v6/USER_JOURNEYS.md) for the underlying UniV4 hook and oracle primitive this repo compares against.
 - Use [nana-core-v6](../nana-core-v6/USER_JOURNEYS.md) for the canonical terminal mint and cash-out paths that remain the baseline alternative.

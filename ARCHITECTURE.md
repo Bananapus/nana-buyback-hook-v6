@@ -4,13 +4,13 @@
 
 `nana-buyback-hook-v6` gives a Juicebox project market-aware entry and exit routing. On pay, it compares the protocol mint path with a Uniswap V4 buy path. On cash out, it compares the protocol reclaim path with selling reminted project tokens into the pool. It chooses the better route without replacing core treasury accounting.
 
-## System Overview
+## System overview
 
 `JBBuybackHook` is the runtime route selector and executor. `JBBuybackHookRegistry` is not just configuration storage. It is also the project-facing wrapper that resolves the active hook for a project and forwards hook callbacks to that resolved implementation. `JBSwapLib` provides quoting and slippage helpers.
 
 The TWAP oracle surface comes from `univ4-router-v6`, while settlement truth remains in `nana-core-v6`.
 
-## Core Invariants
+## Core invariants
 
 - the hook must never create alternate treasury accounting
 - oracle failure should degrade toward the safer protocol path
@@ -28,16 +28,16 @@ The TWAP oracle surface comes from `univ4-router-v6`, while settlement truth rem
 | `JBBuybackHookRegistry` | Project-to-hook configuration, locking, and runtime forwarding to the resolved hook | Governance and wrapper surface |
 | `JBSwapLib` | Quoting, slippage, and price-limit helpers | Shared routing math |
 
-## Trust Boundaries
+## Trust boundaries
 
 - core accounting, token minting, and permissions remain in `nana-core-v6`
 - oracle observations and pool-level market data come from `univ4-router-v6` and Uniswap V4
 - projects should not be able to point at arbitrary hook implementations once locked
 - the registry is trusted to resolve the correct active hook for project-facing callback flows
 
-## Critical Flows
+## Critical flows
 
-### Hook Resolution
+### Hook resolution
 
 ```text
 registry resolves a project's hook (_resolvedHookOf)
@@ -48,7 +48,7 @@ registry resolves a project's hook (_resolvedHookOf)
 
 The first-ever `setDefaultHook` records a history segment mapping the projects that already existed to that new default, so a pre-existing, non-pinned project resolves to it instead of resolving to nothing. Every later default change records the outgoing default for the window it covered, so a change never retroactively re-routes an earlier cohort. A per-project pin always takes precedence over any default.
 
-### Buy Side
+### Buy side
 
 ```text
 payment arrives
@@ -59,7 +59,7 @@ payment arrives
   -> if the swap fully fails, explicit caller minima still revert but oracle-derived minima can degrade to mint fallback
 ```
 
-### Sell Side
+### Sell side
 
 ```text
 cash out requested
@@ -78,13 +78,13 @@ cash out requested
 
 The sell-side `"cashOut"` metadata entry encodes `(uint256 minimumSwapAmountOut, bool skip)`. `minimumSwapAmountOut` is a slippage floor (a protection value); `skip` is a venue override that forces terminal settlement regardless of pool pricing. The two are independent: `skip` never waives the floor, so an unmeetable floor reverts rather than routing to the pool.
 
-## Accounting Model
+## Accounting model
 
 This repo owns route selection and swap execution logic. It does not own the canonical ledger for balances, fees, or surplus.
 
 On the buy side, the hook uses the controller preview path to preserve beneficiary-versus-reserved-token semantics even when comparing against market quotes. On the sell side, hook metadata can describe the route comparison even when the hook leaves the protocol cash-out path unchanged.
 
-## Security Model
+## Security model
 
 - the danger is semantic drift between quote selection, slippage logic, and execution
 - buy and sell routing are not mirror images
@@ -92,7 +92,7 @@ On the buy side, the hook uses the controller preview path to preserve beneficia
 - sell-side routing suppresses direct protocol reclaim only when the market path wins
 - reserved-rate preservation is a primary review target on the buy side
 
-## Safe Change Guide
+## Safe change guide
 
 - review quote selection, slippage bounds, and fallback behavior as one system
 - if registry behavior changes, re-check the no-hook pass-through path and the rule that disallowed hooks do not override already-pinned project assignments
@@ -100,7 +100,7 @@ On the buy side, the hook uses the controller preview path to preserve beneficia
 - if sell-side callback behavior changes, inspect wrappers and preview clients that read the returned specs
 - keep governance or registry mutability out of the core hook
 
-## Canonical Checks
+## Canonical checks
 
 - buy-side failure fallback and mint degradation:
   `test/regression/SwapFailureMintFallback.t.sol`
@@ -109,7 +109,7 @@ On the buy side, the hook uses the controller preview path to preserve beneficia
 - routing invariants across configurations:
   `test/invariant/BuybackHookInvariant.t.sol`
 
-## Source Map
+## Source map
 
 - `src/JBBuybackHook.sol`
 - `src/JBBuybackHookRegistry.sol`

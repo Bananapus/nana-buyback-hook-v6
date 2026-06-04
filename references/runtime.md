@@ -1,19 +1,19 @@
 # Buyback Hook Runtime
 
-## Contract Roles
+## Contract roles
 
 - [`src/JBBuybackHook.sol`](../src/JBBuybackHook.sol) compares protocol-native and market-native paths for payments and cash-outs, then executes the better route.
 - [`src/JBBuybackHookRegistry.sol`](../src/JBBuybackHookRegistry.sol) controls which hook a project uses, what hooks are allowed, what the default hook is, and whether a project's choice is locked.
 - [`src/libraries/JBSwapLib.sol`](../src/libraries/JBSwapLib.sol) provides swap-side helper logic such as slippage and quote-related math.
 
-## Runtime Path
+## Runtime path
 
 1. Payment or cash-out execution enters [`src/JBBuybackHook.sol`](../src/JBBuybackHook.sol).
 2. The hook inspects the project's configured pool and quote/TWAP conditions.
 3. It compares the market path against the protocol-native path.
 4. It executes the better route, with fallback behavior preserving liveness when supported external calls fail.
 
-## High-Risk Areas
+## High-risk areas
 
 - TWAP window assumptions: edits must preserve the intended bounds and failure behavior when observation history is weak.
 - Oracle and quote fallbacks: this repo intentionally balances liveness against precision. Do not remove safeguards casually.
@@ -21,7 +21,7 @@
 - Fee-on-transfer, partial-fill, and MEV-sensitive behavior: these are core threat-model concerns, not corner cases.
 - Sell-side callback semantics: the terminal passes the original `cashOutCount`, but sell execution can be intentionally based on a smaller count encoded into `hookMetadata`.
 
-## Tests To Trust First
+## Tests to trust first
 
 - [`test/V4BuybackHook.t.sol`](../test/V4BuybackHook.t.sol) for the main execution path.
 - [`test/TestOracleRevertBehavior.t.sol`](../test/TestOracleRevertBehavior.t.sol) for oracle-failure semantics.
