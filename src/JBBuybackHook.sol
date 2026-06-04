@@ -239,8 +239,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice Sells project tokens into the configured Uniswap V4 pool and sends the proceeds to the beneficiary.
     /// Called by the terminal after `beforeCashOutRecordedWith` determined that the pool route beats direct reclaim.
-    /// @dev This is called by the terminal after the buyback hook's data-hook path has chosen pool execution over the
-    /// protocol cash out path.
+    /// @dev Called after the data-hook path chooses pool execution over protocol cash out.
     /// @dev The terminal has already burned the holder's project tokens by the time this callback runs, so this hook
     /// remints tokens to itself before executing the sell. The count to remint/sell comes from `hookMetadata`
     /// (set during `beforeCashOutRecordedWith`), NOT from `context.cashOutCount`. This distinction matters when a
@@ -788,9 +787,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// (net of fees) routes the cash-out through the pool via `afterCashOutRecordedWith`.
     /// @dev Returns the protocol cash-out values unchanged unless selling the burned project tokens into the
     /// configured pool is expected to return more of the terminal token than the direct reclaim path.
-    /// @dev If the sell path wins, the hook returns an active cash-out hook specification (`noop = false`) and
-    /// maxes the tax rate so the terminal does not reclaim surplus itself. The actual sell is executed in
-    /// `afterCashOutRecordedWith`.
+    /// @dev If the sell path wins, the hook returns an active cash-out hook specification (`noop = false`) and maxes
+    /// the tax rate so the terminal does not reclaim surplus itself. The sell executes in `afterCashOutRecordedWith`.
     /// @dev This function auto-applies the "floor arbitrage" path described in ARBITRAGE.md (Path 2,
     /// in revnet-core-v6). When the AMM bid is HIGHER than the bonding-curve reclaim, the hook routes
     /// the holder's burn through the pool — they get more ETH. When the AMM bid is LOWER, the hook
