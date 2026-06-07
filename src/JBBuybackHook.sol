@@ -936,10 +936,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Compute the executable net direct reclaim under the active fee semantics. The terminal's
         // effective payout depends on the cash-out tax rate, whether the beneficiary is feeless, and —
         // in the zero-tax branch — the terminal's `feeFreeSurplusOf` counter (a fee applies only up
-        // to that surplus). Reading it via the now-public getter gives an exact net, so the
+        // to that surplus). Reading it from the selected terminal gives an exact net, so the
         // noop-vs-AMM comparison and any user-specified floor can both rely on the same number.
         uint256 netDirectCashOutAmount = _netAfterTerminalFee({amount: directCashOutAmount, context: context});
 
+        // With no live pool liquidity, the direct terminal path is the only executable settlement route. If the user
+        // explicitly required more than that path can net out, revert instead of silently ignoring their floor.
         if (!poolHasLiquidity && hasUserSpecifiedMinimumSwapAmountOut && netDirectCashOutAmount < minimumSwapAmountOut)
         {
             revert JBBuybackHook_SpecifiedSlippageExceeded({
@@ -947,13 +949,23 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
+        // The market route can only be selected when the pool has live liquidity and a non-zero quote/minimum. A zero
+        // market minimum means there is no executable AMM floor, so routing must stay on the terminal path.
         bool marketCanSettle = poolHasLiquidity && minimumSwapAmountOut != 0;
+
+        // Treat the direct path as settleable by default. The local-surplus read is only needed when direct would
+        // otherwise beat a live AMM route.
         bool directPathCanSettle = true;
+
+        // When the AMM quote is less than or equal to direct reclaim, direct only wins if this selected terminal can
+        // locally pay the gross reclaim. Aggregate surplus can price the reclaim, but cannot fund this terminal.
         if (marketCanSettle && minimumSwapAmountOut <= netDirectCashOutAmount) {
             directPathCanSettle =
                 _directCashOutCanSettle({grossDirectCashOutAmount: directCashOutAmount, context: context});
         }
 
+        // A noop leaves execution with the terminal. The hook only noops when no market route is executable, or when
+        // direct reclaim is both at least as good as the AMM route and locally settleable by the selected terminal.
         bool noop = !marketCanSettle || (directPathCanSettle && minimumSwapAmountOut <= netDirectCashOutAmount);
 
         // Return sell-side routing metadata in both cases so preview clients can inspect the route comparison without
@@ -1108,13 +1120,23 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         if (_poolIsSet[context.projectId][terminalToken]) {
+            // The PoolKey sorts currencies numerically, so the swap direction depends on whether the project token is
+            // currency0 in the configured pool.
             bool projectTokenIs0 = address(projectToken) < terminalToken;
+
+            // Any part of the payment not routed through the pool must still mint through the terminal path.
             uint256 amountToMintWith = totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith;
+
+            // With no live pool liquidity, minting is the only executable route. If the user supplied a hard quote
+            // floor above what direct minting can produce, revert instead of silently minting below their floor.
             if (!poolHasLiquidity && hasUserSpecifiedQuote && tokenCountWithoutHook < minimumSwapAmountOut) {
                 revert JBBuybackHook_SpecifiedSlippageExceeded({
                     amount: tokenCountWithoutHook, minimum: minimumSwapAmountOut
                 });
             }
+
+            // A noop leaves the payment on the mint path whenever the market route is unavailable or direct minting
+            // already meets/exceeds the user's quote or the TWAP-derived minimum.
             bool noop = !poolHasLiquidity || tokenCountWithoutHook >= minimumSwapAmountOut;
 
             hookSpecifications = new JBPayHookSpecification[](1);
@@ -1391,6 +1413,47 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         return super._contextSuffixLength();
     }
 
+    /// @notice Whether the selected terminal can settle the direct protocol reclaim used in route comparison.
+    /// @dev Cash-out pricing can use aggregate surplus, but the selected terminal can only pay from its local surplus.
+    /// If the direct path cannot settle locally, a live AMM route must be allowed to win even when the aggregate
+    /// direct reclaim is numerically higher.
+    /// @param grossDirectCashOutAmount The gross terminal-token reclaim before terminal fees.
+    /// @param context The before-cashout context the data hook is processing.
+    /// @return True if the selected terminal has enough local surplus to settle the direct reclaim.
+    function _directCashOutCanSettle(
+        uint256 grossDirectCashOutAmount,
+        JBBeforeCashOutRecordedContext calldata context
+    )
+        internal
+        view
+        returns (bool)
+    {
+        // `currentSurplusOf(...)` accepts a token list because terminals can price multiple accounting tokens; this
+        // route comparison only needs the token used by the selected cash-out terminal.
+        address[] memory tokens = new address[](1);
+
+        // Use the same token, decimals, and currency that core used to price `context.surplus`, so the local
+        // settlement check is denominated exactly like the direct reclaim.
+        tokens[0] = context.surplus.token;
+
+        // Bind the selected terminal from the context so the surplus read cannot accidentally consult another
+        // terminal's accounting context.
+        IJBTerminal terminal = IJBTerminal(context.terminal);
+
+        // Read the selected terminal's local surplus. Aggregate or remote surplus can affect the reclaim quote, but
+        // this terminal can only pay what its own accounting context currently holds.
+        uint256 localSurplus = terminal.currentSurplusOf({
+            projectId: context.projectId,
+            tokens: tokens,
+            decimals: context.surplus.decimals,
+            currency: context.surplus.currency
+        });
+
+        // Direct cash-out settlement needs the gross reclaim available locally; terminal fees are charged from the
+        // payout, but the terminal still has to source the gross amount before fee accounting completes.
+        return grossDirectCashOutAmount <= localSurplus;
+    }
+
     /// @notice Queries the TWAP oracle for a price quote and applies sigmoid-based slippage to produce the minimum
     /// acceptable swap output. Returns 0 if the oracle is unavailable or liquidity is insufficient.
     /// @dev A TWAP can remain warm after all in-range liquidity has been removed. Live PoolManager liquidity is
@@ -1457,10 +1520,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Calculate price impact.
         bool zeroForOne = baseToken < quoteToken;
         uint160 sqrtP = TickMath.getSqrtPriceAtTick(twapTick);
+
+        // Bound quote confidence by the weaker liquidity source. Historical TWAP liquidity can overstate a drained
+        // pool, while live in-range liquidity alone does not prove the oracle window was deep.
         uint128 effectiveLiquidity = currentLiquidity < twapLiquidity ? currentLiquidity : twapLiquidity;
+
+        // Estimate the order's impact against the conservative liquidity bound so thin current or historical liquidity
+        // can disable routing before execution.
         uint256 impact = JBSwapLib.calculateImpact({
             amountIn: amountIn, liquidity: effectiveLiquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
         });
+
+        // Treat a max-impact quote as unusable. Returning zero keeps route selection on the protocol path.
         if (impact >= _MAX_TWAP_IMPACT) return (0, 0, twapTick, twapLiquidity, poolId);
 
         // Get the actual LP fee from slot0 (key.fee may differ for dynamic-fee pools).
@@ -1522,35 +1593,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         return amount - JBFees.standardFeeAmountFrom(feeBase);
-    }
-
-    /// @notice Whether the selected terminal can settle the direct protocol reclaim used in route comparison.
-    /// @dev Cash-out pricing can use aggregate surplus, but the selected terminal can only pay from its local surplus.
-    /// If the direct path cannot settle locally, a live AMM route must be allowed to win even when the aggregate
-    /// direct reclaim is numerically higher.
-    /// @param grossDirectCashOutAmount The gross terminal-token reclaim before terminal fees.
-    /// @param context The before-cashout context the data hook is processing.
-    /// @return True if the selected terminal has enough local surplus to settle the direct reclaim.
-    function _directCashOutCanSettle(
-        uint256 grossDirectCashOutAmount,
-        JBBeforeCashOutRecordedContext calldata context
-    )
-        internal
-        view
-        returns (bool)
-    {
-        address[] memory tokens = new address[](1);
-        tokens[0] = context.surplus.token;
-
-        uint256 localSurplus = IJBTerminal(context.terminal)
-            .currentSurplusOf({
-            projectId: context.projectId,
-            tokens: tokens,
-            decimals: context.surplus.decimals,
-            currency: context.surplus.currency
-        });
-
-        return grossDirectCashOutAmount <= localSurplus;
     }
 
     /// @notice Returns this contract's balance of the given terminal token.
