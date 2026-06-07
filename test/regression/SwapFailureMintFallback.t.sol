@@ -258,13 +258,13 @@ contract SFMF_SwapFailureMintFallback is Test {
                 controller,
                 uint256(0),
                 1e18,
+                payAmount,
                 int24(0),
                 uint128(0),
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0),
-                payAmount
+                uint256(0)
             ),
             payerMetadata: ""
         });

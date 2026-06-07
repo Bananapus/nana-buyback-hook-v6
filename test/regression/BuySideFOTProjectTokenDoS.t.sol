@@ -269,13 +269,13 @@ contract RegressionBuySideFOTProjectTokenDoSTest is Test {
                 IJBController(address(controller)),
                 uint256(0),
                 1e18,
+                amountIn,
                 int24(0),
                 uint128(0),
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0),
-                amountIn
+                uint256(0)
             ),
             payerMetadata: ""
         });

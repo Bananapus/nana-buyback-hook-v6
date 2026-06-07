@@ -304,13 +304,13 @@ contract TestBuybackFOT is Test {
                 controller,
                 uint256(0),
                 1e18,
+                payValue,
                 int24(0),
                 uint128(0),
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0),
-                payValue
+                uint256(0)
             ),
             payerMetadata: ""
         });

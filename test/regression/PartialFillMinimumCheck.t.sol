@@ -268,13 +268,13 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 controller,
                 tokenCountWithoutHook,
                 1e18,
+                payAmount,
                 int24(0),
                 uint128(0),
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0),
-                payAmount
+                uint256(0)
             ),
             payerMetadata: ""
         });
@@ -319,13 +319,13 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 controller,
                 tokenCountWithoutHook,
                 1e18,
+                quotedPayAmount,
                 int24(0),
                 uint128(0),
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0),
-                quotedPayAmount
+                uint256(0)
             ),
             payerMetadata: ""
         });

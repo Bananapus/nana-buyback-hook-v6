@@ -154,6 +154,7 @@ contract CurrentLiquidityRouteSelectionTest is Test {
             IJBController decodedController,
             uint256 tokenCountWithoutHook,
             uint256 weightRatio,
+            uint256 quotedAmountToSwapWith,
             int24 twapTick,
             uint128 twapLiquidity,
             PoolId decodedPoolId,
@@ -170,6 +171,7 @@ contract CurrentLiquidityRouteSelectionTest is Test {
                 IJBController,
                 uint256,
                 uint256,
+                uint256,
                 int24,
                 uint128,
                 PoolId,
@@ -184,6 +186,7 @@ contract CurrentLiquidityRouteSelectionTest is Test {
         decodedController;
         tokenCountWithoutHook;
         weightRatio;
+        quotedAmountToSwapWith;
         minimumBeneficiaryTokenCount;
         minimumReservedTokenCount;
         rawSwapQuote;
@@ -215,6 +218,7 @@ contract CurrentLiquidityRouteSelectionTest is Test {
             IJBController decodedController,
             uint256 tokenCountWithoutHook,
             uint256 weightRatio,
+            uint256 quotedAmountToSwapWith,
             int24 twapTick,
             uint128 twapLiquidity,
             PoolId decodedPoolId,
@@ -231,6 +235,7 @@ contract CurrentLiquidityRouteSelectionTest is Test {
                 IJBController,
                 uint256,
                 uint256,
+                uint256,
                 int24,
                 uint128,
                 PoolId,
@@ -245,6 +250,7 @@ contract CurrentLiquidityRouteSelectionTest is Test {
         decodedController;
         tokenCountWithoutHook;
         weightRatio;
+        quotedAmountToSwapWith;
         decodedPoolId;
         minimumBeneficiaryTokenCount;
         minimumReservedTokenCount;

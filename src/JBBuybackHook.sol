@@ -399,8 +399,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // otherwise the remaining input is minted instead.
         // `weightRatio` is the currency conversion factor computed in `beforePayRecordedWith`, passed through
         // metadata to avoid a redundant `currentRulesetOf` + price lookup in this function.
-        // The middle fields are preview-only diagnostics. Settlement only needs the execution fields plus the
-        // trailing quoted amount that anchors same-terminal split normalization.
+        // `quotedAmountToSwapWith` anchors same-terminal split normalization. The remaining metadata fields are
+        // preview-only diagnostics.
         (
             bool projectTokenIs0,
             uint256 amountToMintWith,
@@ -408,8 +408,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             bool hasExplicitMinimumSwapAmountOut,
             IJBController controller,
             uint256 tokenCountWithoutHook,
-            uint256 weightRatio,,,,,,,
-            uint256 quotedAmountToSwapWith
+            uint256 weightRatio,
+            uint256 quotedAmountToSwapWith,,,,,,
         ) = abi.decode(
             context.hookMetadata,
             (
@@ -420,10 +420,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 IJBController,
                 uint256,
                 uint256,
+                uint256,
                 int24,
                 uint128,
                 PoolId,
-                uint256,
                 uint256,
                 uint256,
                 uint256
@@ -1192,13 +1192,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     controller,
                     tokenCountWithoutHook,
                     weightRatio,
+                    amountToSwapWith,
                     twapTick,
                     twapLiquidity,
                     poolId,
                     minimumBeneficiaryTokenCount,
                     minimumReservedTokenCount,
-                    rawSwapQuote,
-                    amountToSwapWith
+                    rawSwapQuote
                 )
             });
 

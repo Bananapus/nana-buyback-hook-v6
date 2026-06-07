@@ -327,13 +327,13 @@ contract V4BuybackHookTest is Test {
                 controller,
                 uint256(0),
                 1e18,
+                payValue,
                 int24(0),
                 uint128(0),
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0),
-                payValue
+                uint256(0)
             ),
             payerMetadata: ""
         });
@@ -1311,7 +1311,7 @@ contract V4BuybackHookTest is Test {
         // The swap path must have been chosen.
         assertEq(specs.length, 1, "Swap path should be chosen");
 
-        // Decode all 13 fields from the hook spec metadata.
+        // Decode all 14 fields from the hook spec metadata.
         (
             bool projectTokenIs0,
             uint256 mintFromExcess,
@@ -1320,6 +1320,7 @@ contract V4BuybackHookTest is Test {
             IJBController decodedController,
             uint256 tokenCountWithoutHook,
             uint256 weightRatio,
+            uint256 quotedAmountToSwapWith,
             int24 twapTick,
             uint128 twapLiquidity,
             PoolId decodedPoolId,
@@ -1334,6 +1335,7 @@ contract V4BuybackHookTest is Test {
                 uint256,
                 bool,
                 IJBController,
+                uint256,
                 uint256,
                 uint256,
                 int24,
@@ -1360,6 +1362,7 @@ contract V4BuybackHookTest is Test {
 
         // Verify field 6: weightRatio should be 10^decimals when baseCurrency == payment currency.
         assertEq(weightRatio, 1e18, "weightRatio should be 10^18 for same-currency payment");
+        assertEq(quotedAmountToSwapWith, amountToSwapWith, "quotedAmountToSwapWith should match the pay quote");
 
         // Verify fields 7-8: explicit payer quotes skip TWAP lookup, so diagnostics remain zeroed.
         assertEq(twapTick, int24(0), "twapTick should be zero when TWAP is skipped");

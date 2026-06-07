@@ -64,7 +64,7 @@ Callers can shape the route through `JBMetadataResolver`-keyed entries in the te
 
 **Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle.
 
-The hook's pay preview metadata includes the gross quoted swap amount after the routing diagnostics so
+The hook's pay preview metadata includes the gross quoted swap amount with the settlement fields so
 `afterPayRecordedWith` can scale oracle-derived floors when a same-terminal split forwards the hook a net post-fee
 amount. Explicit caller minima are not scaled.
 
