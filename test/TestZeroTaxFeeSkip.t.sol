@@ -105,6 +105,7 @@ contract TestZeroTaxFeeSkip is Test {
         vm.etch(address(controller), "0x01");
         vm.etch(terminal, "0x01");
         vm.mockCall(terminal, abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0)));
+        _mockTerminalLocalSurplus(type(uint256).max);
 
         hook = new ForTest_ZeroTax({
             directory: directory,
@@ -331,5 +332,19 @@ contract TestZeroTaxFeeSkip is Test {
 
         // MAX_CASH_OUT_TAX_RATE makes JBCashOuts.cashOutFrom return 0 — no direct reclaim at all.
         assertEq(net, 0, "max tax rate should yield zero reclaim");
+    }
+
+    function _mockTerminalLocalSurplus(uint256 surplus) internal {
+        address[] memory tokensToCheck = new address[](1);
+        tokensToCheck[0] = JBConstants.NATIVE_TOKEN;
+
+        vm.mockCall(
+            terminal,
+            abi.encodeCall(
+                IJBTerminal.currentSurplusOf,
+                (projectId, tokensToCheck, uint256(18), uint256(uint32(uint160(JBConstants.NATIVE_TOKEN))))
+            ),
+            abi.encode(surplus)
+        );
     }
 }

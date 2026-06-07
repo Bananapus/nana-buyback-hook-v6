@@ -15,6 +15,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 | P0 | Wrong-route execution from stale estimates | If the hook mis-estimates protocol or pool output, users can be routed to a materially worse path. | Preview surfaces, TWAP-based pricing, live-liquidity checks, try/catch fallbacks, and strict slippage floors. |
 | P1 | Same-pool recursion and composition complexity | Buyback composition with the V4 router creates deep call chains where an ordering bug can cascade. | Explicit recursion guards, protocol fallback behavior, and composition-focused tests. |
 | P1 | MEV around route selection | Buyback routing gives attackers an incentive to manipulate the comparison boundary, especially in low-liquidity or stale-price conditions. | TWAP use, current-liquidity gating, slippage controls, and operational caution on thin markets. |
+| P1 | Non-balance-conserving terminal tokens | Fee-on-transfer or rebasing-on-transfer terminal tokens can make the hook route observe different value than the direct terminal path. | Do not configure taxed terminal tokens for buyback routing; use native ETH or ordinary ERC-20 terminal tokens. |
 
 ## 1. Trust assumptions
 
@@ -35,6 +36,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **`amountToSwapWith` defaults to the full payment.** Partial minting only happens through explicit metadata.
 - **Pool immutability is a tradeoff.** Once a pool is set for a project and terminal token, it cannot be changed.
 - **Drained or dust-liquidity pools degrade to protocol routing.** This is safer than activating an impossible AMM path, but it can surprise operators who only check initialization or historical observations.
+- **Direct cash-out comparison requires local settlement.** Aggregate or cross-chain surplus can price a direct reclaim that the selected terminal cannot locally pay. The hook only lets direct reclaim beat a live AMM route when the selected terminal can settle the gross direct amount.
 - **Pool key `hooks` is trusted owner input.** A project can point itself at a bad or malicious pool hook.
 - **Dynamic-fee pool LP fees can move between preview and execution.** Final minimum-output and price-limit checks still protect value.
 
@@ -79,6 +81,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **Controller mint or burn can revert.** There is no fallback around that.
 - **`addToBalanceOf` can revert.** That can trap the flow after a failed swap.
 - **Pool state can become unusable.** If current liquidity is zero, liquidity is only dust, or quotes collapse to zero, the hook can fall back to protocol-only behavior.
+- **Fee-on-transfer terminal tokens are unsupported.** The hook does not compensate for terminal-token transfer taxes because doing so would either under-deliver versus direct execution or over-mint/over-pay against value the project did not receive.
 - **Gas exhaustion can force the fallback branch.** Explicit caller minima can still turn that failure into a revert.
 
 ## 8. Invariants to verify
@@ -91,6 +94,8 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - swap fallback to mint works correctly on the buy side
 - there is no value extraction gap between swap boundary and mint rate
 - leftover accounting is delta-based
+- terminal tokens configured for buyback routing are balance-conserving
+- direct cash-out routes only beat live AMM routes when the selected terminal can locally settle the gross reclaim
 - pool key immutability holds
 - token supply stays coherent through burn and re-mint paths
 - live PoolManager liquidity gates both TWAP-derived and explicit quote route activation
@@ -112,9 +117,9 @@ Once a pool is set for a `(projectId, terminalToken)` pair, it cannot be changed
 
 `projectTokenOf[projectId]` is cached on `setPoolFor()`. That is safe because JBTokens does not allow token migration once a token exists.
 
-### 9.4 Fee-on-transfer handling is safest on the mint-fallback return path
+### 9.4 Fee-on-transfer terminal tokens are not supported routing assets
 
-When a swap fails and leftover terminal tokens return through `addToBalanceOf`, the hook measures the terminal's actual credited amount before minting fallback project tokens.
+The hook uses balance-delta accounting around fallback paths, but that is defensive accounting rather than support for taxed terminal tokens. Fee-on-transfer, rebasing-on-transfer, or otherwise non-balance-conserving terminal tokens add extra value loss to the hook route that the direct terminal path does not bear. Projects should not configure those tokens for buyback routing.
 
 ### 9.5 Pre-initialized pools can win the initial price race
 

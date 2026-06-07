@@ -433,6 +433,13 @@ contract V4ForkTest is Test {
 
         // Mock JB core for this project.
         _mockJbCore(projectId, projectToken);
+        _mockTerminalLocalSurplus({
+            projectId: projectId,
+            token: JBConstants.NATIVE_TOKEN,
+            decimals: 18,
+            currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+            surplus: type(uint256).max
+        });
 
         // Mock the oracle at address(0) for hookless pools.
         _mockOracle(key, liquidityDelta);
@@ -494,6 +501,13 @@ contract V4ForkTest is Test {
 
         // Mock JB core.
         _mockJbCore(projectId, projectToken);
+        _mockTerminalLocalSurplus({
+            projectId: projectId,
+            token: address(terminalToken),
+            decimals: terminalToken.decimals(),
+            currency: uint32(uint160(address(terminalToken))),
+            surplus: type(uint256).max
+        });
 
         // Mock the oracle at address(0) for hookless pools.
         _mockOracle(key, liquidityDelta);
@@ -501,6 +515,25 @@ contract V4ForkTest is Test {
         // Register pool in hook.
         vm.prank(owner);
         hook.setPoolFor(projectId, key, 5 minutes, address(terminalToken));
+    }
+
+    function _mockTerminalLocalSurplus(
+        uint256 projectId,
+        address token,
+        uint256 decimals,
+        uint256 currency,
+        uint256 surplus
+    )
+        internal
+    {
+        address[] memory tokensToCheck = new address[](1);
+        tokensToCheck[0] = token;
+
+        vm.mockCall(
+            address(terminal),
+            abi.encodeCall(IJBTerminal.currentSurplusOf, (projectId, tokensToCheck, decimals, currency)),
+            abi.encode(surplus)
+        );
     }
 
     /// @notice Mock the IGeomeanOracle at address(0) for hookless pools.

@@ -51,6 +51,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 
 **Preconditions**
 - the project's hook and pool configuration are already registered
+- the terminal token is native ETH or a balance-conserving ERC-20
 - the oracle, TWAP liquidity, and current in-range pool liquidity are usable enough for route comparison
 - caller minima and metadata are shaped for the path being attempted
 
@@ -63,7 +64,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 **Failure Modes**
 - oracle failure or immature oracle history
 - initialized pools with zero or dust current liquidity
-- fee-on-transfer behavior breaks route assumptions
+- fee-on-transfer terminal tokens break route assumptions and are unsupported for buyback routing
 - explicit caller minima fail or partial fills behave unexpectedly
 - default-hook expectations are misconfigured around the chosen path
 
@@ -78,13 +79,15 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 
 **Preconditions**
 - the project's buyback route is configured and live
+- the terminal token is native ETH or a balance-conserving ERC-20
 - live market liquidity exists when the holder expects pool execution
 - the holder understands the best exit may be protocol or market depending on conditions
 
 **Main Flow**
 1. Compare terminal reclaim value against the pool-side sell route.
-2. Execute whichever route is better under current conditions.
-3. Use registry and expected-hook checks to ensure the intended routing surface is active.
+2. Treat the terminal reclaim route as executable only when the selected terminal can locally settle it.
+3. Execute whichever route is better under current conditions.
+4. Use registry and expected-hook checks to ensure the intended routing surface is active.
 
 **Opt-out variant:** a holder who wants deterministic terminal settlement can set `skip=true` in the `cashOut` metadata entry (`(uint256 minimumSwapAmountOut, bool skip)`). The hook then skips the pool comparison entirely and settles through the bonding-curve/terminal path even if the pool would pay more. Any `minimumSwapAmountOut` floor is still enforced against the direct reclaim, so it reverts rather than under-delivering.
 

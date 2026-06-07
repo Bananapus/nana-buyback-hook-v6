@@ -30,6 +30,17 @@ Use this repo when a project wants market-aware issuance and redemption routing.
 
 If the question is "how does the pool-side routing primitive work?" you may need to start in `univ4-router-v6` first. This repo is where Juicebox chooses whether to use that market path.
 
+## Token behavior assumptions
+
+Buyback routing assumes the terminal token is balance-conserving: transferring `N` terminal tokens moves exactly `N`
+terminal tokens. Native ETH and ordinary ERC-20s satisfy this. Fee-on-transfer, rebasing-on-transfer, or otherwise
+taxed terminal tokens are not a supported terminal-token configuration for this hook, because the hook route adds
+terminal-to-hook and hook-to-terminal/beneficiary transfers that the direct terminal path does not. Those extra
+transfers can make an otherwise safe market route settle below the direct Juicebox path.
+
+Fee-on-transfer project-token behavior is covered separately with balance-delta accounting tests. That coverage does
+not imply fee-on-transfer terminal tokens are safe to route through the buyback hook.
+
 ## Key contracts
 
 | Contract | Role |
@@ -72,7 +83,7 @@ Callers can shape the route through `JBMetadataResolver`-keyed entries in the te
 - pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is expensive
 - a configured and initialized pool is not enough to activate routing; the hook also requires current PoolManager liquidity and rejects dust/max-impact TWAP routes
 - registry configuration is part of the economic surface because it determines which hook and pool are even eligible
-- fee-on-transfer and partial-fill behavior are central threat-model concerns
+- fee-on-transfer terminal tokens are not supported for buyback routing; partial-fill behavior remains a central threat-model concern
 
 ## Where state lives
 
@@ -129,12 +140,12 @@ script/
 - explicit cash-out minima are checked against conservative direct or noop bounds when terminal fee-free-surplus state is hidden
 - programmatic callers can omit quote metadata, or provide a zero minimum, and let the hook derive its route from TWAP
 - hook configuration should usually be locked after validation, and pool choices should be treated as sticky once set
-- fee-on-transfer and partial-fill behaviors are part of the main threat model
+- fee-on-transfer project-token behavior and partial fills are tested, but fee-on-transfer terminal tokens must not be configured for buyback routing
 
 ## For AI agents
 
 - Treat this repo as a route selector between Juicebox-native and market-native execution.
 - If the question is about pool swap mechanics or oracle observations, move to `univ4-router-v6`.
-- Use the registry tests and FOT/partial-fill tests before claiming a path is safe or deterministic.
+- Use the registry tests and FOT/partial-fill tests before claiming a path is safe or deterministic. Do not infer terminal-token FOT support from those tests.
 
 When a project wants the market to set the price but never wants to lose to it, reach for this hook.

@@ -10,7 +10,8 @@
 
 1. Payment or cash-out execution enters [`src/JBBuybackHook.sol`](../src/JBBuybackHook.sol).
 2. The hook inspects the project's configured pool, current in-range liquidity, and quote/TWAP conditions.
-3. It compares the market path against the protocol-native path.
+3. It compares the market path against the protocol-native path. On cash-out, the protocol-native path only wins if
+   the selected terminal can locally settle the gross direct reclaim.
 4. It executes the better route, with fallback behavior preserving liveness when supported external calls fail.
 
 ## High-risk areas
@@ -19,7 +20,8 @@
 - Live liquidity assumptions: historical TWAP liquidity cannot activate a drained pool route by itself.
 - Oracle and quote fallbacks: this repo intentionally balances liveness against precision. Do not remove safeguards casually.
 - Pool configuration drift: runtime bugs are often really stale pool-selection or registry-state bugs.
-- Fee-on-transfer, partial-fill, and MEV-sensitive behavior: these are core threat-model concerns, not corner cases.
+- Fee-on-transfer terminal tokens are unsupported for buyback routing. Fee-on-transfer project-token behavior,
+  partial-fill behavior, and MEV-sensitive behavior remain core threat-model concerns, not corner cases.
 - Sell-side callback semantics: the terminal passes the original `cashOutCount`, but sell execution can be intentionally based on a smaller count encoded into `hookMetadata`.
 
 ## Tests to trust first
@@ -28,6 +30,7 @@
 - [`test/TestOracleRevertBehavior.t.sol`](../test/TestOracleRevertBehavior.t.sol) for oracle-failure semantics.
 - [`test/MEVScenarios.t.sol`](../test/MEVScenarios.t.sol) for market-manipulation pressure.
 - [`test/regression/CurrentLiquidityRouteSelection.t.sol`](../test/regression/CurrentLiquidityRouteSelection.t.sol) for zero-liquidity and dust-liquidity routing.
-- [`test/TestBuybackFOT.t.sol`](../test/TestBuybackFOT.t.sol) for fee-on-transfer behavior.
+- [`test/TestBuybackFOT.t.sol`](../test/TestBuybackFOT.t.sol) for fee-on-transfer project-token and defensive
+  balance-delta behavior. Do not read this as support for fee-on-transfer terminal tokens.
 - [`test/invariant/BuybackHookInvariant.t.sol`](../test/invariant/BuybackHookInvariant.t.sol) for route-level invariants.
 - [`test/JBBuybackHook_Regressions.t.sol`](../test/JBBuybackHook_Regressions.t.sol), [`test/regression/CashOutMetadataInflation.t.sol`](../test/regression/CashOutMetadataInflation.t.sol), [`test/regression/RegistryForwardedPermission.t.sol`](../test/regression/RegistryForwardedPermission.t.sol), and [`test/TestRegressionGaps.sol`](../test/TestRegressionGaps.sol) for broader safety checks.

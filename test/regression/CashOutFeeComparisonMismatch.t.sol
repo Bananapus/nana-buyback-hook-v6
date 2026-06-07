@@ -77,6 +77,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
         vm.mockCall(
             address(terminal), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
         );
+        _mockTerminalLocalSurplus(type(uint256).max);
 
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
@@ -163,6 +164,27 @@ contract CashOutFeeComparisonMismatchTest is Test {
 
         assertEq(cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "hook maxes the tax rate to suppress direct");
         assertFalse(specs[0].noop, "AMM strictly beats gross: hook must route to AMM");
+    }
+
+    /// @notice When aggregate direct reclaim is numerically higher but the selected terminal cannot locally settle it,
+    /// a live AMM quote should still route to the pool instead of returning a noop that core later reverts.
+    function test_routesToAmmWhenAggregateDirectCannotSettleLocally() public {
+        uint256 grossDirect = JBCashOuts.cashOutFrom({
+            surplus: ZERO_TAX_SURPLUS, cashOutCount: CASH_OUT_COUNT, totalSupply: TOTAL_SUPPLY, cashOutTaxRate: 0
+        });
+
+        assertEq(grossDirect, 1 ether, "aggregate direct reclaim");
+        assertLt(AMM_BETWEEN_GROSS_AND_FULL_FEE_NET, grossDirect, "AMM is below aggregate direct");
+
+        _mockTerminalLocalSurplus(grossDirect - 1);
+
+        (uint256 cashOutTaxRate,,,, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(_context(0, ZERO_TAX_SURPLUS, AMM_BETWEEN_GROSS_AND_FULL_FEE_NET));
+
+        assertEq(
+            cashOutTaxRate, JBConstants.MAX_CASH_OUT_TAX_RATE, "hook must suppress a direct cash-out that cannot settle"
+        );
+        assertFalse(specs[0].noop, "live AMM route must remain executable when direct local settlement cannot");
     }
 
     /// @notice the no-pool fallback enforces the user's explicit minimum against the WORST-CASE
@@ -304,5 +326,19 @@ contract CashOutFeeComparisonMismatchTest is Test {
             beneficiaryIsFeeless: false,
             metadata: metadata
         });
+    }
+
+    function _mockTerminalLocalSurplus(uint256 surplus) internal {
+        address[] memory tokensToCheck = new address[](1);
+        tokensToCheck[0] = JBConstants.NATIVE_TOKEN;
+
+        vm.mockCall(
+            address(terminal),
+            abi.encodeCall(
+                IJBTerminal.currentSurplusOf,
+                (PROJECT_ID, tokensToCheck, uint256(18), uint256(uint32(uint160(JBConstants.NATIVE_TOKEN))))
+            ),
+            abi.encode(surplus)
+        );
     }
 }

@@ -147,6 +147,7 @@ contract V4BuybackHookTest is Test {
         vm.mockCall(
             address(terminal), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
         );
+        _mockTerminalLocalSurplus(type(uint256).max);
 
         // Labels
         vm.label(address(mockPm), "MockPoolManager");
@@ -215,6 +216,20 @@ contract V4BuybackHookTest is Test {
 
         // Initialize the pool in the hook (bypass permissions)
         hook.forTestInitPool(projectId, poolKey, twapWindow, address(projectToken), address(0));
+    }
+
+    function _mockTerminalLocalSurplus(uint256 surplus) internal {
+        address[] memory tokensToCheck = new address[](1);
+        tokensToCheck[0] = JBConstants.NATIVE_TOKEN;
+
+        vm.mockCall(
+            address(terminal),
+            abi.encodeCall(
+                IJBTerminal.currentSurplusOf,
+                (projectId, tokensToCheck, uint256(18), uint256(uint32(uint160(JBConstants.NATIVE_TOKEN))))
+            ),
+            abi.encode(surplus)
+        );
     }
 
     //*********************************************************************//

@@ -807,7 +807,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// in revnet-core-v6). When the AMM bid is HIGHER than the bonding-curve reclaim, the hook routes
     /// the holder's burn through the pool — they get more ETH. When the AMM bid is LOWER, the hook
     /// passes through to the terminal — the bonding-curve floor is what they receive. Either way, the
-    /// holder receives at least the bonding-curve reclaim.
+    /// holder receives at least the bonding-curve reclaim. The terminal path only wins if the selected terminal can
+    /// locally settle the gross reclaim; aggregate surplus may price a cash-out, but it cannot fund settlement from a
+    /// terminal whose own local surplus is insufficient.
     ///
     /// **Why this matters for protocol health:** when external actors arbitrage between the AMM and the
     /// terminal cash-out path directly (buying tokens cheap on the AMM, then cashing out via terminal
@@ -945,7 +947,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        bool noop = !poolHasLiquidity || minimumSwapAmountOut <= netDirectCashOutAmount;
+        bool marketCanSettle = poolHasLiquidity && minimumSwapAmountOut != 0;
+        bool directPathCanSettle = true;
+        if (marketCanSettle && minimumSwapAmountOut <= netDirectCashOutAmount) {
+            directPathCanSettle =
+                _directCashOutCanSettle({grossDirectCashOutAmount: directCashOutAmount, context: context});
+        }
+
+        bool noop = !marketCanSettle || (directPathCanSettle && minimumSwapAmountOut <= netDirectCashOutAmount);
 
         // Return sell-side routing metadata in both cases so preview clients can inspect the route comparison without
         // forcing the terminal to execute `afterCashOutRecordedWith`.
@@ -1513,6 +1522,35 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         return amount - JBFees.standardFeeAmountFrom(feeBase);
+    }
+
+    /// @notice Whether the selected terminal can settle the direct protocol reclaim used in route comparison.
+    /// @dev Cash-out pricing can use aggregate surplus, but the selected terminal can only pay from its local surplus.
+    /// If the direct path cannot settle locally, a live AMM route must be allowed to win even when the aggregate
+    /// direct reclaim is numerically higher.
+    /// @param grossDirectCashOutAmount The gross terminal-token reclaim before terminal fees.
+    /// @param context The before-cashout context the data hook is processing.
+    /// @return True if the selected terminal has enough local surplus to settle the direct reclaim.
+    function _directCashOutCanSettle(
+        uint256 grossDirectCashOutAmount,
+        JBBeforeCashOutRecordedContext calldata context
+    )
+        internal
+        view
+        returns (bool)
+    {
+        address[] memory tokens = new address[](1);
+        tokens[0] = context.surplus.token;
+
+        uint256 localSurplus = IJBTerminal(context.terminal)
+            .currentSurplusOf({
+            projectId: context.projectId,
+            tokens: tokens,
+            decimals: context.surplus.decimals,
+            currency: context.surplus.currency
+        });
+
+        return grossDirectCashOutAmount <= localSurplus;
     }
 
     /// @notice Returns this contract's balance of the given terminal token.
