@@ -156,6 +156,7 @@ contract RegressionRegistryMetadataBoundaryTest is Test {
         });
 
         poolManager.setSlot0(key.toId(), TickMath.getSqrtPriceAtTick(0), 0, 3000);
+        poolManager.setLiquidity(key.toId(), 1_000_000 ether);
 
         vm.prank(owner);
         hook.setPoolFor({

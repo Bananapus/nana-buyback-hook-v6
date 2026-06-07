@@ -119,6 +119,7 @@ contract CashOutFeeComparisonMismatchTest is Test {
             hooks: IHooks(address(oracleHook))
         });
         poolManager.setSlot0(poolKey.toId(), TickMath.getSqrtPriceAtTick(0), 0, 3000);
+        poolManager.setLiquidity(poolKey.toId(), 1_000_000 ether);
 
         vm.prank(owner);
         hook.setPoolFor(PROJECT_ID, poolKey, 5 minutes, JBConstants.NATIVE_TOKEN);

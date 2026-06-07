@@ -123,6 +123,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     uint256 public constant override TWAP_SLIPPAGE_DENOMINATOR = 10_000;
 
     //*********************************************************************//
+    // ----------------------- internal constants ------------------------ //
+    //*********************************************************************//
+
+    /// @notice The maximum estimated price impact accepted for an oracle-derived route. `JBSwapLib` scales impact by
+    /// 1e18, so this rejects quotes whose input is at least a full-liquidity impact against the effective pool depth.
+    uint256 internal constant _MAX_TWAP_IMPACT = 1e18;
+
+    /// @notice The maximum slippage tolerance returned by `JBSwapLib`. Hitting this means the pool is too thin to
+    /// quote safely.
+    uint256 internal constant _MAX_TWAP_SLIPPAGE = 8800;
+
+    //*********************************************************************//
     // ----------------- public immutable stored properties --------------- //
     //*********************************************************************//
 
@@ -904,9 +916,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         int24 twapTick;
         uint128 twapLiquidity;
         PoolId poolId;
+        bool poolHasLiquidity = true;
         if (hasUserSpecifiedMinimumSwapAmountOut) {
             // Only compute poolId from storage when skipping _getQuote (which would return it).
             poolId = _poolKeyOf[context.projectId][terminalToken].toId();
+            poolHasLiquidity = poolManager.getLiquidity(poolId) != 0;
         } else {
             (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
                 projectId: context.projectId,
@@ -924,7 +938,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // noop-vs-AMM comparison and any user-specified floor can both rely on the same number.
         uint256 netDirectCashOutAmount = _netAfterTerminalFee({amount: directCashOutAmount, context: context});
 
-        bool noop = minimumSwapAmountOut <= netDirectCashOutAmount;
+        if (!poolHasLiquidity && hasUserSpecifiedMinimumSwapAmountOut && netDirectCashOutAmount < minimumSwapAmountOut)
+        {
+            revert JBBuybackHook_SpecifiedSlippageExceeded({
+                amount: netDirectCashOutAmount, minimum: minimumSwapAmountOut
+            });
+        }
+
+        bool noop = !poolHasLiquidity || minimumSwapAmountOut <= netDirectCashOutAmount;
 
         // Return sell-side routing metadata in both cases so preview clients can inspect the route comparison without
         // forcing the terminal to execute `afterCashOutRecordedWith`.
@@ -1052,9 +1073,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         int24 twapTick;
         uint128 twapLiquidity;
         PoolId poolId;
+        bool poolHasLiquidity = true;
         if (hasUserSpecifiedQuote) {
             // Only compute poolId from storage when skipping _getQuote (which would return it).
             poolId = _poolKeyOf[context.projectId][terminalToken].toId();
+            poolHasLiquidity = _poolIsSet[context.projectId][terminalToken] && poolManager.getLiquidity(poolId) != 0;
         } else {
             (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
                 projectId: context.projectId,
@@ -1078,7 +1101,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (_poolIsSet[context.projectId][terminalToken]) {
             bool projectTokenIs0 = address(projectToken) < terminalToken;
             uint256 amountToMintWith = totalPaid == amountToSwapWith ? 0 : totalPaid - amountToSwapWith;
-            bool noop = tokenCountWithoutHook >= minimumSwapAmountOut;
+            if (!poolHasLiquidity && hasUserSpecifiedQuote && tokenCountWithoutHook < minimumSwapAmountOut) {
+                revert JBBuybackHook_SpecifiedSlippageExceeded({
+                    amount: tokenCountWithoutHook, minimum: minimumSwapAmountOut
+                });
+            }
+            bool noop = !poolHasLiquidity || tokenCountWithoutHook >= minimumSwapAmountOut;
 
             hookSpecifications = new JBPayHookSpecification[](1);
             hookSpecifications[0] = JBPayHookSpecification({
@@ -1356,6 +1384,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
     /// @notice Queries the TWAP oracle for a price quote and applies sigmoid-based slippage to produce the minimum
     /// acceptable swap output. Returns 0 if the oracle is unavailable or liquidity is insufficient.
+    /// @dev A TWAP can remain warm after all in-range liquidity has been removed. Live PoolManager liquidity is
+    /// checked separately so an initialized-but-empty pool cannot activate a route that would immediately fail.
     /// @param projectId The ID of the project.
     /// @param amountIn The number of input tokens to swap.
     /// @param baseToken The token to swap in.
@@ -1390,6 +1420,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Keep a reference to the pool ID.
         poolId = key.toId();
 
+        // If there is no current in-range liquidity, the next swap cannot execute against this pool even if the
+        // oracle still has historical observations.
+        uint128 currentLiquidity = poolManager.getLiquidity(poolId);
+        if (currentLiquidity == 0) return (0, 0, 0, 0, poolId);
+
         // Query the oracle hook (or spot if twapWindow is 0).
         (amountOut, twapTick, twapLiquidity) = JBSwapLib.getQuoteFromOracle({
             poolManager: poolManager,
@@ -1413,9 +1448,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Calculate price impact.
         bool zeroForOne = baseToken < quoteToken;
         uint160 sqrtP = TickMath.getSqrtPriceAtTick(twapTick);
+        uint128 effectiveLiquidity = currentLiquidity < twapLiquidity ? currentLiquidity : twapLiquidity;
         uint256 impact = JBSwapLib.calculateImpact({
-            amountIn: amountIn, liquidity: twapLiquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
+            amountIn: amountIn, liquidity: effectiveLiquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
         });
+        if (impact >= _MAX_TWAP_IMPACT) return (0, 0, twapTick, twapLiquidity, poolId);
 
         // Get the actual LP fee from slot0 (key.fee may differ for dynamic-fee pools).
         // V4 fees are in hundredths of a bip, so divide by 100 to get basis points.
@@ -1426,7 +1463,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 slippageTolerance = JBSwapLib.getSlippageTolerance({impact: impact, poolFeeBps: poolFeeBps});
 
         // If the slippage tolerance is the maximum, return 0 to trigger mint.
-        if (slippageTolerance >= TWAP_SLIPPAGE_DENOMINATOR) return (0, 0, twapTick, twapLiquidity, poolId);
+        if (slippageTolerance >= _MAX_TWAP_SLIPPAGE) return (0, 0, twapTick, twapLiquidity, poolId);
 
         // Save the raw oracle quote before slippage adjustment.
         rawAmountOut = amountOut;
