@@ -2,7 +2,7 @@
 
 ## Scope
 
-This file describes the verified change from `nana-buyback-hook-v5` to the current `nana-buyback-hook-v6` repo.
+This file describes the verified v5-to-v6 delta for `nana-buyback-hook-v6`.
 
 ## Current v6 surface
 
@@ -35,7 +35,7 @@ an internal preference.
   caller minimum), matching the swap-failed branch. A derived floor (`shouldEnforceMinimumSwapAmountOut == false`)
   soft-lands the partial fill: the partial proceeds are forwarded to the beneficiary and the unsold reminted residue is
   returned to the holder (the residue transfer already existed on the success path). The same gating is applied to the
-  ERC-20 fee-on-transfer delivery check so a derived floor cannot re-trigger the hard revert there either.
+  ERC-20 delivery balance-delta check so a derived floor cannot re-trigger the hard revert there either.
 - An explicit caller-specified minimum still hard-reverts on an underfill — the user-specified-minimum protection is
   unchanged. No funds are stranded on the hook; the terminal has already burned the holder's project tokens before the
   hook runs.

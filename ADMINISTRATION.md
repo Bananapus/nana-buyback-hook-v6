@@ -51,21 +51,23 @@
 - the first-ever default hook applies to every project that already exists (so pre-existing, non-pinned projects resolve to it); after that, *changing* the default only affects projects created after the change (those with `projectId > defaultHookProjectIdThreshold`), and earlier cohorts keep their creation-time default — pin per project via `setHookFor` to fix it
 - lock project hooks only after validating pool setup and expected runtime behavior
 - treat TWAP window changes as oracle-quality changes, not cosmetic tuning
-- remember that failed swaps can degrade into mint fallback behavior
+- treat current in-range liquidity as runtime health; a warm TWAP with no live liquidity is not an active market route
+- remember that failed swaps can degrade into protocol fallback behavior
 
 ## Machine notes
 
 - do not assume registry ownership implies project override power; locked projects remain locked
 - treat `src/JBBuybackHookRegistry.sol` and `src/JBBuybackHook.sol` as separate control surfaces with different actors
 - if pool identity, terminal token, or TWAP assumptions differ from deployed state, stop before documenting or executing admin changes
-- if swap execution is reverting or quoting zero, inspect whether the hook is legitimately falling back to mint-only behavior before assuming the buyback path is active
+- if PoolManager liquidity is zero or dust, expect the hook to report diagnostics and use the protocol path instead of activating the AMM route
+- if swap execution is reverting or quoting zero, inspect whether the hook is legitimately falling back to protocol-only behavior before assuming the buyback path is active
 
 ## Recovery
 
 - unlocked projects can move to a new allowlisted hook
 - locked projects cannot be unlocked by the registry
 - bad pool configuration usually means a new hook path or broader project migration rather than in-place repair
-- a broken swap path may still leave the project operational through mint fallback, but that is not the same as a healthy buyback configuration
+- a broken swap path may still leave the project operational through protocol fallback, but that is not the same as a healthy buyback configuration
 
 ## Admin boundaries
 

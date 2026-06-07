@@ -14,11 +14,13 @@ The TWAP oracle surface comes from `univ4-router-v6`, while settlement truth rem
 
 - the hook must never create alternate treasury accounting
 - oracle failure should degrade toward the safer protocol path
+- a configured and initialized pool is not enough to route; market execution also requires live in-range liquidity
 - registry allowlisting and lock status are part of the security model
 - buy-side fallback and sell-side fallback are intentionally asymmetric
 - the registry may intentionally act as a pass-through data hook when no concrete buyback hook exists on that chain
 - a project's chosen hook remains sovereign once assigned
 - noop hook specs may carry diagnostics, but not funds
+- buyback-routed terminal tokens must be balance-conserving
 
 ## Modules
 
@@ -54,6 +56,7 @@ The first-ever `setDefaultHook` records a history segment mapping the projects t
 payment arrives
   -> hook estimates direct mint output
   -> hook estimates pool output from explicit quote metadata or TWAP-derived quoting
+  -> hook confirms the configured pool currently has in-range liquidity
   -> if pool wins, hook returns an active pay-hook spec and later executes the swap
   -> swapped tokens are burned and re-minted through the controller so reserved-rate semantics still apply
   -> if the swap fully fails, explicit caller minima still revert but oracle-derived minima can degrade to mint fallback
@@ -66,6 +69,8 @@ cash out requested
   -> if the caller set skip=true, the hook short-circuits to the protocol cash-out path (no pool quote, no swap)
        and still enforces any explicit minimum against the direct net reclaim
   -> otherwise hook compares protocol reclaim value with pool sell value
+  -> the protocol route only wins if the selected terminal can locally settle the gross direct reclaim
+  -> empty live liquidity, zero oracle liquidity, or max-impact quotes force the protocol path
   -> hook always returns sell-side diagnostics in metadata so preview clients can inspect the comparison
   -> if pool wins, hook maxes the cash-out tax so the terminal does not reclaim surplus directly
   -> after-cash-out callback remints the chosen token amount to itself and sells it
@@ -84,13 +89,17 @@ This repo owns route selection and swap execution logic. It does not own the can
 
 On the buy side, the hook uses the controller preview path to preserve beneficiary-versus-reserved-token semantics even when comparing against market quotes. On the sell side, hook metadata can describe the route comparison even when the hook leaves the protocol cash-out path unchanged.
 
+Cash-out pricing can include aggregate surplus from multiple terminals or remote revnet state, but the selected terminal still has to settle the direct reclaim from its own local surplus. The hook treats a direct reclaim that cannot settle locally as non-executable for route comparison, so a live AMM route can win even if aggregate direct reclaim is numerically higher.
+
 ## Security model
 
 - the danger is semantic drift between quote selection, slippage logic, and execution
 - buy and sell routing are not mirror images
 - explicit user minima and oracle-derived minima are not equivalent
+- live PoolManager liquidity and TWAP liquidity are both part of route safety
 - sell-side routing suppresses direct protocol reclaim only when the market path wins
 - reserved-rate preservation is a primary review target on the buy side
+- fee-on-transfer terminal tokens are outside the supported routing model; project-token balance-delta tests do not imply terminal-token FOT support
 
 ## Safe change guide
 
@@ -104,6 +113,8 @@ On the buy side, the hook uses the controller preview path to preserve beneficia
 
 - buy-side failure fallback and mint degradation:
   `test/regression/SwapFailureMintFallback.t.sol`
+- live-liquidity route selection:
+  `test/regression/CurrentLiquidityRouteSelection.t.sol`
 - sell-side metadata and callback safety:
   `test/regression/CashOutMetadataInflation.t.sol`
 - routing invariants across configurations:

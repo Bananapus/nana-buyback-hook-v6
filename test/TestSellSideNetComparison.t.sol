@@ -129,6 +129,7 @@ contract TestSellSideNetComparison is Test {
         vm.mockCall(
             address(terminal), abi.encodeWithSignature("feeFreeSurplusOf(uint256,address)"), abi.encode(uint256(0))
         );
+        _mockTerminalLocalSurplus(type(uint256).max);
 
         hook = new ForTest_NetComparison({
             directory: directory,
@@ -376,5 +377,19 @@ contract TestSellSideNetComparison is Test {
             beneficiaryIsFeeless: false,
             metadata: metadata
         });
+    }
+
+    function _mockTerminalLocalSurplus(uint256 surplus) internal {
+        address[] memory tokensToCheck = new address[](1);
+        tokensToCheck[0] = JBConstants.NATIVE_TOKEN;
+
+        vm.mockCall(
+            address(terminal),
+            abi.encodeCall(
+                IJBTerminal.currentSurplusOf,
+                (projectId, tokensToCheck, uint256(18), uint256(uint32(uint160(JBConstants.NATIVE_TOKEN))))
+            ),
+            abi.encode(surplus)
+        );
     }
 }
