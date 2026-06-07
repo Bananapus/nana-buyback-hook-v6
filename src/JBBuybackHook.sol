@@ -134,6 +134,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// quote safely.
     uint256 internal constant _MAX_TWAP_SLIPPAGE = 8800;
 
+    /// @notice The ABI length of pay metadata after appending the quoted swap amount (14 static words).
+    uint256 internal constant _PAY_METADATA_WITH_QUOTED_AMOUNT_LENGTH = 14 * 32;
+
     //*********************************************************************//
     // ----------------- public immutable stored properties --------------- //
     //*********************************************************************//
@@ -407,7 +410,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             IJBController controller,
             uint256 tokenCountWithoutHook,
             uint256 weightRatio
-        ) = abi.decode(context.hookMetadata, (bool, uint256, uint256, bool, IJBController, uint256, uint256));
+        ) = _payMetadataFor({hookMetadata: context.hookMetadata, forwardedAmount: context.forwardedAmount.value});
 
         // Cache the native token check to avoid repeated comparison (~50-100 gas).
         bool isNativeToken = context.forwardedAmount.token == JBConstants.NATIVE_TOKEN;
@@ -1157,7 +1160,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     poolId,
                     minimumBeneficiaryTokenCount,
                     minimumReservedTokenCount,
-                    rawSwapQuote
+                    rawSwapQuote,
+                    amountToSwapWith
                 )
             });
 
@@ -1366,6 +1370,116 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             (amountSpent, amountReceived) = abi.decode(result, (uint256, uint256));
         } catch {
             return (0, 0, true);
+        }
+    }
+
+    //*********************************************************************//
+    // ------------------------- internal helpers ------------------------ //
+    //*********************************************************************//
+
+    /// @notice Decode pay-hook metadata and normalize derived floors to the amount actually forwarded by the terminal.
+    /// @dev Same-terminal split pays can quote the destination payment gross, then forward the hook only the post-fee
+    /// net amount. Derived TWAP floors and issuance-rate price limits must scale down with that forwarded amount;
+    /// explicit user minima remain hard guarantees and are not scaled.
+    /// @param hookMetadata The metadata emitted by `beforePayRecordedWith`.
+    /// @param forwardedAmount The amount the terminal actually forwarded to `afterPayRecordedWith`.
+    /// @return projectTokenIs0 Whether the project token is currency0 in the configured pool.
+    /// @return amountToMintWith The non-swap payment amount that should still mint through the terminal path.
+    /// @return minimumSwapAmountOut The minimum output after any derived-floor normalization.
+    /// @return hasExplicitMinimumSwapAmountOut Whether the minimum came from caller metadata.
+    /// @return controller The controller used to mint and burn project tokens.
+    /// @return tokenCountWithoutHook The direct-mint token count for the forwarded swap amount.
+    /// @return weightRatio The currency conversion factor used for leftover minting.
+    function _payMetadataFor(
+        bytes calldata hookMetadata,
+        uint256 forwardedAmount
+    )
+        internal
+        pure
+        returns (
+            bool projectTokenIs0,
+            uint256 amountToMintWith,
+            uint256 minimumSwapAmountOut,
+            bool hasExplicitMinimumSwapAmountOut,
+            IJBController controller,
+            uint256 tokenCountWithoutHook,
+            uint256 weightRatio
+        )
+    {
+        uint256 quotedAmountToSwapWith;
+
+        if (hookMetadata.length >= _PAY_METADATA_WITH_QUOTED_AMOUNT_LENGTH) {
+            // The middle fields are preview-only diagnostics. Settlement only needs the original execution fields
+            // plus the trailing quoted amount that anchors same-terminal split normalization.
+            (
+                projectTokenIs0,
+                amountToMintWith,
+                minimumSwapAmountOut,
+                hasExplicitMinimumSwapAmountOut,
+                controller,
+                tokenCountWithoutHook,
+                weightRatio,,,,,,,
+                quotedAmountToSwapWith
+            ) =
+                abi.decode(
+                    hookMetadata,
+                    (
+                        bool,
+                        uint256,
+                        uint256,
+                        bool,
+                        IJBController,
+                        uint256,
+                        uint256,
+                        int24,
+                        uint128,
+                        PoolId,
+                        uint256,
+                        uint256,
+                        uint256,
+                        uint256
+                    )
+                );
+        } else {
+            (
+                projectTokenIs0,
+                amountToMintWith,
+                minimumSwapAmountOut,
+                hasExplicitMinimumSwapAmountOut,
+                controller,
+                tokenCountWithoutHook,
+                weightRatio
+            ) = abi.decode(hookMetadata, (bool, uint256, uint256, bool, IJBController, uint256, uint256));
+
+            // Older local tests and callers did not include the quoted amount. Treat their metadata as already
+            // matching the forwarded amount so legacy direct hook calls preserve their existing behavior.
+            quotedAmountToSwapWith = forwardedAmount;
+        }
+
+        // Nothing to normalize when the terminal forwarded exactly what the data hook quoted, or when a malformed
+        // legacy payload leaves no quote basis. Do not scale upward if a terminal ever forwards more than quoted.
+        if (quotedAmountToSwapWith == 0 || forwardedAmount >= quotedAmountToSwapWith) {
+            return (
+                projectTokenIs0,
+                amountToMintWith,
+                minimumSwapAmountOut,
+                hasExplicitMinimumSwapAmountOut,
+                controller,
+                tokenCountWithoutHook,
+                weightRatio
+            );
+        }
+
+        // The issuance-rate price limit is tied to the swap input. If core forwards less than was quoted, shrink
+        // the limit to the actual input so the AMM route still fills only while it beats direct minting.
+        tokenCountWithoutHook =
+            mulDiv({x: tokenCountWithoutHook, y: forwardedAmount, denominator: quotedAmountToSwapWith});
+
+        // Caller-specified minimums are settlement guarantees. Only oracle-derived floors are routing hints and can
+        // safely shrink with a same-terminal split fee.
+        if (!hasExplicitMinimumSwapAmountOut) {
+            minimumSwapAmountOut =
+                mulDiv({x: minimumSwapAmountOut, y: forwardedAmount, denominator: quotedAmountToSwapWith});
         }
     }
 

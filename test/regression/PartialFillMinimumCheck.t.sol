@@ -228,8 +228,7 @@ contract PFMC_PartialFillMinimumCheck is Test {
     }
 
     /// @dev Build the afterPay context for a native ETH payment.
-    /// hookMetadata encodes: (projectTokenIs0, amountToMintWith, minimumSwapAmountOut, hasExplicitMinimumSwapAmountOut,
-    /// controller, tokenCountWithoutHook)
+    /// hookMetadata uses the legacy 13-word pay preview tuple, without the trailing quoted swap amount.
     function _buildContext(
         uint256 payAmount,
         uint256 minimumSwapAmountOut,
@@ -275,6 +274,57 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 uint256(0),
                 uint256(0),
                 uint256(0)
+            ),
+            payerMetadata: ""
+        });
+    }
+
+    /// @dev Build metadata that records the original quoted swap amount separately from the terminal's forwarded net.
+    function _buildNetForwardedContext(
+        uint256 quotedPayAmount,
+        uint256 forwardedPayAmount,
+        uint256 minimumSwapAmountOut,
+        bool hasExplicitMinimumSwapAmountOut,
+        uint256 tokenCountWithoutHook
+    )
+        internal
+        view
+        returns (JBAfterPayRecordedContext memory)
+    {
+        return JBAfterPayRecordedContext({
+            payer: payer,
+            projectId: projectId,
+            rulesetId: 1,
+            amount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                value: quotedPayAmount
+            }),
+            forwardedAmount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                value: forwardedPayAmount
+            }),
+            weight: WEIGHT,
+            newlyIssuedTokenCount: 0,
+            beneficiary: beneficiary,
+            hookMetadata: abi.encode(
+                false, // Native ETH < any deployed token, so the project token is currency1.
+                uint256(0), // amountToMintWith
+                minimumSwapAmountOut,
+                hasExplicitMinimumSwapAmountOut,
+                controller,
+                tokenCountWithoutHook,
+                1e18,
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                uint256(0),
+                uint256(0),
+                quotedPayAmount
             ),
             payerMetadata: ""
         });
@@ -384,5 +434,65 @@ contract PFMC_PartialFillMinimumCheck is Test {
         hook.afterPayRecordedWith{value: payAmount}(ctx);
 
         assertTrue(mockPm.swapCalled(), "swap should have been called");
+    }
+
+    /// @notice Same-terminal split pay fees reduce the hook's forwarded amount; derived floors scale to that net.
+    /// A 1 ETH quote with a 1100-token derived floor becomes 0.975 ETH with a 1072.5-token derived floor.
+    function test_netForwardedSplit_scalesDerivedMinimum() public {
+        uint256 quotedPayAmount = 1 ether;
+        uint256 forwardedPayAmount = 0.975 ether;
+        uint256 quotedMinimumSwapAmountOut = 1100e18;
+        uint256 quotedTokenCountWithoutHook = 1000e18;
+        uint256 scaledSwapOut = 1_072_500e15;
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(-int128(uint128(forwardedPayAmount)), int128(uint128(scaledSwapOut)));
+        projectToken.mint(address(mockPm), scaledSwapOut);
+
+        JBAfterPayRecordedContext memory ctx = _buildNetForwardedContext({
+            quotedPayAmount: quotedPayAmount,
+            forwardedPayAmount: forwardedPayAmount,
+            minimumSwapAmountOut: quotedMinimumSwapAmountOut,
+            hasExplicitMinimumSwapAmountOut: false,
+            tokenCountWithoutHook: quotedTokenCountWithoutHook
+        });
+
+        vm.deal(address(terminal), forwardedPayAmount);
+        vm.prank(address(terminal));
+        hook.afterPayRecordedWith{value: forwardedPayAmount}(ctx);
+
+        assertTrue(mockPm.swapCalled(), "swap should have been called");
+    }
+
+    /// @notice User-specified floors are hard guarantees and are not scaled down for same-terminal split fees.
+    function test_netForwardedSplit_preservesExplicitMinimum() public {
+        uint256 quotedPayAmount = 1 ether;
+        uint256 forwardedPayAmount = 0.975 ether;
+        uint256 explicitMinimumSwapAmountOut = 1100e18;
+        uint256 quotedTokenCountWithoutHook = 1000e18;
+        uint256 scaledSwapOut = 1_072_500e15;
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(-int128(uint128(forwardedPayAmount)), int128(uint128(scaledSwapOut)));
+        projectToken.mint(address(mockPm), scaledSwapOut);
+
+        JBAfterPayRecordedContext memory ctx = _buildNetForwardedContext({
+            quotedPayAmount: quotedPayAmount,
+            forwardedPayAmount: forwardedPayAmount,
+            minimumSwapAmountOut: explicitMinimumSwapAmountOut,
+            hasExplicitMinimumSwapAmountOut: true,
+            tokenCountWithoutHook: quotedTokenCountWithoutHook
+        });
+
+        vm.deal(address(terminal), forwardedPayAmount);
+        vm.prank(address(terminal));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector,
+                scaledSwapOut,
+                explicitMinimumSwapAmountOut
+            )
+        );
+        hook.afterPayRecordedWith{value: forwardedPayAmount}(ctx);
     }
 }
