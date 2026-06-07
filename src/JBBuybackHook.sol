@@ -134,9 +134,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// quote safely.
     uint256 internal constant _MAX_TWAP_SLIPPAGE = 8800;
 
-    /// @notice The ABI length of pay metadata after appending the quoted swap amount (14 static words).
-    uint256 internal constant _PAY_METADATA_WITH_QUOTED_AMOUNT_LENGTH = 14 * 32;
-
     //*********************************************************************//
     // ----------------- public immutable stored properties --------------- //
     //*********************************************************************//
@@ -1408,56 +1405,40 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     {
         uint256 quotedAmountToSwapWith;
 
-        if (hookMetadata.length >= _PAY_METADATA_WITH_QUOTED_AMOUNT_LENGTH) {
-            // The middle fields are preview-only diagnostics. Settlement only needs the original execution fields
-            // plus the trailing quoted amount that anchors same-terminal split normalization.
-            (
-                projectTokenIs0,
-                amountToMintWith,
-                minimumSwapAmountOut,
-                hasExplicitMinimumSwapAmountOut,
-                controller,
-                tokenCountWithoutHook,
-                weightRatio,,,,,,,
-                quotedAmountToSwapWith
-            ) =
-                abi.decode(
-                    hookMetadata,
-                    (
-                        bool,
-                        uint256,
-                        uint256,
-                        bool,
-                        IJBController,
-                        uint256,
-                        uint256,
-                        int24,
-                        uint128,
-                        PoolId,
-                        uint256,
-                        uint256,
-                        uint256,
-                        uint256
-                    )
-                );
-        } else {
-            (
-                projectTokenIs0,
-                amountToMintWith,
-                minimumSwapAmountOut,
-                hasExplicitMinimumSwapAmountOut,
-                controller,
-                tokenCountWithoutHook,
-                weightRatio
-            ) = abi.decode(hookMetadata, (bool, uint256, uint256, bool, IJBController, uint256, uint256));
+        // The middle fields are preview-only diagnostics. Settlement only needs the execution fields plus the
+        // trailing quoted amount that anchors same-terminal split normalization.
+        (
+            projectTokenIs0,
+            amountToMintWith,
+            minimumSwapAmountOut,
+            hasExplicitMinimumSwapAmountOut,
+            controller,
+            tokenCountWithoutHook,
+            weightRatio,,,,,,,
+            quotedAmountToSwapWith
+        ) =
+            abi.decode(
+                hookMetadata,
+                (
+                    bool,
+                    uint256,
+                    uint256,
+                    bool,
+                    IJBController,
+                    uint256,
+                    uint256,
+                    int24,
+                    uint128,
+                    PoolId,
+                    uint256,
+                    uint256,
+                    uint256,
+                    uint256
+                )
+            );
 
-            // Older local tests and callers did not include the quoted amount. Treat their metadata as already
-            // matching the forwarded amount so legacy direct hook calls preserve their existing behavior.
-            quotedAmountToSwapWith = forwardedAmount;
-        }
-
-        // Nothing to normalize when the terminal forwarded exactly what the data hook quoted, or when a malformed
-        // legacy payload leaves no quote basis. Do not scale upward if a terminal ever forwards more than quoted.
+        // Nothing to normalize when the terminal forwarded exactly what the data hook quoted. Do not scale upward if a
+        // terminal ever forwards more than quoted.
         if (quotedAmountToSwapWith == 0 || forwardedAmount >= quotedAmountToSwapWith) {
             return (
                 projectTokenIs0,

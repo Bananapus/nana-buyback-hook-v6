@@ -311,7 +311,8 @@ contract TestRegressionGaps is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                payValue
             ),
             payerMetadata: ""
         });
@@ -1064,7 +1065,8 @@ contract TestRegressionGaps is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                payAmount
             ),
             payerMetadata: ""
         });
@@ -1117,7 +1119,8 @@ contract TestRegressionGaps is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                payAmount
             ),
             payerMetadata: ""
         });

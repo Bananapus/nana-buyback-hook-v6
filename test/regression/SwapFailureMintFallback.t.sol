@@ -263,7 +263,8 @@ contract SFMF_SwapFailureMintFallback is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                payAmount
             ),
             payerMetadata: ""
         });

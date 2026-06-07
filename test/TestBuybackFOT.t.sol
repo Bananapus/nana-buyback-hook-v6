@@ -309,7 +309,8 @@ contract TestBuybackFOT is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                payValue
             ),
             payerMetadata: ""
         });

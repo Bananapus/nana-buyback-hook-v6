@@ -228,7 +228,7 @@ contract PFMC_PartialFillMinimumCheck is Test {
     }
 
     /// @dev Build the afterPay context for a native ETH payment.
-    /// hookMetadata uses the legacy 13-word pay preview tuple, without the trailing quoted swap amount.
+    /// hookMetadata uses the canonical pay preview tuple, including the quoted swap amount.
     function _buildContext(
         uint256 payAmount,
         uint256 minimumSwapAmountOut,
@@ -273,7 +273,8 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                payAmount
             ),
             payerMetadata: ""
         });

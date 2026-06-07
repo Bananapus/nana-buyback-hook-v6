@@ -681,7 +681,8 @@ contract V4ForkTest is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                orderSize
             ),
             payerMetadata: ""
         });
@@ -750,7 +751,8 @@ contract V4ForkTest is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                orderSize
             ),
             payerMetadata: ""
         });

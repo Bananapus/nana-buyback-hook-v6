@@ -642,7 +642,8 @@ contract V4GeomeanSlippageForkTest is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                orderSize
             ),
             payerMetadata: ""
         });

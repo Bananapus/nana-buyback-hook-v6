@@ -260,7 +260,8 @@ contract RegressionFOTMintAccountingRegression is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                nominalPayment
             ),
             payerMetadata: ""
         });
