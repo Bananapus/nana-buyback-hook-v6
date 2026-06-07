@@ -41,6 +41,7 @@ Key dependencies:
 The buyback hook is used during Juicebox payment and cash-out flows. It:
 
 - compares native protocol economics against a Uniswap V4 route
+- requires live in-range pool liquidity before activating market routing
 - returns hook specs and routing hints
 - optionally executes swap-based fulfillment
 - falls back to native minting or cash-out when swap execution is unavailable or inferior
@@ -72,11 +73,14 @@ The registry governs which hook configuration a project uses.
    Preview logic, execution logic, and callback settlement must agree on direction, token roles, and minimum-return semantics.
 4. Registry trust is narrow.  
    Projects must not accidentally inherit an unsafe default hook or a hook whose expected external oracle or router is not actually set.
+5. Live liquidity gates market routing.
+   Warm oracle history or an initialized pool must not activate the AMM route when current in-range liquidity is zero or too thin for the proposed order.
 
 ## Attack surfaces
 
 - `beforePayRecordedWith` and `beforeCashOutRecordedWith`
 - quote computation and swap settlement deltas
+- zero-liquidity, dust-liquidity, and max-impact quote handling
 - registry defaults and project-specific override rules
 - fallback branches after failed external calls
 - sell-side execution after `MAX_CASH_OUT_TAX_RATE` routing, especially hard-failure behavior

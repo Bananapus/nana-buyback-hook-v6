@@ -12,14 +12,15 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 
 | Priority | Risk | Why it matters | Primary controls |
 |----------|------|----------------|------------------|
-| P0 | Wrong-route execution from stale estimates | If the hook mis-estimates protocol or pool output, users can be routed to a materially worse path. | Preview surfaces, TWAP-based pricing, try/catch fallbacks, and strict slippage floors. |
-| P1 | Same-pool recursion and composition complexity | Buyback composition with the V4 router creates deep call chains where an ordering bug can cascade. | Explicit recursion guards, fallback-to-mint behavior, and composition-focused tests. |
-| P1 | MEV around route selection | Buyback routing gives attackers an incentive to manipulate the comparison boundary, especially in low-liquidity or stale-price conditions. | TWAP use, slippage controls, and operational caution on thin markets. |
+| P0 | Wrong-route execution from stale estimates | If the hook mis-estimates protocol or pool output, users can be routed to a materially worse path. | Preview surfaces, TWAP-based pricing, live-liquidity checks, try/catch fallbacks, and strict slippage floors. |
+| P1 | Same-pool recursion and composition complexity | Buyback composition with the V4 router creates deep call chains where an ordering bug can cascade. | Explicit recursion guards, protocol fallback behavior, and composition-focused tests. |
+| P1 | MEV around route selection | Buyback routing gives attackers an incentive to manipulate the comparison boundary, especially in low-liquidity or stale-price conditions. | TWAP use, current-liquidity gating, slippage controls, and operational caution on thin markets. |
 
 ## 1. Trust assumptions
 
 - **Uniswap V4 PoolManager is trusted.** All swap settlement flows through it.
 - **The oracle hook is trusted.** TWAP integrity depends on the `hooks` field in the pool key and the configured `ORACLE_HOOK`.
+- **Current pool liquidity gates route activation.** Historical TWAP observations are advisory unless the PoolManager reports live in-range liquidity.
 - **Oracle failure degrades safely.** When `observe()` reverts, oracle-dependent flows return a zero quote and can fall back toward the protocol path.
 - **JB core contracts behave correctly.** The hook trusts `DIRECTORY`, `controller`, and token operations in core.
 - **Registry owner centralization is scoped.** The first-ever default hook applies to every project that already exists when it is set (so pre-existing, non-pinned projects resolve to it). After that, *changing* the default only affects projects created after the change (`projectId > defaultHookProjectIdThreshold`); earlier cohorts keep their creation-time default and a project can pin its own hook via `setHookFor`.
@@ -33,15 +34,17 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **Cross-currency weight ratios depend on `JBPrices`.** Bad or missing price feeds can route incorrectly or revert.
 - **`amountToSwapWith` defaults to the full payment.** Partial minting only happens through explicit metadata.
 - **Pool immutability is a tradeoff.** Once a pool is set for a project and terminal token, it cannot be changed.
+- **Drained or dust-liquidity pools degrade to protocol routing.** This is safer than activating an impossible AMM path, but it can surprise operators who only check initialization or historical observations.
 - **Pool key `hooks` is trusted owner input.** A project can point itself at a bad or malicious pool hook.
 - **Dynamic-fee pool LP fees can move between preview and execution.** Final minimum-output and price-limit checks still protect value.
 
 ## 3. MEV and sandwich risks
 
 - **There is a three-layer protection pipeline.** The hook combines explicit minima or TWAP floors, sigmoid slippage, and a `sqrtPriceLimit` circuit breaker.
-- **Sandwich attacks can force mint fallback.** When the circuit breaker trips, the intended result is mint fallback rather than silent overpayment.
+- **Sandwich attacks can force protocol fallback.** When the circuit breaker trips, the intended result is mint/direct-reclaim fallback rather than silent overpayment.
 - **TWAP manipulation is expensive but not impossible.** Risk is lower in deep pools and higher for large trades or thin markets.
-- **Oracle warmup creates a mint-only period for no-quote flows.** This is intentional. Explicit quote metadata can still use the swap path during warmup.
+- **Dust liquidity is treated as unsafe routing depth when impact reaches the max-impact guard.**
+- **Oracle warmup creates a protocol-only period for no-quote flows.** This is intentional. Explicit quote metadata can still use the swap path during warmup if live liquidity exists.
 - **Attackers can front-run the routing decision.** TWAP and explicit minima reduce the practical value of that manipulation but do not remove the incentive.
 
 ## 4. Composition with `JBUniswapV4Hook`
@@ -75,7 +78,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **`JBPrices` can revert.** Cross-currency buyback-routed payments then halt.
 - **Controller mint or burn can revert.** There is no fallback around that.
 - **`addToBalanceOf` can revert.** That can trap the flow after a failed swap.
-- **Pool state can become unusable.** If quotes collapse to zero, the hook can fall back to mint-only behavior.
+- **Pool state can become unusable.** If current liquidity is zero, liquidity is only dust, or quotes collapse to zero, the hook can fall back to protocol-only behavior.
 - **Gas exhaustion can force the fallback branch.** Explicit caller minima can still turn that failure into a revert.
 
 ## 8. Invariants to verify
@@ -90,19 +93,20 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - leftover accounting is delta-based
 - pool key immutability holds
 - token supply stays coherent through burn and re-mint paths
+- live PoolManager liquidity gates both TWAP-derived and explicit quote route activation
 - TWAP window bounds stay enforced
 - registry lock prevents later hook changes
 
 ## 9. Accepted behaviors
 
-### 9.1 Oracle warmup forces a mint-only period for no-quote flows
+### 9.1 Oracle warmup forces a protocol-only period for no-quote flows
 
-New pools lack enough observation history at first. During that period, oracle-dependent flows fall back to minting. This is intentional because the previous spot-price fallback was too easy to sandwich.
+New pools lack enough observation history at first. During that period, oracle-dependent flows fall back to minting on pay and direct reclaim on cash-out. This is intentional because the previous spot-price fallback was too easy to sandwich.
 Programmatic callers do not need an offchain quote after the oracle is warm: they can omit quote metadata, or pass a zero minimum in quote metadata, and the hook will derive the route from TWAP.
 
 ### 9.2 Pool immutability prevents migration to better liquidity
 
-Once a pool is set for a `(projectId, terminalToken)` pair, it cannot be changed. This reduces governance attack surface, but it also means a drained pool can leave the project in mint-only mode for that pair.
+Once a pool is set for a `(projectId, terminalToken)` pair, it cannot be changed. This reduces governance attack surface, but it also means a drained pool can leave the project in protocol-only mode for that pair.
 
 ### 9.3 Token cache cannot become stale
 
@@ -141,3 +145,7 @@ When the buyback hook routes a cash-out through the AMM sell path, the swap proc
 When the sell path wins and the terminal token is the native asset, `afterCashOutRecordedWith` delivers proceeds via `Address.sendValue(context.beneficiary, amountReceived)`. If the beneficiary is a contract whose `receive()` / `fallback()` reverts (multisig with unfunded fallback, contract with disabled receive, gas-stipend-overrunning logic), the entire cash-out tx atomically reverts. The holder retains their tokens — there is no fund loss — but the cash-out cannot complete through this beneficiary until the configuration is changed.
 
 This is intentional and mirrors the direct-cash-out path in `JBMultiTerminal`, which also uses `Address.sendValue` and reverts under the same conditions. Adding a fallback path in this hook (e.g. wrap-to-WETH or re-route to the holder) would create an asymmetry: the buyback path would be more lenient than the direct path that would otherwise have been used, making the routing decision affect whether a holder with a misconfigured beneficiary can cash out at all. The right cure is on the beneficiary side: ensure contract beneficiaries can accept native value (or use an ERC-20 terminal token where `safeTransfer` handles the delivery).
+
+### 9.10 Warm but drained pools degrade to the protocol path
+
+TWAP observations can remain warm after live in-range liquidity is removed. The hook checks current PoolManager liquidity before activating a pay or cash-out route, and treats zero liquidity or max-impact dust liquidity as a non-executable market path. Explicit minima still remain hard floors: if the direct protocol path cannot satisfy the floor, the call reverts instead of silently using an empty pool.

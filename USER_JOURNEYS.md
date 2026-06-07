@@ -51,7 +51,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 
 **Preconditions**
 - the project's hook and pool configuration are already registered
-- the oracle and pool state are usable enough for route comparison
+- the oracle, TWAP liquidity, and current in-range pool liquidity are usable enough for route comparison
 - caller minima and metadata are shaped for the path being attempted
 
 **Main Flow**
@@ -62,6 +62,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 
 **Failure Modes**
 - oracle failure or immature oracle history
+- initialized pools with zero or dust current liquidity
 - fee-on-transfer behavior breaks route assumptions
 - explicit caller minima fail or partial fills behave unexpectedly
 - default-hook expectations are misconfigured around the chosen path
@@ -77,6 +78,7 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 
 **Preconditions**
 - the project's buyback route is configured and live
+- live market liquidity exists when the holder expects pool execution
 - the holder understands the best exit may be protocol or market depending on conditions
 
 **Main Flow**
@@ -106,10 +108,12 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 **Main Flow**
 1. Monitor whether the referenced pool still reflects a sane market.
 2. Treat oracle degradation as a routing-risk event, not just an analytics issue.
-3. Revisit registry lock decisions only through the intended governance path.
+3. Monitor current in-range liquidity separately from historical TWAP liquidity.
+4. Revisit registry lock decisions only through the intended governance path.
 
 **Failure Modes**
 - the market stays live but no longer represents healthy execution
+- the pool has historical oracle observations but no live in-range liquidity
 - teams trust the presence of a pool more than the quality of its observations
 
 **Postconditions**

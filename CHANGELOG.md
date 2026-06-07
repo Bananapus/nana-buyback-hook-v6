@@ -2,7 +2,7 @@
 
 ## Scope
 
-This file describes the verified change from `nana-buyback-hook-v5` to the current `nana-buyback-hook-v6` repo.
+This file describes the verified v5-to-v6 delta for `nana-buyback-hook-v6`.
 
 ## Current v6 surface
 

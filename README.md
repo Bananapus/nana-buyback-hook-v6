@@ -12,7 +12,7 @@
 - [ADMINISTRATION.md](./ADMINISTRATION.md) — privileged surfaces, roles, irreversible actions, and recovery posture.
 - [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md) — scope, attack surfaces, and verification steps for auditors.
 - [SKILLS.md](./SKILLS.md) — quick-reference index for agents and contributors.
-- [CHANGELOG.md](./CHANGELOG.md) — verified v5 → v6 deltas and major-change notes.
+- [CHANGELOG.md](./CHANGELOG.md) — verified v5-to-v6 delta.
 - [STYLE_GUIDE.md](./STYLE_GUIDE.md) — Solidity and repo-layout conventions across the V6 ecosystem.
 - [references/operations.md](./references/operations.md) — configuration surface, change checklist, and common failure modes.
 - [references/runtime.md](./references/runtime.md) — contract roles, the runtime routing path, and high-risk areas.
@@ -22,7 +22,7 @@
 The hook is designed for projects that want a market-backed buyback surface without giving up Juicebox-native economics. On payment it can either:
 
 - mint through the terminal if the protocol path is better
-- swap through a Uniswap V4 pool if market execution is better
+- swap through a Uniswap V4 pool if market execution is better and the pool has live in-range liquidity
 
 On sell-side flows it makes the same comparison for cash outs. A companion registry controls which hook and pool a project uses and can lock that choice once configured.
 
@@ -70,6 +70,7 @@ Callers can shape the route through `JBMetadataResolver`-keyed entries in the te
 - this hook can fall back between market and protocol paths, so preview behavior is not the same as guaranteed execution
 - oracle-derived minima and caller-supplied minima have intentionally different failure behavior
 - pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is expensive
+- a configured and initialized pool is not enough to activate routing; the hook also requires current PoolManager liquidity and rejects dust/max-impact TWAP routes
 - registry configuration is part of the economic surface because it determines which hook and pool are even eligible
 - fee-on-transfer and partial-fill behavior are central threat-model concerns
 
@@ -123,6 +124,7 @@ script/
 ## Risks and notes
 
 - TWAP quality depends on the oracle hook having enough history and liquidity to be meaningful
+- current in-range PoolManager liquidity is checked separately from TWAP liquidity, so a warm but drained pool degrades to the protocol path
 - route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima
 - explicit cash-out minima are checked against conservative direct or noop bounds when terminal fee-free-surplus state is hidden
 - programmatic callers can omit quote metadata, or provide a zero minimum, and let the hook derive its route from TWAP

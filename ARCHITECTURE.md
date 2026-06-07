@@ -14,6 +14,7 @@ The TWAP oracle surface comes from `univ4-router-v6`, while settlement truth rem
 
 - the hook must never create alternate treasury accounting
 - oracle failure should degrade toward the safer protocol path
+- a configured and initialized pool is not enough to route; market execution also requires live in-range liquidity
 - registry allowlisting and lock status are part of the security model
 - buy-side fallback and sell-side fallback are intentionally asymmetric
 - the registry may intentionally act as a pass-through data hook when no concrete buyback hook exists on that chain
@@ -54,6 +55,7 @@ The first-ever `setDefaultHook` records a history segment mapping the projects t
 payment arrives
   -> hook estimates direct mint output
   -> hook estimates pool output from explicit quote metadata or TWAP-derived quoting
+  -> hook confirms the configured pool currently has in-range liquidity
   -> if pool wins, hook returns an active pay-hook spec and later executes the swap
   -> swapped tokens are burned and re-minted through the controller so reserved-rate semantics still apply
   -> if the swap fully fails, explicit caller minima still revert but oracle-derived minima can degrade to mint fallback
@@ -66,6 +68,7 @@ cash out requested
   -> if the caller set skip=true, the hook short-circuits to the protocol cash-out path (no pool quote, no swap)
        and still enforces any explicit minimum against the direct net reclaim
   -> otherwise hook compares protocol reclaim value with pool sell value
+  -> empty live liquidity, zero oracle liquidity, or max-impact quotes force the protocol path
   -> hook always returns sell-side diagnostics in metadata so preview clients can inspect the comparison
   -> if pool wins, hook maxes the cash-out tax so the terminal does not reclaim surplus directly
   -> after-cash-out callback remints the chosen token amount to itself and sells it
@@ -89,6 +92,7 @@ On the buy side, the hook uses the controller preview path to preserve beneficia
 - the danger is semantic drift between quote selection, slippage logic, and execution
 - buy and sell routing are not mirror images
 - explicit user minima and oracle-derived minima are not equivalent
+- live PoolManager liquidity and TWAP liquidity are both part of route safety
 - sell-side routing suppresses direct protocol reclaim only when the market path wins
 - reserved-rate preservation is a primary review target on the buy side
 
@@ -104,6 +108,8 @@ On the buy side, the hook uses the controller preview path to preserve beneficia
 
 - buy-side failure fallback and mint degradation:
   `test/regression/SwapFailureMintFallback.t.sol`
+- live-liquidity route selection:
+  `test/regression/CurrentLiquidityRouteSelection.t.sol`
 - sell-side metadata and callback safety:
   `test/regression/CashOutMetadataInflation.t.sol`
 - routing invariants across configurations:
