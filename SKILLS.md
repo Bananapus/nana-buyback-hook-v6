@@ -14,7 +14,7 @@
 | Registry and per-project hook selection | [`src/JBBuybackHookRegistry.sol`](./src/JBBuybackHookRegistry.sol) |
 | Runtime invariants and config gotchas | [`references/runtime.md`](./references/runtime.md), [`references/operations.md`](./references/operations.md) |
 | Swap and slippage helpers | [`src/libraries/`](./src/libraries/), [`src/interfaces/`](./src/interfaces/), [`src/structs/`](./src/structs/) |
-| Execution-path, oracle, and MEV coverage | [`test/V4BuybackHook.t.sol`](./test/V4BuybackHook.t.sol), [`test/TestOracleRevertBehavior.t.sol`](./test/TestOracleRevertBehavior.t.sol), [`test/MEVScenarios.t.sol`](./test/MEVScenarios.t.sol), [`test/JBBuybackHook_Regressions.t.sol`](./test/JBBuybackHook_Regressions.t.sol) |
+| Execution-path, oracle, liquidity, and MEV coverage | [`test/V4BuybackHook.t.sol`](./test/V4BuybackHook.t.sol), [`test/TestOracleRevertBehavior.t.sol`](./test/TestOracleRevertBehavior.t.sol), [`test/MEVScenarios.t.sol`](./test/MEVScenarios.t.sol), [`test/JBBuybackHook_Regressions.t.sol`](./test/JBBuybackHook_Regressions.t.sol), [`test/regression/CurrentLiquidityRouteSelection.t.sol`](./test/regression/CurrentLiquidityRouteSelection.t.sol) |
 | Registry, math, and edge-case coverage | [`test/Registry.t.sol`](./test/Registry.t.sol), [`test/JBSwapLib.t.sol`](./test/JBSwapLib.t.sol), [`test/CrossCurrency_Unit.t.sol`](./test/CrossCurrency_Unit.t.sol), [`test/TestBuybackFOT.t.sol`](./test/TestBuybackFOT.t.sol), [`test/TestRegressionGaps.sol`](./test/TestRegressionGaps.sol) |
 
 ## Repo map
@@ -41,6 +41,6 @@ Market-aware buyback hook for Juicebox V6. This repo compares protocol-native mi
 - The buy-side and sell-side paths are intentionally asymmetric. Re-check both before simplifying quote or callback handling.
 - `hookMetadata` can carry the sell count chosen during route selection, which may be smaller than the terminal's original `cashOutCount`.
 - Treat quote logic, fallback behavior, and oracle or TWAP assumptions as high-risk.
-- A configured pool is not enough by itself. Initialization, terminal-token normalization, and resolved-hook selection all affect whether the market path is actually live.
+- A configured pool is not enough by itself. Initialization, current in-range liquidity, terminal-token normalization, and resolved-hook selection all affect whether the market path is actually live.
 - Registry locking and allowed-hook policy are part of the threat model.
 - If you touch pool or hook assignment logic, check the lock path and allowed-hook constraints before calling the change safe.

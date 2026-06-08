@@ -255,6 +255,7 @@ contract RegressionFOTMintAccountingRegression is Test {
                 controller,
                 uint256(0),
                 1e18,
+                nominalPayment,
                 int24(0),
                 uint128(0),
                 bytes32(0),

@@ -12,7 +12,7 @@
 - [ADMINISTRATION.md](./ADMINISTRATION.md) — privileged surfaces, roles, irreversible actions, and recovery posture.
 - [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md) — scope, attack surfaces, and verification steps for auditors.
 - [SKILLS.md](./SKILLS.md) — quick-reference index for agents and contributors.
-- [CHANGELOG.md](./CHANGELOG.md) - verified V5 to V6 deltas.
+- [CHANGELOG.md](./CHANGELOG.md) — verified V5-to-V6 delta.
 - [STYLE_GUIDE.md](./STYLE_GUIDE.md) — Solidity and repo-layout conventions across the V6 ecosystem.
 - [references/operations.md](./references/operations.md) — configuration surface, change checklist, and common failure modes.
 - [references/runtime.md](./references/runtime.md) — contract roles, the runtime routing path, and high-risk areas.
@@ -22,13 +22,24 @@
 The hook is designed for projects that want a market-backed buyback surface without giving up Juicebox-native economics. On payment it can either:
 
 - mint through the terminal if the protocol path is better
-- swap through a Uniswap V4 pool if market execution is better
+- swap through a Uniswap V4 pool if market execution is better and the pool has live in-range liquidity
 
 On sell-side flows it makes the same comparison for cash outs. A companion registry controls which hook and pool a project uses and can lock that choice once configured.
 
 Use this repo when a project wants market-aware issuance and redemption routing. Do not use it when deterministic terminal-only economics are the goal.
 
 If the question is "how does the pool-side routing primitive work?" you may need to start in `univ4-router-v6` first. This repo is where Juicebox chooses whether to use that market path.
+
+## Token behavior assumptions
+
+Buyback routing assumes the terminal token is balance-conserving: transferring `N` terminal tokens moves exactly `N`
+terminal tokens. Native ETH and ordinary ERC-20s satisfy this. Fee-on-transfer, rebasing-on-transfer, or otherwise
+taxed terminal tokens are not a supported terminal-token configuration for this hook, because the hook route adds
+terminal-to-hook and hook-to-terminal/beneficiary transfers that the direct terminal path does not. Those extra
+transfers can make an otherwise safe market route settle below the direct Juicebox path.
+
+Fee-on-transfer project-token behavior is covered separately with balance-delta accounting tests. That coverage does
+not imply fee-on-transfer terminal tokens are safe to route through the buyback hook.
 
 ## Key contracts
 
@@ -53,6 +64,32 @@ Callers can shape the route through `JBMetadataResolver`-keyed entries in the te
 
 **Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle.
 
+When `beforePayRecordedWith` returns a `JBPayHookSpecification`, its `metadata` is the hook-internal settlement and
+preview payload consumed by `afterPayRecordedWith` and by router-terminal preview consumers:
+
+```solidity
+(
+  bool projectTokenIs0,
+  uint256 amountToMintWith,
+  uint256 minimumSwapAmountOut,
+  bool hasUserSpecifiedQuote,
+  IJBController controller,
+  uint256 tokenCountWithoutHook,
+  uint256 weightRatio,
+  uint256 quotedAmountToSwapWith,
+  int24 twapTick,
+  uint128 twapLiquidity,
+  PoolId poolId,
+  uint256 minimumBeneficiaryTokenCount,
+  uint256 minimumReservedTokenCount,
+  uint256 rawSwapQuote
+)
+```
+
+`quotedAmountToSwapWith` is the gross quoted swap amount. It lets `afterPayRecordedWith` scale oracle-derived floors
+and issuance-rate price limits when a same-terminal split forwards only a net post-fee amount. Explicit caller minima
+are settlement guarantees and are not scaled.
+
 **Sell side, key `"cashOut"`** — encodes `(uint256 minimumSwapAmountOut, bool skip)`:
 
 - `minimumSwapAmountOut` is a hard slippage floor on the net terminal-token output. It is a protection value, **not** a venue selector. A non-zero floor is enforced even when the hook falls back to the direct protocol cash-out.
@@ -70,8 +107,9 @@ Callers can shape the route through `JBMetadataResolver`-keyed entries in the te
 - this hook can fall back between market and protocol paths, so preview behavior is not the same as guaranteed execution
 - oracle-derived minima and caller-supplied minima have intentionally different failure behavior
 - pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is expensive
+- a configured and initialized pool is not enough to activate routing; the hook also requires current PoolManager liquidity and rejects dust/max-impact TWAP routes
 - registry configuration is part of the economic surface because it determines which hook and pool are even eligible
-- fee-on-transfer and partial-fill behavior are central threat-model concerns
+- fee-on-transfer terminal tokens are not supported for buyback routing; partial-fill behavior remains a central threat-model concern
 
 ## Where state lives
 
@@ -123,16 +161,17 @@ script/
 ## Risks and notes
 
 - TWAP quality depends on the oracle hook having enough history and liquidity to be meaningful
+- current in-range PoolManager liquidity is checked separately from TWAP liquidity, so a warm but drained pool degrades to the protocol path
 - route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima
 - explicit cash-out minima are checked against conservative direct or noop bounds when terminal fee-free-surplus state is hidden
 - programmatic callers can omit quote metadata, or provide a zero minimum, and let the hook derive its route from TWAP
 - hook configuration should usually be locked after validation, and pool choices should be treated as sticky once set
-- fee-on-transfer and partial-fill behaviors are part of the main threat model
+- fee-on-transfer project-token behavior and partial fills are tested, but fee-on-transfer terminal tokens must not be configured for buyback routing
 
 ## For AI agents
 
 - Treat this repo as a route selector between Juicebox-native and market-native execution.
 - If the question is about pool swap mechanics or oracle observations, move to `univ4-router-v6`.
-- Use the registry tests and FOT/partial-fill tests before claiming a path is safe or deterministic.
+- Use the registry tests and FOT/partial-fill tests before claiming a path is safe or deterministic. Do not infer terminal-token FOT support from those tests.
 
 When a project wants the market to set the price but never wants to lose to it, reach for this hook.

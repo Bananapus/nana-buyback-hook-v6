@@ -637,6 +637,7 @@ contract V4GeomeanSlippageForkTest is Test {
                 controller,
                 uint256(0),
                 1e18,
+                orderSize,
                 int24(0),
                 uint128(0),
                 bytes32(0),
