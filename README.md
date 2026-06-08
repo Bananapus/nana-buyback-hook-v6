@@ -12,7 +12,7 @@
 - [ADMINISTRATION.md](./ADMINISTRATION.md) — privileged surfaces, roles, irreversible actions, and recovery posture.
 - [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md) — scope, attack surfaces, and verification steps for auditors.
 - [SKILLS.md](./SKILLS.md) — quick-reference index for agents and contributors.
-- [CHANGELOG.md](./CHANGELOG.md) — verified v5-to-v6 delta.
+- [CHANGELOG.md](./CHANGELOG.md) — verified V5-to-V6 delta.
 - [STYLE_GUIDE.md](./STYLE_GUIDE.md) — Solidity and repo-layout conventions across the V6 ecosystem.
 - [references/operations.md](./references/operations.md) — configuration surface, change checklist, and common failure modes.
 - [references/runtime.md](./references/runtime.md) — contract roles, the runtime routing path, and high-risk areas.
