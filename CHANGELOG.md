@@ -12,6 +12,36 @@ This file describes the verified v5-to-v6 delta for `nana-buyback-hook-v6`.
 - `IJBBuybackHookRegistry`
 - `JBSwapLib`
 
+## 0.0.70 — require live liquidity for buyback routing
+
+- Buy-side AMM routing now requires both a configured pool and current in-range PoolManager liquidity. A warm TWAP alone
+  cannot activate routing if the pool is drained, and max-impact or max-slippage TWAP quotes fall back to the protocol
+  mint path.
+- Sell-side route selection now checks whether the selected terminal can locally settle the direct cash-out reclaim.
+  Aggregate surplus can price the direct reclaim, but a terminal with insufficient local surplus cannot win over an
+  executable AMM route solely because the aggregate reclaim is numerically higher.
+- Pay hook specification metadata is now the canonical 14-field payload:
+  `(bool projectTokenIs0, uint256 amountToMintWith, uint256 minimumSwapAmountOut, bool hasUserSpecifiedQuote, IJBController controller, uint256 tokenCountWithoutHook, uint256 weightRatio, uint256 quotedAmountToSwapWith, int24 twapTick, uint128 twapLiquidity, PoolId poolId, uint256 minimumBeneficiaryTokenCount, uint256 minimumReservedTokenCount, uint256 rawSwapQuote)`.
+  The new `quotedAmountToSwapWith` slot anchors same-terminal split normalization, allowing
+  `afterPayRecordedWith` to scale oracle-derived floors and issuance-rate price limits when only a net post-fee amount is
+  forwarded. Explicit caller minima are not scaled.
+- The caller-provided `"pay"` metadata payload remains `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)`.
+  The caller-provided `"cashOut"` metadata payload remains `(uint256 minimumSwapAmountOut, bool skip)`.
+- `package.json`: version 0.0.69 -> 0.0.70.
+
+## 0.0.69 — normalize documentation and NatSpec style
+
+- Normalize README, reference docs, comments, NatSpec, and heading case to the V6 ecosystem house style.
+- No runtime behavior, ABI, storage, or metadata-layout changes.
+- `package.json`: version 0.0.68 -> 0.0.69.
+
+## 0.0.68 — align dependency floors with core fee attribution removal
+
+- Raise `@bananapus/core-v6` to `^0.0.81` and `@bananapus/univ4-router-v6` to `^0.0.51` so this package consumes the
+  current V6 core/router fee-attribution surface.
+- No source, ABI, storage, or metadata-layout changes in this package.
+- `package.json`: version 0.0.67 -> 0.0.68.
+
 ## 0.0.67 — raise dependency floors; document conventions in the style guide
 
 - Raise dependency floors to the latest published versions.
@@ -91,8 +121,8 @@ consumers do not need to re-bump for correctness (only to pick up the gas saving
 
 Renamed the two caller-provided metadata purpose strings to match the lifecycle-phase convention used by the 721 hook (`"pay"` / `"cashOut"`), so a project that stacks multiple data hooks reads one consistent key per phase.
 
-- Buy side: `getId("quote")` → `getId("pay")` (read in `JBBuybackHook.beforePayRecordedWith`; rekeyed by `JBBuybackHookRegistry.beforePayRecordedWith`). Payload unchanged: `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)`.
-- Sell side: `getId("cashOutMinReclaimed")` → `getId("cashOut")` (read in `JBBuybackHook.beforeCashOutRecordedWith`; rekeyed by `JBBuybackHookRegistry.beforeCashOutRecordedWith`). Payload unchanged: `(uint256 minimumSwapAmountOut, bool skip)`.
+- Buy side: `getId("quote")` -> `getId("pay")` (read in `JBBuybackHook.beforePayRecordedWith`; rekeyed by `JBBuybackHookRegistry.beforePayRecordedWith`). Caller-provided payload unchanged: `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)`.
+- Sell side: `getId("cashOutMinReclaimed")` -> `getId("cashOut")` (read in `JBBuybackHook.beforeCashOutRecordedWith`; rekeyed by `JBBuybackHookRegistry.beforeCashOutRecordedWith`). Caller-provided payload unchanged: `(uint256 minimumSwapAmountOut, bool skip)`.
 - **Breaking metadata-key change** (acceptable pre-deploy): every off-chain client and consumer contract that builds buyback metadata must use the new purpose strings. Each lifecycle phase reads exactly one purpose, so the phase-based names collide with nothing. Registry rekey, NatSpec, README/ARCHITECTURE/INVARIANTS/USER_JOURNEYS, and all tests updated; the registry's internal id variables renamed (`registryPayId`/`hookPayId`, `registryCashOutId`/`hookCashOutId`).
 - `package.json`: version 0.0.62 -> 0.0.63.
 

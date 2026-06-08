@@ -64,9 +64,31 @@ Callers can shape the route through `JBMetadataResolver`-keyed entries in the te
 
 **Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle.
 
-The hook's pay preview metadata includes the gross quoted swap amount with the settlement fields so
-`afterPayRecordedWith` can scale oracle-derived floors when a same-terminal split forwards the hook a net post-fee
-amount. Explicit caller minima are not scaled.
+When `beforePayRecordedWith` returns a `JBPayHookSpecification`, its `metadata` is the hook-internal settlement and
+preview payload consumed by `afterPayRecordedWith` and by router-terminal preview consumers:
+
+```solidity
+(
+  bool projectTokenIs0,
+  uint256 amountToMintWith,
+  uint256 minimumSwapAmountOut,
+  bool hasUserSpecifiedQuote,
+  IJBController controller,
+  uint256 tokenCountWithoutHook,
+  uint256 weightRatio,
+  uint256 quotedAmountToSwapWith,
+  int24 twapTick,
+  uint128 twapLiquidity,
+  PoolId poolId,
+  uint256 minimumBeneficiaryTokenCount,
+  uint256 minimumReservedTokenCount,
+  uint256 rawSwapQuote
+)
+```
+
+`quotedAmountToSwapWith` is the gross quoted swap amount. It lets `afterPayRecordedWith` scale oracle-derived floors
+and issuance-rate price limits when a same-terminal split forwards only a net post-fee amount. Explicit caller minima
+are settlement guarantees and are not scaled.
 
 **Sell side, key `"cashOut"`** — encodes `(uint256 minimumSwapAmountOut, bool skip)`:
 
