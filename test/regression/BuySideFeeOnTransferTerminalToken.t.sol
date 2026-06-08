@@ -21,7 +21,7 @@ import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {MockOracleHook} from "test/mock/MockOracleHook.sol";
 import {MockPoolManager} from "test/mock/MockPoolManager.sol";
 
-contract AuditFeeOnTransferTerminalToken is ERC20 {
+contract FeeOnTransferTerminalToken is ERC20 {
     uint256 internal constant FEE_BPS = 1000;
     uint256 internal constant BPS = 10_000;
 
@@ -43,7 +43,7 @@ contract AuditFeeOnTransferTerminalToken is ERC20 {
     }
 }
 
-contract AuditController {
+contract StubController {
     uint256 public minted;
     address public mintBeneficiary;
 
@@ -63,10 +63,10 @@ contract AuditController {
     }
 }
 
-contract AuditTerminal {
-    AuditFeeOnTransferTerminalToken public immutable token;
+contract StubTerminal {
+    FeeOnTransferTerminalToken public immutable token;
 
-    constructor(AuditFeeOnTransferTerminalToken token_) {
+    constructor(FeeOnTransferTerminalToken token_) {
         token = token_;
     }
 
@@ -81,16 +81,16 @@ contract AuditTerminal {
     }
 }
 
-contract CodexNemesisBuySideFotTerminalTokenTest is Test {
+contract BuySideFeeOnTransferTerminalTokenTest is Test {
     uint256 internal constant PROJECT_ID = 1;
     uint256 internal constant ACCEPTED_AMOUNT = 100 ether;
 
     JBBuybackHook internal hook;
     MockPoolManager internal poolManager;
     MockOracleHook internal oracleHook;
-    AuditFeeOnTransferTerminalToken internal token;
-    AuditTerminal internal terminal;
-    AuditController internal controller;
+    FeeOnTransferTerminalToken internal token;
+    StubTerminal internal terminal;
+    StubController internal controller;
 
     IJBDirectory internal directory = IJBDirectory(makeAddr("directory"));
     IJBPermissions internal permissions = IJBPermissions(makeAddr("permissions"));
@@ -103,9 +103,9 @@ contract CodexNemesisBuySideFotTerminalTokenTest is Test {
     function setUp() public {
         poolManager = new MockPoolManager();
         oracleHook = new MockOracleHook();
-        token = new AuditFeeOnTransferTerminalToken();
-        terminal = new AuditTerminal(token);
-        controller = new AuditController();
+        token = new FeeOnTransferTerminalToken();
+        terminal = new StubTerminal(token);
+        controller = new StubController();
 
         vm.etch(address(directory), "0x01");
         vm.etch(address(permissions), "0x01");
