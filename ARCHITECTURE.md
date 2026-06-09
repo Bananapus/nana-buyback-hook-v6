@@ -56,11 +56,14 @@ The first-ever `setDefaultHook` records a history segment mapping the projects t
 payment arrives
   -> hook estimates direct mint output
   -> hook estimates pool output from explicit quote metadata or TWAP-derived quoting
+  -> if the pool has live liquidity but no usable TWAP liquidity yet, a bounded bootstrap quote can price the first buy
   -> hook confirms the configured pool currently has in-range liquidity
   -> if pool wins, hook returns an active pay-hook spec and later executes the swap
   -> swapped tokens are burned and re-minted through the controller so reserved-rate semantics still apply
   -> if the swap fully fails, explicit caller minima still revert but oracle-derived minima can degrade to mint fallback
 ```
+
+The cold-start bootstrap path is buy-side only. It exists because the V4 oracle can have an initialized observation but still lack usable full-window TWAP liquidity for a freshly seeded pool. The fallback is deliberately narrow: zero TWAP liquidity, non-zero live liquidity, the configured oracle hook, and a 5% impact cap. The live LP fee is folded into the bootstrap discount, which is 3% plus LP fee plus rounded-up estimated impact. If the fee-adjusted quote still beats issuance, the route can use the AMM; if it does not, or if the discount consumes the quote, the payment mints. If the oracle returns a valid mean tick, the hook uses that tick instead of raw slot0. Raw slot0 is only used when the configured oracle hook cannot provide a quote. Cold-start derived quotes select the route for no-quote pays; the active hook spec encodes the issuance-rate execution floor so a successful underfill below the internal bootstrap quote does not brick the payment.
 
 ### Sell side
 
@@ -97,6 +100,8 @@ Cash-out pricing can include aggregate surplus from multiple terminals or remote
 - buy and sell routing are not mirror images
 - explicit user minima and oracle-derived minima are not equivalent
 - live PoolManager liquidity and TWAP liquidity are both part of route safety
+- cold-start bootstrap routing is only a buy-side path; sell-side market routing remains TWAP-only
+- seeded buy-side ranges must cover the current tick and upward price movement, because buybacks buy the project token
 - sell-side routing suppresses direct protocol reclaim only when the market path wins
 - reserved-rate preservation is a primary review target on the buy side
 - fee-on-transfer terminal tokens are outside the supported routing model; project-token balance-delta tests do not imply terminal-token FOT support
@@ -113,6 +118,8 @@ Cash-out pricing can include aggregate surplus from multiple terminals or remote
 
 - buy-side failure fallback and mint degradation:
   `test/regression/SwapFailureMintFallback.t.sol`
+- cold-start buy-side bootstrap and warm-pool regression:
+  `test/regression/ColdStartSpotFallback.t.sol`
 - live-liquidity route selection:
   `test/regression/CurrentLiquidityRouteSelection.t.sol`
 - sell-side metadata and callback safety:
@@ -125,6 +132,7 @@ Cash-out pricing can include aggregate surplus from multiple terminals or remote
 - `src/JBBuybackHook.sol`
 - `src/JBBuybackHookRegistry.sol`
 - `src/libraries/JBSwapLib.sol`
+- `test/regression/ColdStartSpotFallback.t.sol`
 - `test/regression/SwapFailureMintFallback.t.sol`
 - `test/regression/CashOutMetadataInflation.t.sol`
 - `test/invariant/BuybackHookInvariant.t.sol`

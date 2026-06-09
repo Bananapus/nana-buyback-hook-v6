@@ -14,7 +14,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 |----------|------|----------------|------------------|
 | P0 | Wrong-route execution from stale estimates | If the hook mis-estimates protocol or pool output, users can be routed to a materially worse path. | Preview surfaces, TWAP-based pricing, live-liquidity checks, try/catch fallbacks, and strict slippage floors. |
 | P1 | Same-pool recursion and composition complexity | Buyback composition with the V4 router creates deep call chains where an ordering bug can cascade. | Explicit recursion guards, protocol fallback behavior, and composition-focused tests. |
-| P1 | MEV around route selection | Buyback routing gives attackers an incentive to manipulate the comparison boundary, especially in low-liquidity or stale-price conditions. | TWAP use, current-liquidity gating, slippage controls, and operational caution on thin markets. |
+| P1 | MEV around route selection | Buyback routing gives attackers an incentive to manipulate the comparison boundary, especially in low-liquidity, cold-start, or stale-price conditions. | TWAP use, current-liquidity gating, cold-start guardrails, slippage controls, and operational caution on thin markets. |
 | P1 | Non-balance-conserving terminal tokens | Fee-on-transfer or rebasing-on-transfer terminal tokens can make the hook route observe different value than the direct terminal path. | Do not configure taxed terminal tokens for buyback routing; use native ETH or ordinary ERC-20 terminal tokens. |
 
 ## 1. Trust assumptions
@@ -36,6 +36,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **`amountToSwapWith` defaults to the full payment.** Partial minting only happens through explicit metadata.
 - **Pool immutability is a tradeoff.** Once a pool is set for a project and terminal token, it cannot be changed.
 - **Drained or dust-liquidity pools degrade to protocol routing.** This is safer than activating an impossible AMM path, but it can surprise operators who only check initialization or historical observations.
+- **Freshly seeded pools can use a bounded bootstrap quote on the buy side.** This is an exception for pools with live liquidity but no usable TWAP liquidity. The sell side remains TWAP-only.
 - **Direct cash-out comparison requires local settlement.** Aggregate or cross-chain surplus can price a direct reclaim that the selected terminal cannot locally pay. The hook only lets direct reclaim beat a live AMM route when the selected terminal can settle the gross direct amount.
 - **Pool key `hooks` is trusted owner input.** A project can point itself at a bad or malicious pool hook.
 - **Dynamic-fee pool LP fees can move between preview and execution.** Final minimum-output and price-limit checks still protect value.
@@ -45,8 +46,9 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **There is a three-layer protection pipeline.** The hook combines explicit minima or TWAP floors, sigmoid slippage, and a `sqrtPriceLimit` circuit breaker.
 - **Sandwich attacks can force protocol fallback.** When the circuit breaker trips, the intended result is mint/direct-reclaim fallback rather than silent overpayment.
 - **TWAP manipulation is expensive but not impossible.** Risk is lower in deep pools and higher for large trades or thin markets.
+- **Cold-start spot is manipulable.** The buy side only uses raw slot0 while TWAP liquidity is zero, the pool uses the configured oracle hook, and the oracle cannot provide a quote. The hook returns to issuance routing for quotes above the 5% impact cap or fee-adjusted quotes that do not beat issuance, and discounts accepted quotes by 3% plus LP fee plus rounded-up estimated impact. The execution path still uses the issuance-rate price limit and mints leftover input.
 - **Dust liquidity is treated as unsafe routing depth when impact reaches the max-impact guard.**
-- **Oracle warmup creates a protocol-only period for no-quote flows.** This is intentional. Explicit quote metadata can still use the swap path during warmup if live liquidity exists.
+- **Oracle warmup creates a special buy-side bootstrap state.** No-quote pay flows can use a bounded bootstrap quote when live liquidity exists and the caps pass. Cash-outs and rejected cold-start quotes still fall back to the protocol path.
 - **Attackers can front-run the routing decision.** TWAP and explicit minima reduce the practical value of that manipulation but do not remove the incentive.
 
 ## 4. Composition with `JBUniswapV4Hook`
@@ -55,7 +57,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **Reentrancy path matters.** Router-hook recursion is blocked by the `_routing` guard in `JBUniswapV4Hook`.
 - **`hookData` format is intentional.** `abi.encode(uint256(0))` delegates minimum-output enforcement to the V4 hook's own routing floor.
 - **Double fallback exists by design.** If the swap path cannot execute safely, the buyback hook catches the failure and falls back to minting on the buy side.
-- **Oracle warmup interacts with composition.** During early pool life, both layers degrade conservatively rather than falling back to unsafe spot behavior.
+- **Oracle warmup interacts with composition.** During early pool life, buy-side routing may use a bounded bootstrap quote to create the first AMM trade, while sell-side routing and TWAP protection floors remain conservative.
 
 ## 5. Multi-pool risks
 
@@ -81,6 +83,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **Controller mint or burn can revert.** There is no fallback around that.
 - **`addToBalanceOf` can revert.** That can trap the flow after a failed swap.
 - **Pool state can become unusable.** If current liquidity is zero, liquidity is only dust, or quotes collapse to zero, the hook can fall back to protocol-only behavior.
+- **Seeded liquidity can be positioned on the wrong side.** Buybacks buy the project token and move price upward, so a seed range that only sits below the current tick can still leave the market path non-executable after routing starts.
 - **Fee-on-transfer terminal tokens are unsupported.** The hook does not compensate for terminal-token transfer taxes because doing so would either under-deliver versus direct execution or over-mint/over-pay against value the project did not receive.
 - **Gas exhaustion can force the fallback branch.** Explicit caller minima can still turn that failure into a revert.
 
@@ -92,6 +95,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
   does not buy on a partial sell-side fill
 - cash-out sell count matches data-hook intent, not necessarily the terminal's full original count
 - swap fallback to mint works correctly on the buy side
+- cold-start no-quote floors cannot brick a successful buy-side swap underfill
 - there is no value extraction gap between swap boundary and mint rate
 - leftover accounting is delta-based
 - terminal tokens configured for buyback routing are balance-conserving
@@ -104,9 +108,12 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 
 ## 9. Accepted behaviors
 
-### 9.1 Oracle warmup forces a protocol-only period for no-quote flows
+### 9.1 Oracle warmup exposes a bounded buy-side bootstrap path
 
-New pools lack enough observation history at first. During that period, oracle-dependent flows fall back to minting on pay and direct reclaim on cash-out. This is intentional because the previous spot-price fallback was too easy to sandwich.
+New pools can lack enough observation history even after the router hook initializes its first oracle observation. During that period, a no-quote pay can use a bounded bootstrap quote if the pool has live in-range liquidity, uses the configured oracle hook, and passes the cold-start guardrails. The returned pay metadata includes `oracleUnseeded == true`, so preview clients can label the pool as seeded but not TWAP-discovered yet.
+
+This is not a general spot-price route. It is buy-side only, cold-start only, capped by impact, and discounted by live LP fee before comparison. If a valid oracle tick is available, the hook uses it instead of raw slot0. If the guardrails reject the quote, the pay mints through the protocol path. When the cold-start route is active, the emitted no-quote execution floor is the issuance-rate amount rather than the internal bootstrap quote. Cash-out routing remains TWAP-only during warmup.
+
 Programmatic callers do not need an offchain quote after the oracle is warm: they can omit quote metadata, or pass a zero minimum in quote metadata, and the hook will derive the route from TWAP.
 
 ### 9.2 Pool immutability prevents migration to better liquidity
