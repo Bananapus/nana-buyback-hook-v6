@@ -62,6 +62,29 @@ Operational bugs often come from the second part. Economic bugs often come from 
 
 Callers can shape the route through `JBMetadataResolver`-keyed entries in the terminal's `metadata` argument. Address the entry to the hook (or to the registry, which rekeys it to the resolved hook).
 
+### Building the metadata bytes
+
+An entry's id is `getId(purpose, target)`. The single-arg `getId(purpose)` resolves `target` to `address(this)`, so an
+**external** caller must use the two-arg form keyed to the hook (or to the registry, which rekeys forwarded metadata to
+the resolved hook) — keying it to your own address produces an id the hook will never read. `addToMetadata` then packs
+the id-keyed, 32-byte-padded data into the `metadata` bytes you pass to `pay(...)`:
+
+```solidity
+import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
+
+// `buybackHook` is the JBBuybackHook (or the registry, which rekeys to the resolved hook).
+bytes4 payId = JBMetadataResolver.getId("pay", address(buybackHook));
+
+// Buy side: (amountToSwapWith, minimumSwapAmountOut). abi.encode pads to 32-byte words.
+bytes memory data = abi.encode(amountToSwapWith, minimumSwapAmountOut);
+
+// Append the entry to any existing metadata (pass "" if you have none).
+bytes memory metadata = JBMetadataResolver.addToMetadata(existingMetadata, payId, data);
+
+// metadata is now ready to forward to terminal.pay(...). For the sell side, swap the key for
+// "cashOut" and encode (uint256 minimumSwapAmountOut, bool skip) before cashOutTokensOf(...).
+```
+
 **Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle.
 
 When `beforePayRecordedWith` returns a `JBPayHookSpecification`, its `metadata` is the hook-internal settlement and
