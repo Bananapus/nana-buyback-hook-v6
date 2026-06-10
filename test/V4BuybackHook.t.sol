@@ -1364,13 +1364,22 @@ contract V4BuybackHookTest is Test {
         assertEq(weightRatio, 1e18, "weightRatio should be 10^18 for same-currency payment");
         assertEq(quotedAmountToSwapWith, amountToSwapWith, "quotedAmountToSwapWith should match the pay quote");
 
-        // Verify fields 7-8: explicit payer quotes skip TWAP lookup, so diagnostics remain zeroed.
-        assertEq(twapTick, int24(0), "twapTick should be zero when TWAP is skipped");
-        assertEq(twapLiquidity, 0, "twapLiquidity should be zero when TWAP is skipped");
+        // Verify fields 7-8: explicit payer quotes preserve the caller's floor while still surfacing diagnostics.
+        assertEq(twapTick, int24(0), "twapTick should match the oracle tick");
+        assertGt(twapLiquidity, 0, "twapLiquidity should report warm oracle liquidity");
 
         // Verify field 8: poolId (should match the configured pool).
         assertEq(PoolId.unwrap(decodedPoolId), PoolId.unwrap(poolKey.toId()), "poolId should match configured pool");
-        assertEq(rawSwapQuote, 0, "rawSwapQuote should be zero when TWAP is skipped");
+        assertEq(
+            rawSwapQuote,
+            JBSwapLib.getQuoteAtTick({
+                tick: twapTick,
+                baseAmount: uint128(amountToSwapWith),
+                baseToken: address(0),
+                quoteToken: address(projectToken)
+            }),
+            "rawSwapQuote should report the diagnostic oracle quote"
+        );
 
         // Verify fields 9-10: minimum beneficiary/reserved split for the swap path.
         (uint256 expectedBeneficiaryTokenCount, uint256 expectedReservedTokenCount) = controller.previewMintOf({

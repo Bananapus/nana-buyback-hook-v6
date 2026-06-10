@@ -374,11 +374,11 @@ contract V4RealOracleForkTest is Test {
 
     /// @notice Mock oracle returns valid tickCumulatives but
     ///         secondsPerLiquidityCumulativeX128s[0] == secondsPerLiquidityCumulativeX128s[1]
-    ///         (delta = 0). This makes harmonicMeanLiquidity = 0, which causes _getQuote to
-    ///         return 0, triggering the mint fallback.
+    ///         (delta = 0). This makes harmonicMeanLiquidity = 0, so buy-side routing can use the
+    ///         bounded cold-start bootstrap path when live liquidity exists.
     function test_fork_OracleHarmonicMeanLiquidityZero() public {
         console.log("");
-        console.log("====== TEST 3: ORACLE HARMONIC MEAN LIQUIDITY = 0 -> MINT ======");
+        console.log("====== TEST 3: ORACLE HARMONIC MEAN LIQUIDITY = 0 -> COLD START ======");
         console.log("");
 
         uint256 projectId = _nextProjectId();
@@ -412,7 +412,7 @@ contract V4RealOracleForkTest is Test {
         assertGt(libAmountOut, 0, "Library should still compute a quote from tick cumulatives");
         assertEq(libHarmonicMeanLiquidity, 0, "Harmonic mean liquidity must be 0 when delta is 0");
 
-        // Now test the hook-level behavior: _getQuote returns 0 when harmonicMeanLiquidity = 0.
+        // Now test the hook-level behavior: buy-side _getQuote may bootstrap when harmonicMeanLiquidity = 0.
         JBBeforePayRecordedContext memory ctx = JBBeforePayRecordedContext({
             terminal: address(terminal),
             payer: payer,
@@ -436,12 +436,12 @@ contract V4RealOracleForkTest is Test {
         console.log("  weight returned: %s", _toString(weight));
         console.log("  hookSpecs length: %s", _toString(hookSpecs.length));
 
-        // With no TWAP minimum (harmonicMeanLiquidity = 0 triggers _getQuote returning 0),
-        // and no payer quote, the hook falls through to minting.
-        assertGt(weight, 0, "Weight must be > 0 (mint path) when oracle liquidity is zero");
-        assertEq(hookSpecs.length, 1, "Mint fallback should still surface noop diagnostics when a pool is configured");
-        assertTrue(hookSpecs[0].noop, "Mint fallback spec should be marked noop");
-        console.log("  -> Hook correctly fell back to MINT path (zero liquidity oracle).");
+        // With no TWAP liquidity but live in-range pool liquidity, the bounded cold-start quote can bootstrap the
+        // first buy-side AMM trade if it beats issuance after the discount.
+        assertEq(weight, 0, "Weight must be 0 when bounded cold-start quote wins");
+        assertEq(hookSpecs.length, 1, "Cold-start route should surface diagnostics when a pool is configured");
+        assertFalse(hookSpecs[0].noop, "Cold-start spec should activate the AMM route");
+        console.log("  -> Hook used bounded cold-start bootstrap path (zero TWAP liquidity).");
     }
 
     //*********************************************************************//

@@ -177,6 +177,7 @@ contract TestOracleRevertBehavior is Test {
         _mockCurrentRuleset(projectId);
         _mockControllerMint();
         _mockControllerBurn();
+        vm.mockCall(address(controller), abi.encodeWithSelector(IJBController.previewMintOf.selector), abi.encode(0, 0));
 
         // Configure the pool in MockPoolManager.
         uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
@@ -419,12 +420,11 @@ contract TestOracleRevertBehavior is Test {
         assertTrue(specs[0].noop, "Mint path specification should be marked noop");
     }
 
-    /// @notice When the oracle returns zero liquidity (secondsPerLiquidity delta = 0), _getQuote
-    /// returns 0 because meanLiquidity would be 0 (division by zero guard). This also triggers
-    /// the mint fallback.
+    /// @notice When the oracle returns zero liquidity (secondsPerLiquidity delta = 0), issuance can still win over the
+    /// bounded bootstrap quote.
     function test_oracleRevert_zeroLiquidity_fallbackToMint() public {
         // Oracle returns valid tick cumulatives but zero seconds-per-liquidity (both 0 => delta=0).
-        // This means harmonicMeanLiquidity = 0, which causes _getQuote to return 0.
+        // This means harmonicMeanLiquidity = 0, so the buy side treats the oracle as unseeded.
         mockOracle.setObserveData(0, 0, 0, 0);
 
         uint256 zeroLiqProjectId = 102;

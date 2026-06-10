@@ -105,13 +105,21 @@ preview payload consumed by `afterPayRecordedWith` and by router-terminal previe
   PoolId poolId,
   uint256 minimumBeneficiaryTokenCount,
   uint256 minimumReservedTokenCount,
-  uint256 rawSwapQuote
+  uint256 rawSwapQuote,
+  bool oracleUnseeded
 )
 ```
 
 `quotedAmountToSwapWith` is the gross quoted swap amount. It lets `afterPayRecordedWith` scale oracle-derived floors
 and issuance-rate price limits when a same-terminal split forwards only a net post-fee amount. Explicit caller minima
 are settlement guarantees and are not scaled.
+
+Buy-side metadata is 480 bytes. `oracleUnseeded == true` means the configured pool has live liquidity but no usable TWAP
+liquidity yet. In that state, a non-noop spec means the hook selected the bounded cold-start bootstrap path; a noop spec
+means issuance still won or the fallback guardrails rejected the quote. Explicit caller quotes still supply the
+settlement floor, while diagnostics can report whether the configured pool lacks usable TWAP liquidity. For an
+`oracleUnseeded` no-quote active spec, `minimumSwapAmountOut` is the issuance-rate execution floor enforced after the
+swap; the stricter bootstrap quote is only used to decide whether the AMM route should be selected.
 
 **Sell side, key `"cashOut"`** — encodes `(uint256 minimumSwapAmountOut, bool skip)`:
 
@@ -130,7 +138,9 @@ are settlement guarantees and are not scaled.
 - this hook can fall back between market and protocol paths, so preview behavior is not the same as guaranteed execution
 - oracle-derived minima and caller-supplied minima have intentionally different failure behavior
 - pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is expensive
-- a configured and initialized pool is not enough to activate routing; the hook also requires current PoolManager liquidity and rejects dust/max-impact TWAP routes
+- a configured and initialized pool is not enough to activate routing; the hook also requires current PoolManager liquidity and rejects dust/max-impact routes
+- buyback buys push project-token price upward, so initial liquidity must cover the current tick and the upward side of the range
+- freshly seeded pools can be `oracleUnseeded`; buy-side pays may use a bounded bootstrap quote, while cash-outs remain TWAP-only
 - registry configuration is part of the economic surface because it determines which hook and pool are even eligible
 - fee-on-transfer terminal tokens are not supported for buyback routing; partial-fill behavior remains a central threat-model concern
 
@@ -185,6 +195,7 @@ script/
 
 - TWAP quality depends on the oracle hook having enough history and liquidity to be meaningful
 - current in-range PoolManager liquidity is checked separately from TWAP liquidity, so a warm but drained pool degrades to the protocol path
+- cold-start bootstrap routing is buy-side only, requires the configured oracle hook, and exists solely to bootstrap seeded pools before the TWAP is usable
 - route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima
 - explicit cash-out minima are checked against conservative direct or noop bounds when terminal fee-free-surplus state is hidden
 - programmatic callers can omit quote metadata, or provide a zero minimum, and let the hook derive its route from TWAP

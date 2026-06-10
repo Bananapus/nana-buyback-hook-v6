@@ -126,6 +126,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ----------------------- internal constants ------------------------ //
     //*********************************************************************//
 
+    /// @notice Fixed haircut for cold-start bootstrap quotes.
+    uint256 internal constant _COLD_START_SPOT_SLIPPAGE = 300;
+
+    /// @notice Cold-start spot quotes are capped to 5% estimated impact against live in-range liquidity.
+    uint256 internal constant _MAX_COLD_START_SPOT_IMPACT = 50e15;
+
     /// @notice The maximum estimated price impact accepted for an oracle-derived route. `JBSwapLib` scales impact by
     /// 1e18, so this rejects quotes whose input is at least a full-liquidity impact against the effective pool depth.
     uint256 internal constant _MAX_TWAP_IMPACT = 1e18;
@@ -962,12 +968,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             poolId = _poolKeyOf[context.projectId][terminalToken].toId();
             poolHasLiquidity = poolManager.getLiquidity(poolId) != 0;
         } else {
-            (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
+            (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId,) = _getQuote({
                 projectId: context.projectId,
                 amountIn: context.cashOutCount,
                 baseToken: projectToken,
                 quoteToken: terminalToken,
-                terminalToken: terminalToken
+                terminalToken: terminalToken,
+                allowColdStartSpotFallback: false
             });
         }
 
@@ -1132,30 +1139,35 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         int24 twapTick;
         uint128 twapLiquidity;
         PoolId poolId;
+        bool oracleUnseeded;
         bool poolHasLiquidity = true;
         if (hasUserSpecifiedQuote) {
             // Only compute poolId from storage when skipping _getQuote (which would return it).
             poolId = _poolKeyOf[context.projectId][terminalToken].toId();
             poolHasLiquidity = _poolIsSet[context.projectId][terminalToken] && poolManager.getLiquidity(poolId) != 0;
+            if (poolHasLiquidity) {
+                (rawSwapQuote,, twapTick, twapLiquidity,, oracleUnseeded) = _getQuote({
+                    projectId: context.projectId,
+                    amountIn: amountToSwapWith,
+                    baseToken: terminalToken,
+                    quoteToken: projectToken,
+                    terminalToken: terminalToken,
+                    allowColdStartSpotFallback: false
+                });
+            }
         } else {
-            (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId) = _getQuote({
+            (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId, oracleUnseeded) = _getQuote({
                 projectId: context.projectId,
                 amountIn: amountToSwapWith,
                 baseToken: terminalToken,
                 quoteToken: projectToken,
-                terminalToken: terminalToken
+                terminalToken: terminalToken,
+                allowColdStartSpotFallback: true
             });
         }
 
         uint256 minimumBeneficiaryTokenCount;
         uint256 minimumReservedTokenCount;
-
-        // Use the controller's preview path so the metadata mirrors the actual beneficiary/reserved split logic.
-        if (minimumSwapAmountOut != 0) {
-            (minimumBeneficiaryTokenCount, minimumReservedTokenCount) = controller.previewMintOf({
-                projectId: context.projectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true
-            });
-        }
 
         if (_poolIsSet[context.projectId][terminalToken]) {
             // The PoolKey sorts currencies numerically, so the swap direction depends on whether the project token is
@@ -1177,6 +1189,19 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // already meets/exceeds the user's quote or the TWAP-derived minimum.
             bool noop = !poolHasLiquidity || tokenCountWithoutHook >= minimumSwapAmountOut;
 
+            if (oracleUnseeded && !hasUserSpecifiedQuote && minimumSwapAmountOut != 0) {
+                // The cold-start quote is spot-dependent, so use it only for route selection. Execution still enforces
+                // the issuance-rate floor that the swap price limit is built from.
+                minimumSwapAmountOut = tokenCountWithoutHook;
+            }
+
+            // Use the controller's preview path so the metadata mirrors the actual beneficiary/reserved split logic.
+            if (minimumSwapAmountOut != 0) {
+                (minimumBeneficiaryTokenCount, minimumReservedTokenCount) = controller.previewMintOf({
+                    projectId: context.projectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true
+                });
+            }
+
             hookSpecifications = new JBPayHookSpecification[](1);
             hookSpecifications[0] = JBPayHookSpecification({
                 hook: IJBPayHook(this),
@@ -1196,19 +1221,30 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     poolId,
                     minimumBeneficiaryTokenCount,
                     minimumReservedTokenCount,
-                    rawSwapQuote
+                    rawSwapQuote,
+                    oracleUnseeded
                 )
             });
 
             // All the minting will be done in `afterPayRecordedWith`. Return a weight of 0.
             if (!noop) return (0, hookSpecifications);
-        } else if (hasUserSpecifiedQuote && tokenCountWithoutHook < minimumSwapAmountOut) {
-            // User supplied an explicit pool quote with a non-zero minimum, but no pool is configured —
-            // the direct mint alone cannot satisfy the requested minimum. Revert so the user does not
-            // silently receive fewer tokens than they asked for.
-            revert JBBuybackHook_SpecifiedSlippageExceeded({
-                amount: tokenCountWithoutHook, minimum: minimumSwapAmountOut
-            });
+        } else {
+            // Preserve the controller preview path for explicit no-pool floors before checking whether direct minting
+            // can satisfy the user's minimum.
+            if (minimumSwapAmountOut != 0) {
+                controller.previewMintOf({
+                    projectId: context.projectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true
+                });
+            }
+
+            if (hasUserSpecifiedQuote && tokenCountWithoutHook < minimumSwapAmountOut) {
+                // User supplied an explicit pool quote with a non-zero minimum, but no pool is configured —
+                // the direct mint alone cannot satisfy the requested minimum. Revert so the user does not
+                // silently receive fewer tokens than they asked for.
+                revert JBBuybackHook_SpecifiedSlippageExceeded({
+                    amount: tokenCountWithoutHook, minimum: minimumSwapAmountOut
+                });
+            }
         }
     }
 
@@ -1503,24 +1539,34 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param quoteToken The token to swap out.
     /// @param terminalToken The terminal token address (already normalized: address(0) for native). Passed by the
     /// caller to avoid a redundant `projectTokenOf` SLOAD that would otherwise be needed to derive it.
+    /// @param allowColdStartSpotFallback Whether to allow the buy-side, bounded spot fallback when no TWAP exists.
     /// @return rawAmountOut The raw oracle quote before slippage adjustment.
     /// @return amountOut The minimum number of tokens to receive after slippage adjustment.
     /// @return twapTick The arithmetic mean tick from the TWAP oracle.
     /// @return twapLiquidity The harmonic mean liquidity from the TWAP oracle.
     /// @return poolId The V4 pool identifier used for the quote.
+    /// @return oracleUnseeded True when the pool has live liquidity but no usable TWAP liquidity.
     function _getQuote(
         uint256 projectId,
         uint256 amountIn,
         address baseToken,
         address quoteToken,
-        address terminalToken
+        address terminalToken,
+        bool allowColdStartSpotFallback
     )
         internal
         view
-        returns (uint256 rawAmountOut, uint256 amountOut, int24 twapTick, uint128 twapLiquidity, PoolId poolId)
+        returns (
+            uint256 rawAmountOut,
+            uint256 amountOut,
+            int24 twapTick,
+            uint128 twapLiquidity,
+            PoolId poolId,
+            bool oracleUnseeded
+        )
     {
         // Check pool existence before loading the full PoolKey struct (~500 gas saved on early exit).
-        if (!_poolIsSet[projectId][terminalToken]) return (0, 0, 0, 0, PoolId.wrap(0));
+        if (!_poolIsSet[projectId][terminalToken]) return (0, 0, 0, 0, PoolId.wrap(0), false);
 
         // Get the pool key for this project/terminal token pair.
         PoolKey memory key = _poolKeyOf[projectId][terminalToken];
@@ -1534,7 +1580,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // If there is no current in-range liquidity, the next swap cannot execute against this pool even if the
         // oracle still has historical observations.
         uint128 currentLiquidity = poolManager.getLiquidity(poolId);
-        if (currentLiquidity == 0) return (0, 0, 0, 0, poolId);
+        if (currentLiquidity == 0) return (0, 0, 0, 0, poolId, false);
 
         // Query the oracle hook (or spot if twapWindow is 0).
         (amountOut, twapTick, twapLiquidity) = JBSwapLib.getQuoteFromOracle({
@@ -1550,14 +1596,88 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             quoteToken: quoteToken
         });
 
-        // If oracle returned 0, no quote available — trigger mint fallback.
-        if (amountOut == 0) return (0, 0, twapTick, twapLiquidity, poolId);
+        bool zeroForOne = baseToken < quoteToken;
 
-        // If there's no liquidity data, return 0 to trigger mint.
-        if (twapLiquidity == 0) return (0, 0, twapTick, twapLiquidity, poolId);
+        // If there's no TWAP liquidity data, the buy side may use a tightly bounded bootstrap quote. Prefer a valid
+        // oracle tick when one exists; raw slot0 is only used for the configured oracle hook when no oracle quote is
+        // available. Sell-side quotes stay TWAP-only.
+        if (twapLiquidity == 0) {
+            // Surface the unseeded-oracle state even when guardrails reject routing, so preview clients can explain why
+            // the hook minted instead of swapping.
+            oracleUnseeded = true;
+
+            // Cash-outs and explicit diagnostic lookups must not use spot pricing, because spot is manipulable inside
+            // one block and is only acceptable for the bounded buy-side bootstrap path.
+            if (!allowColdStartSpotFallback) return (0, 0, twapTick, 0, poolId, oracleUnseeded);
+
+            // Raw slot0 is only trusted for pools using this hook's configured oracle hook; an arbitrary pool hook can
+            // keep TWAP liquidity at zero forever and would otherwise make spot routing a permanent mode.
+            if (address(key.hooks) != address(oracleHook)) return (0, 0, twapTick, 0, poolId, oracleUnseeded);
+
+            // Slot0 supplies the fallback spot tick and the live LP fee. The LP fee is dynamic for some V4 pools, so
+            // the pool key's fee field is not sufficient for this guardrail.
+            (uint160 spotSqrtP, int24 spotTick,, uint24 spotLpFee) = poolManager.getSlot0(poolId);
+
+            // When the oracle produced no quote, report the spot tick used for the bootstrap quote. If the oracle did
+            // produce a mean tick, keep that tick in the diagnostics and avoid raw spot for pricing.
+            if (amountOut == 0) twapTick = spotTick;
+
+            // Keep the sqrt price paired with the tick that produced the quote, so the impact estimate and raw quote
+            // use the same price source.
+            uint160 quoteSqrtP;
+            if (amountOut == 0) {
+                // A zero sqrt price means slot0 cannot describe an initialized price, so there is no safe spot
+                // fallback.
+                if (spotSqrtP == 0) return (0, 0, twapTick, 0, poolId, oracleUnseeded);
+
+                // Use live slot0 only when the oracle cannot quote at all.
+                quoteSqrtP = spotSqrtP;
+
+                // Build the gross spot quote. The fee and impact haircut is applied below before route comparison.
+                rawAmountOut = JBSwapLib.getQuoteAtTick({
+                    tick: spotTick,
+                    // Safe: amountIn is a token payment amount, bounded by realistic token supplies well within
+                    // uint128.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    baseAmount: uint128(amountIn),
+                    baseToken: baseToken,
+                    quoteToken: quoteToken
+                });
+            } else {
+                // The oracle can return a valid mean tick even when harmonic liquidity is zero. Use that mean tick for
+                // pricing because it is harder to manipulate than raw slot0.
+                quoteSqrtP = TickMath.getSqrtPriceAtTick(twapTick);
+
+                // Preserve the oracle's gross quote so diagnostics show the quote source used for route selection.
+                rawAmountOut = amountOut;
+            }
+
+            // Bound the first trade by live in-range liquidity so a tiny seed cannot route a large spot-priced payment.
+            uint256 spotImpact = JBSwapLib.calculateImpact({
+                amountIn: amountIn, liquidity: currentLiquidity, sqrtP: quoteSqrtP, zeroForOne: zeroForOne
+            });
+
+            // Reject quotes whose estimated impact exceeds the cold-start cap; returning zero keeps issuance routing.
+            if (spotImpact > _MAX_COLD_START_SPOT_IMPACT) return (0, 0, twapTick, 0, poolId, oracleUnseeded);
+
+            // Discount the gross quote by the fixed haircut, the live LP fee, and rounded-up impact so the route
+            // comparison has buffer for the bootstrap swap's execution cost. V4 fees are in hundredths of a bip.
+            uint256 coldStartDiscount = _COLD_START_SPOT_SLIPPAGE + uint256(spotLpFee) / 100 + spotImpact / 1e14 + 1;
+
+            // If the live fee and guardrail discount consume the full quote, there is no executable AMM route.
+            if (coldStartDiscount >= TWAP_SLIPPAGE_DENOMINATOR) {
+                return (0, 0, twapTick, 0, poolId, oracleUnseeded);
+            }
+
+            // Return both the raw quote for diagnostics and the discounted quote for the routing comparison.
+            amountOut = (rawAmountOut * (TWAP_SLIPPAGE_DENOMINATOR - coldStartDiscount)) / TWAP_SLIPPAGE_DENOMINATOR;
+            return (rawAmountOut, amountOut, twapTick, 0, poolId, oracleUnseeded);
+        }
+
+        // If oracle returned 0, no quote available — trigger mint fallback.
+        if (amountOut == 0) return (0, 0, twapTick, twapLiquidity, poolId, false);
 
         // Calculate price impact.
-        bool zeroForOne = baseToken < quoteToken;
         uint160 sqrtP = TickMath.getSqrtPriceAtTick(twapTick);
 
         // Bound quote confidence by the weaker liquidity source. Historical TWAP liquidity can overstate a drained
@@ -1571,7 +1691,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         });
 
         // Treat a max-impact quote as unusable. Returning zero keeps route selection on the protocol path.
-        if (impact >= _MAX_TWAP_IMPACT) return (0, 0, twapTick, twapLiquidity, poolId);
+        if (impact >= _MAX_TWAP_IMPACT) return (0, 0, twapTick, twapLiquidity, poolId, false);
 
         // Get the actual LP fee from slot0 (key.fee may differ for dynamic-fee pools).
         // V4 fees are in hundredths of a bip, so divide by 100 to get basis points.
@@ -1582,7 +1702,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 slippageTolerance = JBSwapLib.getSlippageTolerance({impact: impact, poolFeeBps: poolFeeBps});
 
         // If the slippage tolerance is the maximum, return 0 to trigger mint.
-        if (slippageTolerance >= _MAX_TWAP_SLIPPAGE) return (0, 0, twapTick, twapLiquidity, poolId);
+        if (slippageTolerance >= _MAX_TWAP_SLIPPAGE) return (0, 0, twapTick, twapLiquidity, poolId, false);
 
         // Save the raw oracle quote before slippage adjustment.
         rawAmountOut = amountOut;
