@@ -139,6 +139,8 @@ swap; the stricter bootstrap quote is only used to decide whether the AMM route 
 - oracle-derived minima and caller-supplied minima have intentionally different failure behavior
 - pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is expensive
 - a configured and initialized pool is not enough to activate routing; the hook also requires current PoolManager liquidity and rejects dust/max-impact routes
+- pool registration is not proof of live market availability; operators should separately verify the intended V4 hook,
+  in-range liquidity, observation readiness, and expected token ordering before treating routing as enabled
 - buyback buys push project-token price upward, so initial liquidity must cover the current tick and the upward side of the range
 - freshly seeded pools can be `oracleUnseeded`; buy-side pays may use a bounded bootstrap quote, while cash-outs remain TWAP-only
 - registry configuration is part of the economic surface because it determines which hook and pool are even eligible
@@ -198,6 +200,10 @@ script/
 - cold-start bootstrap routing is buy-side only, requires the configured oracle hook, and exists solely to bootstrap seeded pools before the TWAP is usable
 - route comparison intentionally distinguishes explicit caller minima from oracle-derived routing minima
 - explicit cash-out minima are checked against conservative direct or noop bounds when terminal fee-free-surplus state is hidden
+- cash-outs that use the AMM path are market exits, not terminal fee revenue, and reporting should separate pool
+  execution from protocol-native reclaim accounting
+- direct ETH or token balances sent to the hook or registry are ambient dust unless a supported settlement path accounts
+  for them
 - programmatic callers can omit quote metadata, or provide a zero minimum, and let the hook derive its route from TWAP
 - hook configuration should usually be locked after validation, and pool choices should be treated as sticky once set
 - fee-on-transfer project-token behavior and partial fills are tested, but fee-on-transfer terminal tokens must not be configured for buyback routing
