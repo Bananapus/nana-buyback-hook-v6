@@ -1277,6 +1277,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ---------------------- internal transactions ---------------------- //
     //*********************************************************************//
 
+    /// @notice Revert if a TWAP window is outside the allowed bounds.
+    /// @param window The TWAP window to validate.
+    function _requireValidTwapWindow(uint256 window) internal pure {
+        if (window < MIN_TWAP_WINDOW || window > MAX_TWAP_WINDOW) {
+            revert JBBuybackHook_InvalidTwapWindow({value: window, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
+        }
+    }
+
     /// @notice Shared internal logic for setting a pool. Both `setPoolFor` overloads delegate here after permission
     /// checks and token normalization.
     /// @param projectId The ID of the project.
@@ -1342,14 +1350,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             caller: caller
         });
         emit PoolAdded({projectId: projectId, terminalToken: normalizedTerminalToken, poolId: poolId, caller: caller});
-    }
-
-    /// @notice Revert if a TWAP window is outside the allowed bounds.
-    /// @param window The TWAP window to validate.
-    function _requireValidTwapWindow(uint256 window) internal pure {
-        if (window < MIN_TWAP_WINDOW || window > MAX_TWAP_WINDOW) {
-            revert JBBuybackHook_InvalidTwapWindow({value: window, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
-        }
     }
 
     /// @notice Executes the buy-side swap: exchanges terminal tokens for project tokens through the V4 pool, then burns
