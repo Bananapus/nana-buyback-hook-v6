@@ -83,29 +83,22 @@ library JBSwapLib {
             if (oldestSecondsAgo < quoteWindow) quoteWindow = oldestSecondsAgo;
         } catch {}
 
-        if (quoteWindow == 0) {
-            return (0, 0, 0);
-        }
-
         try oracle.observe({key: key, secondsAgos: _makeSecondsAgos(quoteWindow)}) returns (
             int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s
         ) {
-            if (tickCumulatives.length < 2 || secondsPerLiquidityCumulativeX128s.length < 2) return (0, 0, 0);
-
             // Compute arithmetic mean tick from tick cumulatives.
             int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int56 period = int56(uint56(quoteWindow));
             // Safe: quoteWindow is bounded by twapWindow, which is validated to MAX_TWAP_WINDOW (2 days = 172800).
             // The division result fits in int24 because valid
             // Uniswap tick values are bounded to [-887272, 887272].
             // forge-lint: disable-next-line(unsafe-typecast)
-            arithmeticMeanTick = int24(tickCumulativesDelta / int56(int32(quoteWindow)));
+            arithmeticMeanTick = int24(tickCumulativesDelta / period);
 
             // Round towards negative infinity.
             // Safe: same reasoning as above — quoteWindow fits in int32 within realistic bounds.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(quoteWindow)) != 0)) {
-                arithmeticMeanTick--;
-            }
+            if (tickCumulativesDelta < 0 && (tickCumulativesDelta % period != 0)) arithmeticMeanTick--;
 
             // Compute harmonic mean liquidity from seconds-per-liquidity cumulatives.
             uint160 secondsPerLiquidityDelta =
