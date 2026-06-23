@@ -91,11 +91,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Thrown when the pool is initialized at a price other than the one the caller expected.
     error JBBuybackHook_PoolInitializedAtWrongPrice(uint160 actualSqrtPriceX96, uint160 expectedSqrtPriceX96);
 
-    /// @notice Thrown when the pool has not been initialized in the Uniswap V4 PoolManager.
-    error JBBuybackHook_PoolNotInitialized(PoolId poolId);
-
     /// @notice Thrown when the provided PoolKey does not contain the project token and terminal token pair.
     error JBBuybackHook_PoolKeyCurrenciesMismatch();
+
+    /// @notice Thrown when the pool has not been initialized in the Uniswap V4 PoolManager.
+    error JBBuybackHook_PoolNotInitialized(PoolId poolId);
 
     /// @notice Thrown when no pool has been configured for the given project and terminal token pair.
     error JBBuybackHook_PoolNotSet(uint256 projectId, address terminalToken);
