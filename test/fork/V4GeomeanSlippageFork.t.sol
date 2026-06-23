@@ -474,6 +474,9 @@ contract V4GeomeanSlippageForkTest is Test {
         vm.mockCall(
             address(0), abi.encodeWithSelector(IGeomeanOracle.hasObservationCoverage.selector), abi.encode(true)
         );
+        vm.mockCall(
+            address(0), abi.encodeWithSelector(IGeomeanOracle.observationCoverageOf.selector), abi.encode(uint32(300))
+        );
     }
 
     /// @notice Mock oracle with a specific tick delta to simulate price movement over a TWAP window.
@@ -497,6 +500,11 @@ contract V4GeomeanSlippageForkTest is Test {
         );
         vm.mockCall(
             address(0), abi.encodeWithSelector(IGeomeanOracle.hasObservationCoverage.selector), abi.encode(true)
+        );
+        vm.mockCall(
+            address(0),
+            abi.encodeWithSelector(IGeomeanOracle.observationCoverageOf.selector),
+            abi.encode(uint32(twapWindow))
         );
     }
 

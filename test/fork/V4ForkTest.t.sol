@@ -564,6 +564,9 @@ contract V4ForkTest is Test {
         vm.mockCall(
             address(0), abi.encodeWithSelector(IGeomeanOracle.hasObservationCoverage.selector), abi.encode(true)
         );
+        vm.mockCall(
+            address(0), abi.encodeWithSelector(IGeomeanOracle.observationCoverageOf.selector), abi.encode(uint32(300))
+        );
     }
 
     function _mockJbCore(uint256 projectId, ForkProjectToken projectToken) internal {
