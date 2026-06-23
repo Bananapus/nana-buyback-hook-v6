@@ -73,32 +73,37 @@ library JBSwapLib {
         }
 
         IGeomeanOracle oracle = IGeomeanOracle(address(key.hooks));
+        uint32 quoteWindow = twapWindow;
 
-        // Try querying the oracle hook. A successful observe response is trusted only when the hook first proves that
-        // retained observations cover the requested TWAP window.
-        try oracle.hasObservationCoverage({key: key, secondsAgo: twapWindow}) returns (bool hasCoverage) {
-            if (!hasCoverage) return (0, 0, 0);
-        } catch {
+        // Prefer the requested TWAP window, but keep programmatic routes live by using the longest retained
+        // best-effort window when the hook reports partial coverage. Hooks that do not expose coverage keep the
+        // previous observe-only behavior for compatibility.
+        try oracle.observationCoverageOf({key: key}) returns (uint32 oldestSecondsAgo) {
+            if (oldestSecondsAgo == 0) return (0, 0, 0);
+            if (oldestSecondsAgo < quoteWindow) quoteWindow = oldestSecondsAgo;
+        } catch {}
+
+        if (quoteWindow == 0) {
             return (0, 0, 0);
         }
 
-        try oracle.observe({key: key, secondsAgos: _makeSecondsAgos(twapWindow)}) returns (
+        try oracle.observe({key: key, secondsAgos: _makeSecondsAgos(quoteWindow)}) returns (
             int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s
         ) {
             if (tickCumulatives.length < 2 || secondsPerLiquidityCumulativeX128s.length < 2) return (0, 0, 0);
 
             // Compute arithmetic mean tick from tick cumulatives.
             int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
-            // Safe: twapWindow is a uint32 (max ~4.3B), fits in int32 (max ~2.1B) because realistic TWAP windows
-            // are bounded to MAX_TWAP_WINDOW (2 days = 172800). The division result fits in int24 because valid
+            // Safe: quoteWindow is bounded by twapWindow, which is validated to MAX_TWAP_WINDOW (2 days = 172800).
+            // The division result fits in int24 because valid
             // Uniswap tick values are bounded to [-887272, 887272].
             // forge-lint: disable-next-line(unsafe-typecast)
-            arithmeticMeanTick = int24(tickCumulativesDelta / int56(int32(twapWindow)));
+            arithmeticMeanTick = int24(tickCumulativesDelta / int56(int32(quoteWindow)));
 
             // Round towards negative infinity.
-            // Safe: same reasoning as above — twapWindow fits in int32 within realistic bounds.
+            // Safe: same reasoning as above — quoteWindow fits in int32 within realistic bounds.
             // forge-lint: disable-next-line(unsafe-typecast)
-            if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(twapWindow)) != 0)) {
+            if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(quoteWindow)) != 0)) {
                 arithmeticMeanTick--;
             }
 
@@ -107,10 +112,10 @@ library JBSwapLib {
                 secondsPerLiquidityCumulativeX128s[1] - secondsPerLiquidityCumulativeX128s[0];
 
             if (secondsPerLiquidityDelta > 0) {
-                // Safe: the result of (twapWindow << 128) / secondsPerLiquidityDelta fits in uint128 because
-                // twapWindow is at most MAX_TWAP_WINDOW (172800) and secondsPerLiquidityDelta > 0 in this branch.
+                // Safe: the result of (quoteWindow << 128) / secondsPerLiquidityDelta fits in uint128 because
+                // quoteWindow is at most MAX_TWAP_WINDOW (172800) and secondsPerLiquidityDelta > 0 in this branch.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                harmonicMeanLiquidity = uint128((uint256(twapWindow) << 128) / uint256(secondsPerLiquidityDelta));
+                harmonicMeanLiquidity = uint128((uint256(quoteWindow) << 128) / uint256(secondsPerLiquidityDelta));
             }
 
             // Get the quote at the mean tick.

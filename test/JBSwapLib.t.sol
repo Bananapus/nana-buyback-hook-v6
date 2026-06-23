@@ -17,8 +17,9 @@ contract JBSwapLibTest is Test {
     // ----- Oracle Quote Freshness Tests --------------------------------//
     //*********************************************************************//
 
-    /// @notice A hook oracle quote is trusted only when the hook proves the requested TWAP window is covered.
-    function test_getQuoteFromOracle_requiresObservationCoverage() public {
+    /// @notice A hook oracle quote uses the longest retained best-effort window when the requested window is
+    /// under-covered.
+    function test_getQuoteFromOracle_usesBestEffortObservationCoverage() public {
         MockPoolManager poolManager = new MockPoolManager();
         MockOracleHook oracleHook = new MockOracleHook();
 
@@ -35,11 +36,14 @@ contract JBSwapLibTest is Test {
         });
 
         uint32 twapWindow = 5 minutes;
+        uint32 retainedWindow = 2 minutes;
         int24 currentTick = 1234;
         uint128 harmonicLiquidity = 1_000_000 ether;
-        uint160 secondsPerLiquidityDelta = uint160((uint256(twapWindow) << 128) / uint256(harmonicLiquidity));
-        oracleHook.setObserveData(0, int56(int24(currentTick)) * int56(uint56(twapWindow)), 0, secondsPerLiquidityDelta);
-        oracleHook.setHasObservationCoverage(false);
+        uint160 secondsPerLiquidityDelta = uint160((uint256(retainedWindow) << 128) / uint256(harmonicLiquidity));
+        oracleHook.setObserveData(
+            0, int56(int24(currentTick)) * int56(uint56(retainedWindow)), 0, secondsPerLiquidityDelta
+        );
+        oracleHook.setObservationCoverage(retainedWindow);
 
         (uint256 amountOut, int24 arithmeticMeanTick, uint128 returnedLiquidity) = JBSwapLib.getQuoteFromOracle({
             poolManager: IPoolManager(address(poolManager)),
@@ -50,31 +54,16 @@ contract JBSwapLibTest is Test {
             quoteToken: quoteToken
         });
 
-        assertEq(amountOut, 0, "uncovered oracle quote is unavailable");
-        assertEq(arithmeticMeanTick, 0, "uncovered oracle tick is ignored");
-        assertEq(returnedLiquidity, 0, "uncovered oracle liquidity is ignored");
-
-        oracleHook.setHasObservationCoverage(true);
-
-        (amountOut, arithmeticMeanTick, returnedLiquidity) = JBSwapLib.getQuoteFromOracle({
-            poolManager: IPoolManager(address(poolManager)),
-            key: key,
-            twapWindow: twapWindow,
-            amountIn: 1 ether,
-            baseToken: baseToken,
-            quoteToken: quoteToken
-        });
-
-        assertEq(arithmeticMeanTick, currentTick, "covered quote used the oracle tick");
+        assertEq(arithmeticMeanTick, currentTick, "partial coverage used the retained window denominator");
         assertApproxEqAbs(
-            uint256(returnedLiquidity), uint256(harmonicLiquidity), 1e6, "quote trusted the oracle liquidity window"
+            uint256(returnedLiquidity), uint256(harmonicLiquidity), 1e18, "quote used the retained liquidity window"
         );
         assertEq(
             amountOut,
             JBSwapLib.getQuoteAtTick({
                 tick: currentTick, baseAmount: 1 ether, baseToken: baseToken, quoteToken: quoteToken
             }),
-            "covered quote was priced from the oracle tick"
+            "best-effort quote was priced from the oracle tick"
         );
     }
 
