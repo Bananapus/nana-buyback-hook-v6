@@ -72,10 +72,15 @@ library JBSwapLib {
             return (amountOut, arithmeticMeanTick, harmonicMeanLiquidity);
         }
 
-        // Try querying the oracle hook.
+        // Try querying the oracle hook. A successful observe response is trusted only when the hook first proves that
+        // retained observations cover the requested TWAP window.
+        if (!_hasObservationCoverage({key: key, secondsAgo: twapWindow})) return (0, 0, 0);
+
         try IGeomeanOracle(address(key.hooks)).observe({key: key, secondsAgos: _makeSecondsAgos(twapWindow)}) returns (
             int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s
         ) {
+            if (tickCumulatives.length < 2 || secondsPerLiquidityCumulativeX128s.length < 2) return (0, 0, 0);
+
             // Compute arithmetic mean tick from tick cumulatives.
             int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
             // Safe: twapWindow is a uint32 (max ~4.3B), fits in int32 (max ~2.1B) because realistic TWAP windows
@@ -329,5 +334,19 @@ library JBSwapLib {
         secondsAgos = new uint32[](2);
         secondsAgos[0] = twapWindow;
         secondsAgos[1] = 0;
+    }
+
+    /// @notice Check whether a V4 hook oracle covers the requested TWAP window.
+    /// @param key The V4 pool key.
+    /// @param secondsAgo The requested lookback window.
+    /// @return True only when the oracle hook reports sufficient retained observation coverage.
+    function _hasObservationCoverage(PoolKey memory key, uint32 secondsAgo) private view returns (bool) {
+        try IGeomeanOracle(address(key.hooks)).hasObservationCoverage({key: key, secondsAgo: secondsAgo}) returns (
+            bool hasCoverage
+        ) {
+            return hasCoverage;
+        } catch {
+            return false;
+        }
     }
 }

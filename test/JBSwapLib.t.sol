@@ -17,9 +17,8 @@ contract JBSwapLibTest is Test {
     // ----- Oracle Quote Freshness Tests --------------------------------//
     //*********************************************************************//
 
-    /// @notice Documents that any successful oracle response is treated as TWAP, even if the upstream oracle derived
-    /// the whole window from a stale newest observation and the current tick.
-    function test_getQuoteFromOracle_acceptsSpotEquivalentSuccessfulOracleResponse() public {
+    /// @notice A hook oracle quote is trusted only when the hook proves the requested TWAP window is covered.
+    function test_getQuoteFromOracle_requiresObservationCoverage() public {
         MockPoolManager poolManager = new MockPoolManager();
         MockOracleHook oracleHook = new MockOracleHook();
 
@@ -40,6 +39,7 @@ contract JBSwapLibTest is Test {
         uint128 harmonicLiquidity = 1_000_000 ether;
         uint160 secondsPerLiquidityDelta = uint160((uint256(twapWindow) << 128) / uint256(harmonicLiquidity));
         oracleHook.setObserveData(0, int56(int24(currentTick)) * int56(uint56(twapWindow)), 0, secondsPerLiquidityDelta);
+        oracleHook.setHasObservationCoverage(false);
 
         (uint256 amountOut, int24 arithmeticMeanTick, uint128 returnedLiquidity) = JBSwapLib.getQuoteFromOracle({
             poolManager: IPoolManager(address(poolManager)),
@@ -50,7 +50,22 @@ contract JBSwapLibTest is Test {
             quoteToken: quoteToken
         });
 
-        assertEq(arithmeticMeanTick, currentTick, "quote used the spot-equivalent oracle tick");
+        assertEq(amountOut, 0, "uncovered oracle quote is unavailable");
+        assertEq(arithmeticMeanTick, 0, "uncovered oracle tick is ignored");
+        assertEq(returnedLiquidity, 0, "uncovered oracle liquidity is ignored");
+
+        oracleHook.setHasObservationCoverage(true);
+
+        (amountOut, arithmeticMeanTick, returnedLiquidity) = JBSwapLib.getQuoteFromOracle({
+            poolManager: IPoolManager(address(poolManager)),
+            key: key,
+            twapWindow: twapWindow,
+            amountIn: 1 ether,
+            baseToken: baseToken,
+            quoteToken: quoteToken
+        });
+
+        assertEq(arithmeticMeanTick, currentTick, "covered quote used the oracle tick");
         assertApproxEqAbs(
             uint256(returnedLiquidity), uint256(harmonicLiquidity), 1e6, "quote trusted the oracle liquidity window"
         );
@@ -59,7 +74,7 @@ contract JBSwapLibTest is Test {
             JBSwapLib.getQuoteAtTick({
                 tick: currentTick, baseAmount: 1 ether, baseToken: baseToken, quoteToken: quoteToken
             }),
-            "quote was priced from the current tick"
+            "covered quote was priced from the oracle tick"
         );
     }
 

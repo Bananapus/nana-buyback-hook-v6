@@ -7,6 +7,12 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 /// @dev Oracle hooks are optional in V4. If a pool's hook does not implement this interface,
 /// callers should fall back to minting (buyback hook) or reverting (router terminal).
 interface IGeomeanOracle {
+    /// @notice Whether the oracle has stored observations covering `secondsAgo` for `key`.
+    /// @param key The pool key to check.
+    /// @param secondsAgo The requested lookback window.
+    /// @return True if `observe([secondsAgo, 0])` is backed by retained observation history.
+    function hasObservationCoverage(PoolKey calldata key, uint32 secondsAgo) external view returns (bool);
+
     /// @notice Returns cumulative tick and liquidity-per-second values for the given seconds-ago offsets.
     /// @param key The pool key to observe.
     /// @param secondsAgos An array of seconds-ago offsets from the current block timestamp.

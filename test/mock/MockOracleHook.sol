@@ -11,6 +11,7 @@ contract MockOracleHook {
     uint160 public secPerLiq0;
     uint160 public secPerLiq1;
     bool public shouldRevert;
+    bool public hasCoverage = true;
 
     /// @notice Configure the observe return data.
     /// @param _tickCumulative0 Tick cumulative at secondsAgo[0] (the older observation).
@@ -34,6 +35,17 @@ contract MockOracleHook {
     /// @notice If true, observe() reverts (simulating an unsupported oracle).
     function setShouldRevert(bool _shouldRevert) external {
         shouldRevert = _shouldRevert;
+    }
+
+    /// @notice Configure whether the mocked oracle reports that it covers the requested TWAP window.
+    function setHasObservationCoverage(bool _hasCoverage) external {
+        hasCoverage = _hasCoverage;
+    }
+
+    /// @notice IGeomeanOracle.hasObservationCoverage implementation.
+    function hasObservationCoverage(PoolKey calldata, uint32) external view returns (bool) {
+        if (shouldRevert) revert("MockOracle: unsupported");
+        return hasCoverage;
     }
 
     /// @notice IGeomeanOracle.observe implementation.
