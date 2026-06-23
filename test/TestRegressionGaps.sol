@@ -848,7 +848,7 @@ contract TestRegressionGaps is Test {
 
         // Second set should revert with PoolAlreadySet.
         vm.prank(owner);
-        vm.expectRevert(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector);
+        vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector, ethPoolId));
         hook.setPoolFor(multiPid, ethPoolKey, twapWindow, JBConstants.NATIVE_TOKEN);
     }
 

@@ -85,7 +85,7 @@ bytes memory metadata = JBMetadataResolver.addToMetadata(existingMetadata, payId
 // "cashOut" and encode (uint256 minimumSwapAmountOut, bool skip) before cashOutTokensOf(...).
 ```
 
-**Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle.
+**Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle. If the oracle exposes observation coverage, no-quote routing prefers the configured full TWAP window and otherwise quotes against the longest retained best-effort window. If there is no usable coverage, the hook either uses the bounded buy-side cold-start path described below or mints through the protocol path.
 
 When `beforePayRecordedWith` returns a `JBPayHookSpecification`, its `metadata` is the hook-internal settlement and
 preview payload consumed by `afterPayRecordedWith` and by router-terminal preview consumers:
@@ -204,7 +204,7 @@ script/
   execution from protocol-native reclaim accounting
 - direct ETH or token balances sent to the hook or registry are ambient dust unless a supported settlement path accounts
   for them
-- programmatic callers can omit quote metadata, or provide a zero minimum, and let the hook derive its route from TWAP
+- programmatic callers can omit quote metadata, or provide a zero minimum, and let the hook derive its route from full-window or retained best-effort TWAP
 - hook configuration should usually be locked after validation, and pool choices should be treated as sticky once set
 - fee-on-transfer project-token behavior and partial fills are tested, but fee-on-transfer terminal tokens must not be configured for buyback routing
 
