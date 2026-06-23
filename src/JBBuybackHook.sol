@@ -83,10 +83,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_InsufficientPayAmount(uint256 swapAmount, uint256 totalPaid);
 
     /// @notice Thrown when the specified TWAP window is outside the allowed minimum and maximum bounds.
-    error JBBuybackHook_InvalidTwapWindow();
+    error JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max);
 
     /// @notice Thrown when attempting to set a pool for a project/terminal token pair that already has one.
-    error JBBuybackHook_PoolAlreadySet();
+    error JBBuybackHook_PoolAlreadySet(PoolId poolId);
 
     /// @notice Thrown when the pool is initialized at a price other than the one the caller expected.
     error JBBuybackHook_PoolInitializedAtWrongPrice(uint160 actualSqrtPriceX96, uint160 expectedSqrtPriceX96);
@@ -732,7 +732,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Make sure the specified window is within reasonable bounds.
         if (newWindow < MIN_TWAP_WINDOW || newWindow > MAX_TWAP_WINDOW) {
-            revert JBBuybackHook_InvalidTwapWindow();
+            revert JBBuybackHook_InvalidTwapWindow({value: newWindow, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
         }
 
         // Normalize the terminal token — use address(0) for native.
@@ -1298,12 +1298,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     {
         // Make sure this pool hasn't already been set for this project/token pair.
         if (_poolIsSet[projectId][normalizedTerminalToken]) {
-            revert JBBuybackHook_PoolAlreadySet();
+            revert JBBuybackHook_PoolAlreadySet({poolId: _poolKeyOf[projectId][normalizedTerminalToken].toId()});
         }
 
         // Make sure the provided TWAP window is within reasonable bounds.
         if (twapWindow < MIN_TWAP_WINDOW || twapWindow > MAX_TWAP_WINDOW) {
-            revert JBBuybackHook_InvalidTwapWindow();
+            revert JBBuybackHook_InvalidTwapWindow({value: twapWindow, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
         }
 
         // Make sure the project has issued a token.
