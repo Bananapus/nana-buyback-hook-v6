@@ -3,10 +3,66 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {JBSwapLib} from "../src/libraries/JBSwapLib.sol";
+import {MockOracleHook} from "./mock/MockOracleHook.sol";
+import {MockPoolManager} from "./mock/MockPoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @notice Tests for JBSwapLib — sigmoid slippage, 1e18 impact, sqrtPriceLimit.
 contract JBSwapLibTest is Test {
+    //*********************************************************************//
+    // ----- Oracle Quote Freshness Tests --------------------------------//
+    //*********************************************************************//
+
+    /// @notice Documents that any successful oracle response is treated as TWAP, even if the upstream oracle derived
+    /// the whole window from a stale newest observation and the current tick.
+    function test_getQuoteFromOracle_acceptsSpotEquivalentSuccessfulOracleResponse() public {
+        MockPoolManager poolManager = new MockPoolManager();
+        MockOracleHook oracleHook = new MockOracleHook();
+
+        address baseToken = makeAddr("baseToken");
+        address quoteToken = makeAddr("quoteToken");
+        (address currency0, address currency1) =
+            baseToken < quoteToken ? (baseToken, quoteToken) : (quoteToken, baseToken);
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(currency1),
+            fee: 3000,
+            tickSpacing: int24(60),
+            hooks: IHooks(address(oracleHook))
+        });
+
+        uint32 twapWindow = 5 minutes;
+        int24 currentTick = 1234;
+        uint128 harmonicLiquidity = 1_000_000 ether;
+        uint160 secondsPerLiquidityDelta = uint160((uint256(twapWindow) << 128) / uint256(harmonicLiquidity));
+        oracleHook.setObserveData(0, int56(int24(currentTick)) * int56(uint56(twapWindow)), 0, secondsPerLiquidityDelta);
+
+        (uint256 amountOut, int24 arithmeticMeanTick, uint128 returnedLiquidity) = JBSwapLib.getQuoteFromOracle({
+            poolManager: IPoolManager(address(poolManager)),
+            key: key,
+            twapWindow: twapWindow,
+            amountIn: 1 ether,
+            baseToken: baseToken,
+            quoteToken: quoteToken
+        });
+
+        assertEq(arithmeticMeanTick, currentTick, "quote used the spot-equivalent oracle tick");
+        assertApproxEqAbs(
+            uint256(returnedLiquidity), uint256(harmonicLiquidity), 1e6, "quote trusted the oracle liquidity window"
+        );
+        assertEq(
+            amountOut,
+            JBSwapLib.getQuoteAtTick({
+                tick: currentTick, baseAmount: 1 ether, baseToken: baseToken, quoteToken: quoteToken
+            }),
+            "quote was priced from the current tick"
+        );
+    }
+
     //*********************************************************************//
     // ----- Sigmoid Continuity & Monotonicity Tests --------------------- //
     //*********************************************************************//
