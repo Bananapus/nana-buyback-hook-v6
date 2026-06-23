@@ -621,6 +621,7 @@ contract V4RealOracleForkTest is Test {
 
         // Etch the bytecode at the hook-flag-compatible address.
         vm.etch(ORACLE_ADDR, oracleCode);
+        MockOracleHook(ORACLE_ADDR).setHasObservationCoverage(true);
 
         // Mock the afterInitialize callback — V4 will call this during pool init because
         // AFTER_INITIALIZE_FLAG (bit 12) is set in ORACLE_ADDR. The mock oracle doesn't
