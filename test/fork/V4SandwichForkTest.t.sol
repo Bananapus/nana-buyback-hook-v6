@@ -667,6 +667,9 @@ contract V4SandwichForkTest is Test {
             abi.encodeWithSelector(IGeomeanOracle.observe.selector),
             abi.encode(tickCumulatives, secondsPerLiquidityCumulativeX128s)
         );
+        vm.mockCall(
+            address(0), abi.encodeWithSelector(IGeomeanOracle.hasObservationCoverage.selector), abi.encode(true)
+        );
     }
 
     function _mockJbCore(uint256 projectId, ForkProjectToken projectToken) internal {
