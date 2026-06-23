@@ -237,26 +237,12 @@ contract OWE_OldWindowEvent is Test {
     function test_setTwapWindowOf_revertsOnInvalidWindow() public {
         // Too small.
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector,
-                1 minutes,
-                hook.MIN_TWAP_WINDOW(),
-                hook.MAX_TWAP_WINDOW()
-            )
-        );
+        vm.expectRevert(JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector);
         hook.setTwapWindowOf(projectId, address(terminalToken), 1 minutes);
 
         // Too large.
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector,
-                3 days,
-                hook.MIN_TWAP_WINDOW(),
-                hook.MAX_TWAP_WINDOW()
-            )
-        );
+        vm.expectRevert(JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector);
         hook.setTwapWindowOf(projectId, address(terminalToken), 3 days);
     }
 

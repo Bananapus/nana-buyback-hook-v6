@@ -83,16 +83,19 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_InsufficientPayAmount(uint256 swapAmount, uint256 totalPaid);
 
     /// @notice Thrown when the specified TWAP window is outside the allowed minimum and maximum bounds.
-    error JBBuybackHook_InvalidTwapWindow(uint256 value, uint256 min, uint256 max);
+    error JBBuybackHook_InvalidTwapWindow();
 
     /// @notice Thrown when attempting to set a pool for a project/terminal token pair that already has one.
-    error JBBuybackHook_PoolAlreadySet(PoolId poolId);
+    error JBBuybackHook_PoolAlreadySet();
 
     /// @notice Thrown when the pool is initialized at a price other than the one the caller expected.
     error JBBuybackHook_PoolInitializedAtWrongPrice(uint160 actualSqrtPriceX96, uint160 expectedSqrtPriceX96);
 
     /// @notice Thrown when the pool has not been initialized in the Uniswap V4 PoolManager.
     error JBBuybackHook_PoolNotInitialized(PoolId poolId);
+
+    /// @notice Thrown when the provided PoolKey does not contain the project token and terminal token pair.
+    error JBBuybackHook_PoolKeyCurrenciesMismatch();
 
     /// @notice Thrown when no pool has been configured for the given project and terminal token pair.
     error JBBuybackHook_PoolNotSet(uint256 projectId, address terminalToken);
@@ -729,7 +732,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Make sure the specified window is within reasonable bounds.
         if (newWindow < MIN_TWAP_WINDOW || newWindow > MAX_TWAP_WINDOW) {
-            revert JBBuybackHook_InvalidTwapWindow({value: newWindow, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
+            revert JBBuybackHook_InvalidTwapWindow();
         }
 
         // Normalize the terminal token — use address(0) for native.
@@ -1295,12 +1298,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     {
         // Make sure this pool hasn't already been set for this project/token pair.
         if (_poolIsSet[projectId][normalizedTerminalToken]) {
-            revert JBBuybackHook_PoolAlreadySet({poolId: _poolKeyOf[projectId][normalizedTerminalToken].toId()});
+            revert JBBuybackHook_PoolAlreadySet();
         }
 
         // Make sure the provided TWAP window is within reasonable bounds.
         if (twapWindow < MIN_TWAP_WINDOW || twapWindow > MAX_TWAP_WINDOW) {
-            revert JBBuybackHook_InvalidTwapWindow({value: twapWindow, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
+            revert JBBuybackHook_InvalidTwapWindow();
         }
 
         // Make sure the project has issued a token.
@@ -1323,7 +1326,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         address currency1 = Currency.unwrap(poolKey.currency1);
         bool validPair = (currency0 == projectToken && currency1 == normalizedTerminalToken)
             || (currency0 == normalizedTerminalToken && currency1 == projectToken);
-        require(validPair, "JBBuybackHook: pool key currencies mismatch");
+        if (!validPair) revert JBBuybackHook_PoolKeyCurrenciesMismatch();
 
         // Store the pool key and mark it as set.
         _poolKeyOf[projectId][normalizedTerminalToken] = poolKey;

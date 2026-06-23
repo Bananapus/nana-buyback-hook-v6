@@ -764,7 +764,7 @@ contract V4BuybackHookTest is Test {
 
         // --- 2. Revert when pool already set ---
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector, poolId));
+        vm.expectRevert(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector);
         hook.setPoolFor(newProjectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
 
         // --- 3. Revert when pool not initialized (sqrtPrice == 0) ---
@@ -802,26 +802,12 @@ contract V4BuybackHookTest is Test {
 
         // Too small (less than MIN_TWAP_WINDOW = 2 minutes).
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector,
-                60, // 1 minute
-                hook.MIN_TWAP_WINDOW(),
-                hook.MAX_TWAP_WINDOW()
-            )
-        );
+        vm.expectRevert(JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector);
         hook.setPoolFor(twapProjectId, poolKey, 60, JBConstants.NATIVE_TOKEN);
 
         // Too large (more than MAX_TWAP_WINDOW = 2 days).
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector,
-                3 days,
-                hook.MIN_TWAP_WINDOW(),
-                hook.MAX_TWAP_WINDOW()
-            )
-        );
+        vm.expectRevert(JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector);
         hook.setPoolFor(twapProjectId, poolKey, 3 days, JBConstants.NATIVE_TOKEN);
     }
 
@@ -1075,26 +1061,12 @@ contract V4BuybackHookTest is Test {
 
         // 2 minutes should now be rejected (was valid before, now too small).
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector,
-                2 minutes,
-                hook.MIN_TWAP_WINDOW(),
-                hook.MAX_TWAP_WINDOW()
-            )
-        );
+        vm.expectRevert(JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector);
         hook.setPoolFor(newProjectId, poolKey, 2 minutes, JBConstants.NATIVE_TOKEN);
 
         // 4 minutes should also be rejected.
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector,
-                4 minutes,
-                hook.MIN_TWAP_WINDOW(),
-                hook.MAX_TWAP_WINDOW()
-            )
-        );
+        vm.expectRevert(JBBuybackHook.JBBuybackHook_InvalidTwapWindow.selector);
         hook.setPoolFor(newProjectId, poolKey, 4 minutes, JBConstants.NATIVE_TOKEN);
 
         // 5 minutes should succeed.
@@ -1191,20 +1163,9 @@ contract V4BuybackHookTest is Test {
             sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
         });
 
-        // Compute the actual poolId that initializePoolFor creates (hooks: ORACLE_HOOK = mockOracle).
-        // Native ETH (address(0)) is always currency0 (smallest address).
-        PoolKey memory expectedKey = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(address(projectToken)),
-            fee: poolKey.fee,
-            tickSpacing: poolKey.tickSpacing,
-            hooks: IHooks(address(mockOracle))
-        });
-        PoolId expectedPoolId = expectedKey.toId();
-
         // Second call reverts with PoolAlreadySet.
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector, expectedPoolId));
+        vm.expectRevert(JBBuybackHook.JBBuybackHook_PoolAlreadySet.selector);
         hook.initializePoolFor({
             projectId: newProjectId,
             fee: poolKey.fee,
