@@ -98,12 +98,12 @@ repo.
 Generated from Foundry `out/**/*.json` artifacts, filtered to this repo's own runtime source roots and excluding tests, scripts, and dependencies.
 
 - V5 comparison package: `nana-buyback-hook-v5`.
-- Own-source ABI artifacts compared: V6 `6`, V5 `6`.
-- Contract/interface coverage: `1` added, `1` removed, `4` shared names with ABI changes, `1` shared name ABI-identical.
+- Own-source ABI artifacts compared: V6 `5`, V5 `6`.
+- Contract/interface coverage: `0` added, `1` removed, `4` shared names with ABI changes, `1` shared name ABI-identical.
 - Shared-name ABI item deltas: `70` added, `41` removed, `5` modified.
 
 Added V6 ABI artifacts:
-- `IGeomeanOracle` from `src/interfaces/IGeomeanOracle.sol`: `1` functions, `0` events, `0` errors.
+- None.
 
 Removed V5 ABI artifacts:
 - `IWETH9` from `src/interfaces/external/IWETH9.sol`: `8` functions, `2` events, `0` errors.
