@@ -3,10 +3,70 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {JBSwapLib} from "../src/libraries/JBSwapLib.sol";
+import {MockOracleHook} from "./mock/MockOracleHook.sol";
+import {MockPoolManager} from "./mock/MockPoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @notice Tests for JBSwapLib — sigmoid slippage, 1e18 impact, sqrtPriceLimit.
 contract JBSwapLibTest is Test {
+    //*********************************************************************//
+    // ----- Oracle Quote Freshness Tests --------------------------------//
+    //*********************************************************************//
+
+    /// @notice A hook oracle quote uses the longest retained best-effort window when the requested window is
+    /// under-covered.
+    function test_getQuoteFromOracle_usesBestEffortObservationCoverage() public {
+        MockPoolManager poolManager = new MockPoolManager();
+        MockOracleHook oracleHook = new MockOracleHook();
+
+        address baseToken = makeAddr("baseToken");
+        address quoteToken = makeAddr("quoteToken");
+        (address currency0, address currency1) =
+            baseToken < quoteToken ? (baseToken, quoteToken) : (quoteToken, baseToken);
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(currency1),
+            fee: 3000,
+            tickSpacing: int24(60),
+            hooks: IHooks(address(oracleHook))
+        });
+
+        uint32 twapWindow = 5 minutes;
+        uint32 retainedWindow = 2 minutes;
+        int24 currentTick = 1234;
+        uint128 harmonicLiquidity = 1_000_000 ether;
+        uint160 secondsPerLiquidityDelta = uint160((uint256(retainedWindow) << 128) / uint256(harmonicLiquidity));
+        oracleHook.setObserveData(
+            0, int56(int24(currentTick)) * int56(uint56(retainedWindow)), 0, secondsPerLiquidityDelta
+        );
+        oracleHook.setObservationCoverage(retainedWindow);
+
+        (uint256 amountOut, int24 arithmeticMeanTick, uint128 returnedLiquidity) = JBSwapLib.getQuoteFromOracle({
+            poolManager: IPoolManager(address(poolManager)),
+            key: key,
+            twapWindow: twapWindow,
+            amountIn: 1 ether,
+            baseToken: baseToken,
+            quoteToken: quoteToken
+        });
+
+        assertEq(arithmeticMeanTick, currentTick, "partial coverage used the retained window denominator");
+        assertApproxEqAbs(
+            uint256(returnedLiquidity), uint256(harmonicLiquidity), 1e18, "quote used the retained liquidity window"
+        );
+        assertEq(
+            amountOut,
+            JBSwapLib.getQuoteAtTick({
+                tick: currentTick, baseAmount: 1 ether, baseToken: baseToken, quoteToken: quoteToken
+            }),
+            "best-effort quote was priced from the oracle tick"
+        );
+    }
+
     //*********************************************************************//
     // ----- Sigmoid Continuity & Monotonicity Tests --------------------- //
     //*********************************************************************//

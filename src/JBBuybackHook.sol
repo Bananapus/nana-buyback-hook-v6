@@ -91,6 +91,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Thrown when the pool is initialized at a price other than the one the caller expected.
     error JBBuybackHook_PoolInitializedAtWrongPrice(uint160 actualSqrtPriceX96, uint160 expectedSqrtPriceX96);
 
+    /// @notice Thrown when the provided PoolKey does not contain the project token and terminal token pair.
+    error JBBuybackHook_PoolKeyCurrenciesMismatch();
+
     /// @notice Thrown when the pool has not been initialized in the Uniswap V4 PoolManager.
     error JBBuybackHook_PoolNotInitialized(PoolId poolId);
 
@@ -727,10 +730,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_TWAP
         });
 
-        // Make sure the specified window is within reasonable bounds.
-        if (newWindow < MIN_TWAP_WINDOW || newWindow > MAX_TWAP_WINDOW) {
-            revert JBBuybackHook_InvalidTwapWindow({value: newWindow, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
-        }
+        _requireValidTwapWindow(newWindow);
 
         // Normalize the terminal token — use address(0) for native.
         address normalizedTerminalToken = terminalToken == JBConstants.NATIVE_TOKEN ? address(0) : terminalToken;
@@ -1277,6 +1277,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ---------------------- internal transactions ---------------------- //
     //*********************************************************************//
 
+    /// @notice Revert if a TWAP window is outside the allowed bounds.
+    /// @param window The TWAP window to validate.
+    function _requireValidTwapWindow(uint256 window) internal pure {
+        if (window < MIN_TWAP_WINDOW || window > MAX_TWAP_WINDOW) {
+            revert JBBuybackHook_InvalidTwapWindow({value: window, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
+        }
+    }
+
     /// @notice Shared internal logic for setting a pool. Both `setPoolFor` overloads delegate here after permission
     /// checks and token normalization.
     /// @param projectId The ID of the project.
@@ -1298,10 +1306,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             revert JBBuybackHook_PoolAlreadySet({poolId: _poolKeyOf[projectId][normalizedTerminalToken].toId()});
         }
 
-        // Make sure the provided TWAP window is within reasonable bounds.
-        if (twapWindow < MIN_TWAP_WINDOW || twapWindow > MAX_TWAP_WINDOW) {
-            revert JBBuybackHook_InvalidTwapWindow({value: twapWindow, min: MIN_TWAP_WINDOW, max: MAX_TWAP_WINDOW});
-        }
+        _requireValidTwapWindow(twapWindow);
 
         // Make sure the project has issued a token.
         if (projectToken == address(0)) revert JBBuybackHook_ZeroProjectToken(projectId);
@@ -1323,7 +1328,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         address currency1 = Currency.unwrap(poolKey.currency1);
         bool validPair = (currency0 == projectToken && currency1 == normalizedTerminalToken)
             || (currency0 == normalizedTerminalToken && currency1 == projectToken);
-        require(validPair, "JBBuybackHook: pool key currencies mismatch");
+        if (!validPair) revert JBBuybackHook_PoolKeyCurrenciesMismatch();
 
         // Store the pool key and mark it as set.
         _poolKeyOf[projectId][normalizedTerminalToken] = poolKey;
@@ -1336,16 +1341,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         twapWindowOf[projectId][normalizedTerminalToken] = twapWindow;
         projectTokenOf[projectId] = projectToken;
 
+        address caller = _msgSender();
         emit TwapWindowChanged({
             projectId: projectId,
             terminalToken: normalizedTerminalToken,
             oldWindow: oldWindow,
             newWindow: twapWindow,
-            caller: _msgSender()
+            caller: caller
         });
-        emit PoolAdded({
-            projectId: projectId, terminalToken: normalizedTerminalToken, poolId: poolId, caller: _msgSender()
-        });
+        emit PoolAdded({projectId: projectId, terminalToken: normalizedTerminalToken, poolId: poolId, caller: caller});
     }
 
     /// @notice Executes the buy-side swap: exchanges terminal tokens for project tokens through the V4 pool, then burns

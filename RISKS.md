@@ -114,7 +114,7 @@ New pools can lack enough observation history even after the router hook initial
 
 This is not a general spot-price route. It is buy-side only, cold-start only, capped by impact, and discounted by live LP fee before comparison. If a valid oracle tick is available, the hook uses it instead of raw slot0. If the guardrails reject the quote, the pay mints through the protocol path. When the cold-start route is active, the emitted no-quote execution floor is the issuance-rate amount rather than the internal bootstrap quote. Cash-out routing remains TWAP-only during warmup.
 
-Programmatic callers do not need an offchain quote after the oracle is warm: they can omit quote metadata, or pass a zero minimum in quote metadata, and the hook will derive the route from TWAP.
+Programmatic callers do not need an offchain quote after the oracle is warm: they can omit quote metadata, or pass a zero minimum in quote metadata, and the hook will derive the route from TWAP. If the oracle reports partial observation coverage, the hook uses the longest retained best-effort window rather than blocking the quote outright. That keeps programmatic fee flows live, but it is weaker than a full configured-window TWAP until the pool has enough retained history.
 
 ### 9.2 Pool immutability prevents migration to better liquidity
 

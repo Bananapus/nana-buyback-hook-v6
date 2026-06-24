@@ -32,9 +32,9 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 // Buyback hook
+import {IGeomeanOracle} from "@bananapus/univ4-router-v6/src/interfaces/IGeomeanOracle.sol";
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
 import {JBSwapLib} from "src/libraries/JBSwapLib.sol";
-import {IGeomeanOracle} from "src/interfaces/IGeomeanOracle.sol";
 
 // Shared fork test helpers
 import {ForkProjectToken, ForkLiquidityHelper, ForTest_BuybackHook} from "../helpers/ForkHelpers.sol";
@@ -471,6 +471,12 @@ contract V4GeomeanSlippageForkTest is Test {
             abi.encodeWithSelector(IGeomeanOracle.observe.selector),
             abi.encode(tickCumulatives, secondsPerLiquidityCumulativeX128s)
         );
+        vm.mockCall(
+            address(0), abi.encodeWithSelector(IGeomeanOracle.hasObservationCoverage.selector), abi.encode(true)
+        );
+        vm.mockCall(
+            address(0), abi.encodeWithSelector(IGeomeanOracle.observationCoverageOf.selector), abi.encode(uint32(300))
+        );
     }
 
     /// @notice Mock oracle with a specific tick delta to simulate price movement over a TWAP window.
@@ -491,6 +497,14 @@ contract V4GeomeanSlippageForkTest is Test {
             address(0),
             abi.encodeWithSelector(IGeomeanOracle.observe.selector),
             abi.encode(tickCumulatives, secondsPerLiquidityCumulativeX128s)
+        );
+        vm.mockCall(
+            address(0), abi.encodeWithSelector(IGeomeanOracle.hasObservationCoverage.selector), abi.encode(true)
+        );
+        vm.mockCall(
+            address(0),
+            abi.encodeWithSelector(IGeomeanOracle.observationCoverageOf.selector),
+            abi.encode(uint32(twapWindow))
         );
     }
 

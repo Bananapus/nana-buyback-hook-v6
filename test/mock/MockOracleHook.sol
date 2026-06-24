@@ -11,6 +11,8 @@ contract MockOracleHook {
     uint160 public secPerLiq0;
     uint160 public secPerLiq1;
     bool public shouldRevert;
+    bool public hasCoverage = true;
+    uint32 public oldestSecondsAgo = type(uint32).max;
 
     /// @notice Configure the observe return data.
     /// @param _tickCumulative0 Tick cumulative at secondsAgo[0] (the older observation).
@@ -34,6 +36,30 @@ contract MockOracleHook {
     /// @notice If true, observe() reverts (simulating an unsupported oracle).
     function setShouldRevert(bool _shouldRevert) external {
         shouldRevert = _shouldRevert;
+    }
+
+    /// @notice Configure whether the mocked oracle reports that it covers the requested TWAP window.
+    function setHasObservationCoverage(bool _hasCoverage) external {
+        hasCoverage = _hasCoverage;
+        oldestSecondsAgo = _hasCoverage ? type(uint32).max : 0;
+    }
+
+    /// @notice IGeomeanOracle.hasObservationCoverage implementation.
+    function hasObservationCoverage(PoolKey calldata, uint32) external view returns (bool) {
+        if (shouldRevert) revert("MockOracle: unsupported");
+        return hasCoverage;
+    }
+
+    /// @notice Configure the mocked retained observation coverage.
+    function setObservationCoverage(uint32 _oldestSecondsAgo) external {
+        oldestSecondsAgo = _oldestSecondsAgo;
+        hasCoverage = _oldestSecondsAgo != 0;
+    }
+
+    /// @notice IGeomeanOracle.observationCoverageOf implementation.
+    function observationCoverageOf(PoolKey calldata) external view returns (uint32) {
+        if (shouldRevert) revert("MockOracle: unsupported");
+        return oldestSecondsAgo;
     }
 
     /// @notice IGeomeanOracle.observe implementation.

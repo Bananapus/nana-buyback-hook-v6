@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IGeomeanOracle} from "@bananapus/univ4-router-v6/src/interfaces/IGeomeanOracle.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
@@ -8,7 +9,6 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {IGeomeanOracle} from "../interfaces/IGeomeanOracle.sol";
 
 /// @notice Shared math library for the buyback hook: queries TWAP oracles, calculates sigmoid-based slippage
 /// tolerances from estimated price impact, converts ticks to token amounts, and derives V4 sqrt price limits.
@@ -72,34 +72,43 @@ library JBSwapLib {
             return (amountOut, arithmeticMeanTick, harmonicMeanLiquidity);
         }
 
-        // Try querying the oracle hook.
-        try IGeomeanOracle(address(key.hooks)).observe({key: key, secondsAgos: _makeSecondsAgos(twapWindow)}) returns (
+        IGeomeanOracle oracle = IGeomeanOracle(address(key.hooks));
+        uint32 quoteWindow = twapWindow;
+
+        // Prefer the requested TWAP window, but keep programmatic routes live by using the longest retained
+        // best-effort window when the hook reports partial coverage. Hooks that do not expose coverage keep the
+        // previous observe-only behavior for compatibility.
+        try oracle.observationCoverageOf({key: key}) returns (uint32 oldestSecondsAgo) {
+            if (oldestSecondsAgo == 0) return (0, 0, 0);
+            if (oldestSecondsAgo < quoteWindow) quoteWindow = oldestSecondsAgo;
+        } catch {}
+
+        try oracle.observe({key: key, secondsAgos: _makeSecondsAgos(quoteWindow)}) returns (
             int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s
         ) {
             // Compute arithmetic mean tick from tick cumulatives.
             int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
-            // Safe: twapWindow is a uint32 (max ~4.3B), fits in int32 (max ~2.1B) because realistic TWAP windows
-            // are bounded to MAX_TWAP_WINDOW (2 days = 172800). The division result fits in int24 because valid
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int56 period = int56(uint56(quoteWindow));
+            // Safe: quoteWindow is bounded by twapWindow, which is validated to MAX_TWAP_WINDOW (2 days = 172800).
+            // The division result fits in int24 because valid
             // Uniswap tick values are bounded to [-887272, 887272].
             // forge-lint: disable-next-line(unsafe-typecast)
-            arithmeticMeanTick = int24(tickCumulativesDelta / int56(int32(twapWindow)));
+            arithmeticMeanTick = int24(tickCumulativesDelta / period);
 
             // Round towards negative infinity.
-            // Safe: same reasoning as above — twapWindow fits in int32 within realistic bounds.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(twapWindow)) != 0)) {
-                arithmeticMeanTick--;
-            }
+            // Safe: same reasoning as above — quoteWindow fits in int32 within realistic bounds.
+            if (tickCumulativesDelta < 0 && (tickCumulativesDelta % period != 0)) arithmeticMeanTick--;
 
             // Compute harmonic mean liquidity from seconds-per-liquidity cumulatives.
             uint160 secondsPerLiquidityDelta =
                 secondsPerLiquidityCumulativeX128s[1] - secondsPerLiquidityCumulativeX128s[0];
 
             if (secondsPerLiquidityDelta > 0) {
-                // Safe: the result of (twapWindow << 128) / secondsPerLiquidityDelta fits in uint128 because
-                // twapWindow is at most MAX_TWAP_WINDOW (172800) and secondsPerLiquidityDelta > 0 in this branch.
+                // Safe: the result of (quoteWindow << 128) / secondsPerLiquidityDelta fits in uint128 because
+                // quoteWindow is at most MAX_TWAP_WINDOW (172800) and secondsPerLiquidityDelta > 0 in this branch.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                harmonicMeanLiquidity = uint128((uint256(twapWindow) << 128) / uint256(secondsPerLiquidityDelta));
+                harmonicMeanLiquidity = uint128((uint256(quoteWindow) << 128) / uint256(secondsPerLiquidityDelta));
             }
 
             // Get the quote at the mean tick.
