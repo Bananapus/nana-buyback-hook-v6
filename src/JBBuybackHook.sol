@@ -79,6 +79,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Thrown when the hook is triggered by an address that is not one of the project's payment terminals.
     error JBBuybackHook_CallerNotTerminal(address caller);
 
+    /// @notice Thrown inside the unlock callback when a swap fills below an oracle-derived floor. Always caught by
+    /// `_swap`'s try/catch, which unwinds the swap and lets the payment fall back to minting — it never surfaces to
+    /// the payer.
+    error JBBuybackHook_DerivedFloorNotMet(uint256 amount, uint256 minimum);
+
     /// @notice Thrown when the amount to swap with exceeds the total amount paid in.
     error JBBuybackHook_InsufficientPayAmount(uint256 swapAmount, uint256 totalPaid);
 
@@ -389,10 +394,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Buys project tokens from the Uniswap V4 pool, then mints any leftover at the issuance rate. The swap
     /// fills only while the pool price beats the mint rate — leftover input is returned to the project's terminal.
     /// @dev The swap uses the issuance rate as its price limit: it fills while the pool offers a better rate than
-    /// minting, and any unswapped tokens are minted at the issuance rate. The combined output (swap + leftover mint)
-    /// must meet the user's specified minimum, otherwise the transaction reverts. If the swap reverts entirely (due to
-    /// insufficient liquidity or something else), all tokens are minted as a fallback. Explicit caller-provided
-    /// minimums still apply in that case, but oracle-derived routing minimums do not.
+    /// minting, and any unswapped tokens are minted at the issuance rate. An explicit caller-provided minimum is a
+    /// settlement guarantee: if the combined output (swap + leftover mint) falls short, the transaction reverts.
+    /// An oracle-derived routing minimum never reverts the payment: it is enforced inside the swap attempt, and a
+    /// miss unwinds the swap so the full payment falls back to minting at the issuance rate. This keeps no-quote
+    /// (programmatic) payments — protocol fees, split pays, project payers — alive when the TWAP floor is stale,
+    /// while a manipulated fill can never do better than the protocol's own mint path. If the swap reverts entirely
+    /// (due to insufficient liquidity or something else), all tokens are likewise minted as a fallback, against
+    /// which explicit minimums still apply. Offchain observers can detect the fallback as a swap-routed payment
+    /// that emits `Mint` without a `Swap`.
     /// @param context The pay context passed in by the terminal.
     function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable override {
         // Make sure only the project's payment terminals can access this function.
@@ -476,14 +486,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // Get a reference to the number of project tokens that was swapped for.
-        // `swapFailed` is true when the try/catch in _swap caught a revert (pool unavailable, etc.).
         // The price limit is set to the issuance rate (tokenCountWithoutHook / amountIn), so the swap
         // fills only while the pool offers a better rate than minting. Any unconsumed input tokens
         // remain in this contract and are minted at the issuance rate below.
-        (uint256 exactSwapAmountOut, bool swapFailed) = _swap({
+        // Oracle-derived floors are enforced inside the swap attempt: a miss unwinds the swap and the full
+        // payment falls back to minting. Only explicit caller minima are enforced on the combined output below.
+        (uint256 exactSwapAmountOut,) = _swap({
             context: context,
             projectTokenIs0: projectTokenIs0,
             minimumSwapAmountOut: tokenCountWithoutHook,
+            derivedFloorAmountOut: hasExplicitMinimumSwapAmountOut ? 0 : minimumSwapAmountOut,
             controller: controller
         });
 
@@ -542,11 +554,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             });
         }
 
-        // Explicit caller minima are hard settlement guarantees and still apply if the swap path
-        // fails completely. Oracle-derived minima are routing hints, so a total swap failure may
-        // still degrade to mint-only fallback without reverting.
-        bool shouldEnforceMinimum = hasExplicitMinimumSwapAmountOut || !swapFailed;
-        if (shouldEnforceMinimum && exactSwapAmountOut + partialMintTokenCount < minimumSwapAmountOut) {
+        // Only explicit caller minima are settlement guarantees over the combined output (swap + leftover mint).
+        // Oracle-derived minima are routing hints enforced inside the swap attempt, where a miss unwinds the swap
+        // to the mint fallback instead of reverting the payment.
+        if (hasExplicitMinimumSwapAmountOut && exactSwapAmountOut + partialMintTokenCount < minimumSwapAmountOut) {
             revert JBBuybackHook_SpecifiedSlippageExceeded({
                 amount: exactSwapAmountOut + partialMintTokenCount, minimum: minimumSwapAmountOut
             });
@@ -829,6 +840,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // The actual received amount accounts for any fee-on-transfer deduction.
         uint256 actualOutputAmount = balanceAfterTake - balanceBeforeTake;
+
+        // Enforce any oracle-derived floor inside the unlock so a miss unwinds the swap itself: the revert is caught
+        // by `_swap`'s try/catch and the payment falls back to minting at the issuance rate. The floor is pro-rated
+        // by consumed input because the issuance-rate price limit can partial-fill — the unconsumed remainder mints
+        // at the issuance rate, which needs no oracle protection.
+        if (params.derivedFloorAmountOut != 0) {
+            uint256 proRatedFloor =
+                mulDiv({x: params.derivedFloorAmountOut, y: inputAmount, denominator: params.amountIn});
+            if (actualOutputAmount < proRatedFloor) {
+                revert JBBuybackHook_DerivedFloorNotMet({amount: actualOutputAmount, minimum: proRatedFloor});
+            }
+        }
 
         return abi.encode(inputAmount, actualOutputAmount);
     }
@@ -1359,6 +1382,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param minimumSwapAmountOut The token count used to derive the swap's price limit via
     /// `JBSwapLib.sqrtPriceLimitFromAmounts`. When set to the issuance-rate equivalent (`tokenCountWithoutHook`),
     /// the swap fills only while the pool offers a better rate than minting.
+    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock, pro-rated by consumed
+    /// input. A miss unwinds the swap (caught below) so the payment falls back to minting. 0 when the caller
+    /// supplied an explicit minimum, which is enforced on the combined output in `afterPayRecordedWith` instead.
     /// @param controller The controller used to mint and burn tokens.
     /// @return amountReceived The amount of project tokens received from the swap.
     /// @return swapFailed True if the swap reverted and was caught by try/catch (triggers mint fallback).
@@ -1366,6 +1392,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         JBAfterPayRecordedContext calldata context,
         bool projectTokenIs0,
         uint256 minimumSwapAmountOut,
+        uint256 derivedFloorAmountOut,
         IJBController controller
     )
         internal
@@ -1386,7 +1413,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 key: key,
                 zeroForOne: !projectTokenIs0,
                 amountIn: amountToSwapWith,
-                minimumSwapAmountOut: minimumSwapAmountOut
+                minimumSwapAmountOut: minimumSwapAmountOut,
+                derivedFloorAmountOut: derivedFloorAmountOut
             })
         );
 
@@ -1434,9 +1462,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         returns (uint256 amountSpent, uint256 amountReceived, bool swapFailed)
     {
         // Encode the swap parameters so `unlockCallback(...)` can execute the swap after the PoolManager unlocks.
+        // Sell-side derived floors already soft-land through the caller's `shouldEnforceMinimumSwapAmountOut` flag,
+        // so no in-unlock derived floor applies here.
         bytes memory callbackData = abi.encode(
             SwapCallbackData({
-                key: key, zeroForOne: zeroForOne, amountIn: amountIn, minimumSwapAmountOut: minimumSwapAmountOut
+                key: key,
+                zeroForOne: zeroForOne,
+                amountIn: amountIn,
+                minimumSwapAmountOut: minimumSwapAmountOut,
+                derivedFloorAmountOut: 0
             })
         );
 

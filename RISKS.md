@@ -45,6 +45,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 
 - **There is a three-layer protection pipeline.** The hook combines explicit minima or TWAP floors, sigmoid slippage, and a `sqrtPriceLimit` circuit breaker.
 - **Sandwich attacks can force protocol fallback.** When the circuit breaker trips, the intended result is mint/direct-reclaim fallback rather than silent overpayment.
+- **Derived floors fail open to mint, never closed.** A buy-side fill below the oracle-derived floor unwinds the swap inside the unlock and mints the full payment at the issuance rate. An attacker can therefore force a no-quote pay to route at the issuance rate, but the payment then lands in the project's terminal balance — there is nothing to extract, and programmatic fee flows (which cannot retry) always settle. This closes the fee-evasion vector where a payer with a forgiven fee (e.g. REVLoans prepaid fees) could nudge a thin pool to make their own fee pay revert and be refunded while keeping the fee's benefit.
 - **TWAP manipulation is expensive but not impossible.** Risk is lower in deep pools and higher for large trades or thin markets.
 - **Cold-start spot is manipulable.** The buy side only uses raw slot0 while TWAP liquidity is zero, the pool uses the configured oracle hook, and the oracle cannot provide a quote. The hook returns to issuance routing for quotes above the 5% impact cap or fee-adjusted quotes that do not beat issuance, and discounts accepted quotes by 3% plus LP fee plus rounded-up estimated impact. The execution path still uses the issuance-rate price limit and mints leftover input.
 - **Dust liquidity is treated as unsafe routing depth when impact reaches the max-impact guard.**
@@ -91,6 +92,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 
 - users always get at least their specified explicit minimum
 - explicit minima are hard floors; direct or noop cash-out paths that cannot guarantee the floor under the conservative net bound must revert
+- oracle-derived buy-side floors never revert a payment; a floor miss unwinds the swap and mints the full payment at the issuance rate
 - cash-out beneficiaries always get at least their explicit minimum, and holders keep any project tokens the pool
   does not buy on a partial sell-side fill
 - cash-out sell count matches data-hook intent, not necessarily the terminal's full original count
