@@ -85,7 +85,7 @@ bytes memory metadata = JBMetadataResolver.addToMetadata(existingMetadata, payId
 // "cashOut" and encode (uint256 minimumSwapAmountOut, bool skip) before cashOutTokensOf(...).
 ```
 
-**Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle. If the oracle exposes observation coverage, no-quote routing prefers the configured full TWAP window and otherwise quotes against the longest retained best-effort window. If there is no usable coverage, the hook either uses the bounded buy-side cold-start path described below or mints through the protocol path.
+**Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle. The two have intentionally different failure behavior: an explicit floor is a settlement guarantee that hard-reverts the payment when the combined output (swap + leftover mint) falls short, while a TWAP-derived floor is a routing hint — a swap that fills below it is unwound and the full payment falls back to minting at the issuance rate, so no-quote programmatic payments never revert on a stale floor. If the oracle exposes observation coverage, no-quote routing prefers the configured full TWAP window and otherwise quotes against the longest retained best-effort window. If there is no usable coverage, the hook either uses the bounded buy-side cold-start path described below or mints through the protocol path.
 
 When `beforePayRecordedWith` returns a `JBPayHookSpecification`, its `metadata` is the hook-internal settlement and
 preview payload consumed by `afterPayRecordedWith` and by router-terminal preview consumers:
@@ -118,8 +118,9 @@ Buy-side metadata is 480 bytes. `oracleUnseeded == true` means the configured po
 liquidity yet. In that state, a non-noop spec means the hook selected the bounded cold-start bootstrap path; a noop spec
 means issuance still won or the fallback guardrails rejected the quote. Explicit caller quotes still supply the
 settlement floor, while diagnostics can report whether the configured pool lacks usable TWAP liquidity. For an
-`oracleUnseeded` no-quote active spec, `minimumSwapAmountOut` is the issuance-rate execution floor enforced after the
-swap; the stricter bootstrap quote is only used to decide whether the AMM route should be selected.
+`oracleUnseeded` no-quote active spec, `minimumSwapAmountOut` is the issuance-rate execution floor enforced inside the
+swap attempt (a miss unwinds to the mint fallback); the stricter bootstrap quote is only used to decide whether the
+AMM route should be selected.
 
 **Sell side, key `"cashOut"`** — encodes `(uint256 minimumSwapAmountOut, bool skip)`:
 
@@ -136,7 +137,7 @@ swap; the stricter bootstrap quote is only used to decide whether the AMM route 
 ## Integration traps
 
 - this hook can fall back between market and protocol paths, so preview behavior is not the same as guaranteed execution
-- oracle-derived minima and caller-supplied minima have intentionally different failure behavior
+- oracle-derived minima and caller-supplied minima have intentionally different failure behavior: explicit minima hard-revert, derived floors unwind the swap and mint the full payment instead
 - pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is expensive
 - a configured and initialized pool is not enough to activate routing; the hook also requires current PoolManager liquidity and rejects dust/max-impact routes
 - pool registration is not proof of live market availability; operators should separately verify the intended V4 hook,

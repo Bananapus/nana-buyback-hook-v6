@@ -429,8 +429,9 @@ contract NoopAndBalanceDeltaRegressionTest is Test {
         projectToken.mint(address(mockPm), expectedOut);
 
         // Build callback data for a zeroForOne swap (ETH -> project token).
-        SwapCallbackData memory callbackData =
-            SwapCallbackData({key: poolKey, zeroForOne: true, amountIn: amountIn, minimumSwapAmountOut: 0});
+        SwapCallbackData memory callbackData = SwapCallbackData({
+            key: poolKey, zeroForOne: true, amountIn: amountIn, minimumSwapAmountOut: 0, derivedFloorAmountOut: 0
+        });
 
         // Fund the hook with ETH for settlement.
         vm.deal(address(hook), amountIn);
@@ -473,8 +474,9 @@ contract NoopAndBalanceDeltaRegressionTest is Test {
         fotToken.mint(address(mockPm), poolReportedOut);
 
         // Build callback data.
-        SwapCallbackData memory callbackData =
-            SwapCallbackData({key: fotPoolKey, zeroForOne: true, amountIn: amountIn, minimumSwapAmountOut: 0});
+        SwapCallbackData memory callbackData = SwapCallbackData({
+            key: fotPoolKey, zeroForOne: true, amountIn: amountIn, minimumSwapAmountOut: 0, derivedFloorAmountOut: 0
+        });
 
         // Fund the hook with ETH for settlement.
         vm.deal(address(hook), amountIn);
@@ -520,7 +522,8 @@ contract NoopAndBalanceDeltaRegressionTest is Test {
             key: poolKey,
             zeroForOne: false, // oneForZero
             amountIn: amountIn,
-            minimumSwapAmountOut: 0
+            minimumSwapAmountOut: 0,
+            derivedFloorAmountOut: 0
         });
 
         // Call unlockCallback from pool manager.

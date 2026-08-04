@@ -426,7 +426,8 @@ contract V4BuybackHookTest is Test {
                 key: poolKey,
                 zeroForOne: !(address(projectToken) < address(0)),
                 amountIn: 1 ether,
-                minimumSwapAmountOut: 0
+                minimumSwapAmountOut: 0,
+                derivedFloorAmountOut: 0
             })
         );
 

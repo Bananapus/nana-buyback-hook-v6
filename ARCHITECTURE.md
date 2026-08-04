@@ -60,8 +60,18 @@ payment arrives
   -> hook confirms the configured pool currently has in-range liquidity
   -> if pool wins, hook returns an active pay-hook spec and later executes the swap
   -> swapped tokens are burned and re-minted through the controller so reserved-rate semantics still apply
-  -> if the swap fully fails, explicit caller minima still revert but oracle-derived minima can degrade to mint fallback
+  -> if the swap fills below an oracle-derived floor, the floor check inside the unlock unwinds the swap and the
+     full payment degrades to mint fallback (the floor is pro-rated by consumed input, so partial fills at a fair
+     per-unit rate survive)
+  -> if the swap fully fails, the payment likewise degrades to mint fallback
+  -> explicit caller minima are settlement guarantees: they hard-revert on the combined output in either case
 ```
+
+Oracle-derived floors never revert a payment. This keeps no-quote programmatic flows (protocol fees, split pays,
+project payers) alive when the TWAP floor is stale for current pool conditions, while a manipulated fill can never
+do better than the protocol's own mint path — an attacker can force a pay to route at the issuance rate, but the
+funds then land in the project's terminal balance, so there is nothing to extract. A derived-floor fallback is
+observable offchain as a swap-routed payment that emits `Mint` without a `Swap`.
 
 The cold-start bootstrap path is buy-side only. It exists because the V4 oracle can have an initialized observation but still lack usable full-window TWAP liquidity for a freshly seeded pool. The fallback is deliberately narrow: zero TWAP liquidity, non-zero live liquidity, the configured oracle hook, and a 5% impact cap. The live LP fee is folded into the bootstrap discount, which is 3% plus LP fee plus rounded-up estimated impact. If the fee-adjusted quote still beats issuance, the route can use the AMM; if it does not, or if the discount consumes the quote, the payment mints. If the oracle returns a valid mean tick, the hook uses that tick instead of raw slot0. Raw slot0 is only used when the configured oracle hook cannot provide a quote. Cold-start derived quotes select the route for no-quote pays; the active hook spec encodes the issuance-rate execution floor so a successful underfill below the internal bootstrap quote does not brick the payment.
 
