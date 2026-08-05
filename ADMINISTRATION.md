@@ -38,6 +38,12 @@
 | `JBBuybackHook` | `setPoolFor(...)`, `initializePoolFor(...)` | Project owner or `SET_BUYBACK_POOL` delegate | One-time pool setup per project and terminal token |
 | `JBBuybackHook` | `setTwapWindowOf(...)` | Project owner or `SET_BUYBACK_TWAP` delegate | Adjusts TWAP window after pool setup |
 
+**Registration-time TWAP window special case:** a pool registered (via `setPoolFor` or `initializePoolFor`) with a
+window of exactly `MAX_TWAP_WINDOW` (2 days) is stored with the 30-minute default instead. Immutable deployers
+(e.g. REVDeployer) bake the max in as a default rather than a tuning choice, and a max-length TWAP floor
+systematically lags trending pools. `setTwapWindowOf` is never remapped — an operator who deliberately wants the
+max window sets it there, and the `TwapWindowChanged` event always reports the window actually stored.
+
 ## Immutable and one-way
 
 - `lockHookFor(...)` is irreversible

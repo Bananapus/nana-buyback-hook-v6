@@ -138,6 +138,7 @@ AMM route should be selected.
 
 - this hook can fall back between market and protocol paths, so preview behavior is not the same as guaranteed execution
 - oracle-derived minima and caller-supplied minima have intentionally different failure behavior: explicit minima hard-revert, derived floors unwind the swap and mint the full payment instead
+- registering a pool with `twapWindow == MAX_TWAP_WINDOW` (2 days) stores the 30-minute default instead — immutable deployers bake the max in as a default, not a tuning choice; use `setTwapWindowOf` (never remapped) for a deliberate max-length window
 - pool keys are intentionally immutable once set for a given project/token pair, so fixing a bad pool choice is expensive
 - a configured and initialized pool is not enough to activate routing; the hook also requires current PoolManager liquidity and rejects dust/max-impact routes
 - pool registration is not proof of live market availability; operators should separately verify the intended V4 hook,
