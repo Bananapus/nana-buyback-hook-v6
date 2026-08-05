@@ -137,6 +137,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Fixed haircut for cold-start bootstrap quotes.
     uint256 internal constant _COLD_START_SPOT_SLIPPAGE = 300;
 
+    /// @notice The TWAP window stored when a pool is REGISTERED with a window of exactly `MAX_TWAP_WINDOW`.
+    /// @dev Immutable deployers (e.g. REVDeployer) bake `MAX_TWAP_WINDOW` into every pool registration as a
+    /// default rather than a tuning choice, and a max-length TWAP floor systematically lags trending pools —
+    /// routing every no-quote pay to the mint fallback during exactly the growth phase where buybacks matter.
+    /// The remap applies only at registration time (`initializePoolFor`/`setPoolFor`); `setTwapWindowOf` is an
+    /// explicit operator action and always stores the requested window, including `MAX_TWAP_WINDOW` itself.
+    /// @dev Internal (no getter) to stay under the EIP-170 size limit; the stored window is always readable via
+    /// `twapWindowOf`.
+    uint256 internal constant _DEFAULT_TWAP_WINDOW = 30 minutes;
+
     /// @notice Cold-start spot quotes are capped to 5% estimated impact against live in-range liquidity.
     uint256 internal constant _MAX_COLD_START_SPOT_IMPACT = 50e15;
 
@@ -587,7 +597,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
     /// @param tickSpacing The Uniswap V4 pool tick spacing.
-    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param twapWindow The period of time over which the TWAP is computed. Exactly `MAX_TWAP_WINDOW` is stored
+    /// as the 30-minute default (an immutable deployer's baked-in value, not a tuning choice); use
+    /// `setTwapWindowOf` for a deliberate max-length window.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
     /// @param sqrtPriceX96 The initial sqrtPriceX96 for the pool (if not already initialized).
     function initializePoolFor(
@@ -659,7 +671,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// for this `(projectId, terminalToken)` pair. Without a configured pool, the hook is a passthrough.
     /// @param projectId The ID of the project to set the pool for.
     /// @param poolKey The V4 PoolKey identifying the pool.
-    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param twapWindow The period of time over which the TWAP is computed. Exactly `MAX_TWAP_WINDOW` is stored
+    /// as the 30-minute default (an immutable deployer's baked-in value, not a tuning choice); use
+    /// `setTwapWindowOf` for a deliberate max-length window.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
     function setPoolFor(
         uint256 projectId,
@@ -700,7 +714,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
     /// @param tickSpacing The Uniswap V4 pool tick spacing.
-    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param twapWindow The period of time over which the TWAP is computed. Exactly `MAX_TWAP_WINDOW` is stored
+    /// as the 30-minute default (an immutable deployer's baked-in value, not a tuning choice); use
+    /// `setTwapWindowOf` for a deliberate max-length window.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
     function setPoolFor(
         uint256 projectId,
@@ -828,15 +844,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Take the output (PoolManager owes us).
         // Use balance-delta accounting to handle fee-on-transfer tokens that deliver less than `outputAmount`.
-        uint256 balanceBeforeTake = outputCurrency.isAddressZero()
-            ? address(this).balance
-            : IERC20(Currency.unwrap(outputCurrency)).balanceOf(address(this));
+        uint256 balanceBeforeTake = _currencyBalanceOf(outputCurrency);
 
         poolManager.take({currency: outputCurrency, to: address(this), amount: outputAmount});
 
-        uint256 balanceAfterTake = outputCurrency.isAddressZero()
-            ? address(this).balance
-            : IERC20(Currency.unwrap(outputCurrency)).balanceOf(address(this));
+        uint256 balanceAfterTake = _currencyBalanceOf(outputCurrency);
 
         // The actual received amount accounts for any fee-on-transfer deduction.
         uint256 actualOutputAmount = balanceAfterTake - balanceBeforeTake;
@@ -1312,7 +1324,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// checks and token normalization.
     /// @param projectId The ID of the project.
     /// @param poolKey The V4 PoolKey identifying the pool.
-    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param twapWindow The period of time over which the TWAP is computed. Exactly `MAX_TWAP_WINDOW` is stored
+    /// as the 30-minute default (an immutable deployer's baked-in value, not a tuning choice); use
+    /// `setTwapWindowOf` for a deliberate max-length window.
     /// @param normalizedTerminalToken The terminal token address (already normalized: address(0) for native).
     /// @param projectToken The project's ERC-20 token address.
     function _setPoolFor(
@@ -1328,6 +1342,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (_poolIsSet[projectId][normalizedTerminalToken]) {
             revert JBBuybackHook_PoolAlreadySet({poolId: _poolKeyOf[projectId][normalizedTerminalToken].toId()});
         }
+
+        // A registration at exactly the max window is an immutable deployer's baked-in default, not a tuning
+        // choice — store the default window instead. `setTwapWindowOf` can still set any window, max included.
+        if (twapWindow == MAX_TWAP_WINDOW) twapWindow = _DEFAULT_TWAP_WINDOW;
 
         _requireValidTwapWindow(twapWindow);
 
@@ -1524,6 +1542,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @dev `ERC-2771` specifies the context as being a single address (20 bytes).
     function _contextSuffixLength() internal view override(ERC2771Context, Context) returns (uint256) {
         return super._contextSuffixLength();
+    }
+
+    /// @notice This contract's balance of a V4 currency (native or ERC-20).
+    /// @param currency The V4 currency to read the balance of.
+    /// @return The balance held by this contract.
+    function _currencyBalanceOf(Currency currency) internal view returns (uint256) {
+        return
+            currency.isAddressZero()
+                ? address(this).balance
+                : IERC20(Currency.unwrap(currency)).balanceOf(address(this));
     }
 
     /// @notice Whether the selected terminal can settle the direct protocol reclaim used in route comparison.

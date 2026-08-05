@@ -1085,6 +1085,45 @@ contract V4BuybackHookTest is Test {
         assertEq(hook.twapWindowOf(newProjectId, address(0)), 5 minutes, "TWAP window should be 5 minutes");
     }
 
+    /// @notice A pool REGISTERED with a window of exactly MAX_TWAP_WINDOW stores the 30-minute default instead —
+    /// immutable deployers (e.g. REVDeployer) bake the max in as a default, not a tuning choice. An explicit
+    /// `setTwapWindowOf` is never remapped, so the max window stays reachable, and any sub-max registration
+    /// window is stored as-is.
+    function test_maxWindowRegistrationRemapsToDefault() public {
+        uint256 newProjectId = 401;
+        vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (newProjectId)), abi.encode(owner));
+        vm.mockCall(
+            address(tokens), abi.encodeCall(tokens.tokenOf, (newProjectId)), abi.encode(IJBToken(address(projectToken)))
+        );
+
+        uint160 sqrtPrice = TickMath.getSqrtPriceAtTick(0);
+        mockPm.setSlot0(poolId, sqrtPrice, 0, 3000);
+
+        // Registering at exactly the max window stores the default instead.
+        vm.prank(owner);
+        hook.setPoolFor(newProjectId, poolKey, 2 days, JBConstants.NATIVE_TOKEN);
+        assertEq(
+            hook.twapWindowOf(newProjectId, address(0)), 30 minutes, "max-window registration should store the default"
+        );
+
+        // An explicit setTwapWindowOf keeps the max window reachable — no remap.
+        vm.prank(owner);
+        hook.setTwapWindowOf(newProjectId, JBConstants.NATIVE_TOKEN, 2 days);
+        assertEq(hook.twapWindowOf(newProjectId, address(0)), 2 days, "explicit max window should be stored as-is");
+
+        // One second below the max is a deliberate choice and is stored as-is at registration.
+        uint256 otherProjectId = 402;
+        vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (otherProjectId)), abi.encode(owner));
+        vm.mockCall(
+            address(tokens),
+            abi.encodeCall(tokens.tokenOf, (otherProjectId)),
+            abi.encode(IJBToken(address(projectToken)))
+        );
+        vm.prank(owner);
+        hook.setPoolFor(otherProjectId, poolKey, 2 days - 1, JBConstants.NATIVE_TOKEN);
+        assertEq(hook.twapWindowOf(otherProjectId, address(0)), 2 days - 1, "sub-max window should be stored as-is");
+    }
+
     //*********************************************************************//
     // -------------------- initializePoolFor tests -------------------- //
     //*********************************************************************//

@@ -123,7 +123,9 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     /// @notice Set the pool to use for a given project and terminal token.
     /// @param projectId The ID of the project to set the pool for.
     /// @param poolKey The V4 pool key for the pool to set.
-    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param twapWindow The period of time over which the TWAP is computed. Exactly `MAX_TWAP_WINDOW` is stored
+    /// as the 30-minute default (an immutable deployer's baked-in value, not a tuning choice); use
+    /// `setTwapWindowOf` for a deliberate max-length window.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
     function setPoolFor(
         uint256 projectId,
@@ -139,7 +141,9 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
     /// @param tickSpacing The Uniswap V4 pool tick spacing.
-    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param twapWindow The period of time over which the TWAP is computed. Exactly `MAX_TWAP_WINDOW` is stored
+    /// as the 30-minute default (an immutable deployer's baked-in value, not a tuning choice); use
+    /// `setTwapWindowOf` for a deliberate max-length window.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
     function setPoolFor(
         uint256 projectId,
@@ -155,7 +159,9 @@ interface IJBBuybackHook is IJBPayHook, IJBCashOutHook, IJBRulesetDataHook {
     /// @param projectId The ID of the project to set the pool for.
     /// @param fee The Uniswap V4 pool fee tier.
     /// @param tickSpacing The Uniswap V4 pool tick spacing.
-    /// @param twapWindow The period of time over which the TWAP is computed.
+    /// @param twapWindow The period of time over which the TWAP is computed. Exactly `MAX_TWAP_WINDOW` is stored
+    /// as the 30-minute default (an immutable deployer's baked-in value, not a tuning choice); use
+    /// `setTwapWindowOf` for a deliberate max-length window.
     /// @param terminalToken The address of the terminal token that payments to the project are made in.
     /// @param sqrtPriceX96 The initial sqrtPriceX96 for the pool (if not already initialized).
     function initializePoolFor(
