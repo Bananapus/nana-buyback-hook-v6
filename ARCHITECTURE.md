@@ -115,7 +115,7 @@ Cash-out pricing can include aggregate surplus from multiple terminals or remote
 - cold-start bootstrap routing is only a buy-side path; sell-side market routing remains TWAP-only
 - seeded buy-side ranges must cover the current tick and upward price movement, because buybacks buy the project token
 - sell-side routing suppresses direct protocol reclaim only when the market path wins
-- reserved-rate preservation is a primary review target on the buy side
+- reserved-rate preservation is a primary review target on the buy side, including the payer-only `skipSplits` opt-out
 - fee-on-transfer terminal tokens are outside the supported routing model; project-token balance-delta tests do not imply terminal-token FOT support
 
 ## Safe change guide
