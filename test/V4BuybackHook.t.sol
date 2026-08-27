@@ -238,8 +238,13 @@ contract V4BuybackHookTest is Test {
 
     /// @notice Build a default JBRuleset and mock controller.currentRulesetOf.
     function _mockCurrentRuleset() internal {
+        _mockCurrentRuleset(0);
+    }
+
+    /// @notice Build a JBRuleset with the given reserved percent and mock controller.currentRulesetOf.
+    function _mockCurrentRuleset(uint16 reservedPercent) internal {
         JBRulesetMetadata memory meta = JBRulesetMetadata({
-            reservedPercent: 0,
+            reservedPercent: reservedPercent,
             cashOutTaxRate: 0,
             baseCurrency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
             pausePay: false,
@@ -306,6 +311,22 @@ contract V4BuybackHookTest is Test {
         view
         returns (JBAfterPayRecordedContext memory)
     {
+        return _makeAfterPayContext(payToken, payValue, projectTokenIs0, amountToMintWith, minimumSwapAmountOut, false);
+    }
+
+    /// @notice Build a JBAfterPayRecordedContext, optionally flagging the payer's `skipSplits` directive.
+    function _makeAfterPayContext(
+        address payToken,
+        uint256 payValue,
+        bool projectTokenIs0,
+        uint256 amountToMintWith,
+        uint256 minimumSwapAmountOut,
+        bool skipSplits
+    )
+        internal
+        view
+        returns (JBAfterPayRecordedContext memory)
+    {
         return JBAfterPayRecordedContext({
             payer: payer,
             projectId: projectId,
@@ -333,7 +354,10 @@ contract V4BuybackHookTest is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                false, // oracleUnseeded
+                skipSplits,
+                uint256(0) // reservedPercent
             ),
             payerMetadata: ""
         });
@@ -385,6 +409,176 @@ contract V4BuybackHookTest is Test {
 
         // Verify the swap was executed.
         assertTrue(mockPm.swapCalled(), "swap() should have been called on PoolManager");
+    }
+
+    /// @notice Build pay metadata carrying an explicit payer quote and, optionally, the `skipSplits` directive.
+    function _payMetadata(
+        uint256 amountToSwapWith,
+        uint256 minimumSwapAmountOut,
+        bool skipSplits
+    )
+        internal
+        view
+        returns (bytes memory metadata)
+    {
+        metadata = JBMetadataResolver.addToMetadata(
+            "",
+            JBMetadataResolver.getId("pay", address(hook)),
+            skipSplits
+                ? abi.encode(amountToSwapWith, minimumSwapAmountOut, true)
+                : abi.encode(amountToSwapWith, minimumSwapAmountOut)
+        );
+    }
+
+    /// @notice Register the default pool through the real `setPoolFor` so `_poolIsSet` is flipped, then build a
+    /// before-pay context for a project with the given reserved percent.
+    function _beforePayContext(
+        uint256 payValue,
+        uint16 reservedPercent,
+        bytes memory metadata
+    )
+        internal
+        returns (JBBeforePayRecordedContext memory)
+    {
+        _mockCurrentRuleset(reservedPercent);
+        vm.prank(owner);
+        hook.setPoolFor(projectId, poolKey, twapWindow, JBConstants.NATIVE_TOKEN);
+        return JBBeforePayRecordedContext({
+            terminal: address(terminal),
+            payer: payer,
+            amount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                value: payValue
+            }),
+            projectId: projectId,
+            rulesetId: 1,
+            beneficiary: beneficiary,
+            weight: 1e18,
+            reservedPercent: reservedPercent,
+            metadata: metadata
+        });
+    }
+
+    /// @notice Without `skipSplits`, the pool must beat the full issuance (beneficiary + reserved) to be selected.
+    /// 1 ETH mints 1e18 total; a 0.8e18 pool quote loses, so the hook noops to the mint path.
+    function test_withoutSkipSplits_poolMustBeatFullIssuance() public {
+        (uint256 weight, JBPayHookSpecification[] memory specs) =
+            hook.beforePayRecordedWith(_beforePayContext(1 ether, 2500, _payMetadata(1 ether, 0.8e18, false)));
+
+        assertEq(weight, 1e18, "mint path keeps the ruleset weight");
+        assertTrue(specs[0].noop, "0.8e18 < 1e18 total issuance: pool loses");
+    }
+
+    /// @notice With `skipSplits`, the swap output goes to the beneficiary untaxed, so the pool only has to beat the
+    /// beneficiary's share of a direct mint (1e18 * 75% = 0.75e18). The same 0.8e18 quote now wins, and the swap's
+    /// issuance-rate price limit is the beneficiary share rather than the full issuance.
+    function test_skipSplits_poolOnlyBeatsBeneficiaryShare() public {
+        (uint256 weight, JBPayHookSpecification[] memory specs) =
+            hook.beforePayRecordedWith(_beforePayContext(1 ether, 2500, _payMetadata(1 ether, 0.8e18, true)));
+
+        assertEq(weight, 0, "swap path zeroes the weight");
+        assertFalse(specs[0].noop, "0.8e18 > 0.75e18 beneficiary share: pool wins");
+
+        (,,,,, uint256 tokenCountWithoutHook,,,,,,,,,, bool skipSplits) = abi.decode(
+            specs[0].metadata,
+            (
+                bool,
+                uint256,
+                uint256,
+                bool,
+                IJBController,
+                uint256,
+                uint256,
+                uint256,
+                int24,
+                uint128,
+                PoolId,
+                uint256,
+                uint256,
+                uint256,
+                bool,
+                bool
+            )
+        );
+        assertEq(tokenCountWithoutHook, 0.75e18, "price limit is the beneficiary share of direct issuance");
+        assertTrue(skipSplits, "skipSplits is forwarded to afterPayRecordedWith");
+    }
+
+    /// @notice A three-word quote explicitly encoding `skipSplits = false` behaves like a two-word quote.
+    function test_skipSplits_explicitFalseIsNoop() public {
+        bytes memory metadata = JBMetadataResolver.addToMetadata(
+            "", JBMetadataResolver.getId("pay", address(hook)), abi.encode(1 ether, 0.8e18, false)
+        );
+
+        (, JBPayHookSpecification[] memory specs) =
+            hook.beforePayRecordedWith(_beforePayContext(1 ether, 2500, metadata));
+
+        assertTrue(specs[0].noop, "explicit false keeps the full-issuance comparison");
+    }
+
+    /// @notice Without `skipSplits`, swapped tokens are burned and re-minted so the reserved percent applies.
+    function test_withoutSkipSplits_swapOutputIsBurnedAndReminted() public {
+        uint256 swapOut = _armFullSwap(1 ether, 500e18);
+        JBAfterPayRecordedContext memory ctx = _makeAfterPayContext(JBConstants.NATIVE_TOKEN, 1 ether, false, 0, 0);
+
+        vm.expectCall(
+            address(controller), abi.encodeCall(IJBController.burnTokensOf, (address(hook), projectId, swapOut, "")), 1
+        );
+        vm.expectCall(
+            address(controller),
+            abi.encodeCall(IJBController.mintTokensOf, (projectId, swapOut, beneficiary, "", true)),
+            1
+        );
+        vm.deal(address(terminal), 1 ether);
+        vm.prank(address(terminal));
+        hook.afterPayRecordedWith{value: 1 ether}(ctx);
+
+        assertEq(projectToken.balanceOf(beneficiary), 0, "tokens reach the beneficiary through the controller");
+    }
+
+    /// @notice With `skipSplits`, swapped tokens are transferred straight to the beneficiary: no burn, no remint.
+    function test_skipSplits_swapOutputGoesDirectlyToBeneficiary() public {
+        uint256 swapOut = _armFullSwap(1 ether, 500e18);
+        JBAfterPayRecordedContext memory ctx =
+            _makeAfterPayContext(JBConstants.NATIVE_TOKEN, 1 ether, false, 0, 0, true);
+
+        vm.expectCall(address(controller), abi.encodeWithSelector(IJBController.burnTokensOf.selector), 0);
+        vm.expectCall(address(controller), abi.encodeWithSelector(IJBController.mintTokensOf.selector), 0);
+        vm.deal(address(terminal), 1 ether);
+        vm.prank(address(terminal));
+        hook.afterPayRecordedWith{value: 1 ether}(ctx);
+
+        assertEq(projectToken.balanceOf(beneficiary), swapOut, "beneficiary holds the full swap output");
+        assertEq(projectToken.balanceOf(address(hook)), 0, "nothing strands in the hook");
+    }
+
+    /// @notice With `skipSplits`, the portion of the payment not routed through the pool still mints through the
+    /// controller with the reserved percent applied: only the swap output bypasses the splits.
+    function test_skipSplits_leftoverMintStillAppliesReservedPercent() public {
+        uint256 swapOut = _armFullSwap(1 ether, 500e18);
+        // 1 ETH swaps; another 1 ETH stays on the mint path (amountToMintWith).
+        JBAfterPayRecordedContext memory ctx =
+            _makeAfterPayContext(JBConstants.NATIVE_TOKEN, 1 ether, false, 1 ether, 0, true);
+
+        vm.expectCall(
+            address(controller), abi.encodeCall(IJBController.mintTokensOf, (projectId, 1e18, beneficiary, "", true)), 1
+        );
+        vm.deal(address(terminal), 1 ether);
+        vm.prank(address(terminal));
+        hook.afterPayRecordedWith{value: 1 ether}(ctx);
+
+        assertEq(projectToken.balanceOf(beneficiary), swapOut, "swap output bypasses the controller");
+    }
+
+    /// @notice Configure the mock pool to consume the whole payment and pay out `swapOut` project tokens.
+    function _armFullSwap(uint256 payAmount, uint256 swapOut) internal returns (uint256) {
+        // Native ETH is currency0, so the project token is currency1: delta0 = input, delta1 = output.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(-int128(uint128(payAmount)), int128(uint128(swapOut)));
+        projectToken.mint(address(mockPm), swapOut);
+        return swapOut;
     }
 
     /// @notice Test that when POOL_MANAGER.unlock() reverts, the hook gracefully falls back to minting.

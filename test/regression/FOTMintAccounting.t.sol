@@ -261,7 +261,10 @@ contract RegressionFOTMintAccountingRegression is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                false, // oracleUnseeded
+                false, // skipSplits
+                uint256(0) // reservedPercent
             ),
             payerMetadata: ""
         });

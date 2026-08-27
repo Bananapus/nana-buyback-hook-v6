@@ -52,7 +52,8 @@ import {SwapCallbackData} from "./structs/SwapCallbackData.sol";
 /// @custom:benediction DEVS BENEDICAT ET PROTEGAT CONTRACTVS MEAM
 /// @notice Automatically buys project tokens from a Uniswap V4 pool when the pool price is better than minting, and
 /// sells project tokens into the pool during cash-outs when the pool offers more than the bonding curve reclaim. The
-/// project's reserved rate is applied regardless of which route wins.
+/// project's reserved rate is applied regardless of which route wins, unless the payer opts the swapped tokens out of
+/// it with the `skipSplits` metadata word.
 /// @dev Acts as both a pay hook (buy-side) and cash-out hook (sell-side). Uses a TWAP oracle for manipulation
 /// resistance and falls back to minting/direct-reclaim when the pool is unavailable or offers worse rates.
 contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBuybackHook {
@@ -325,11 +326,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Snapshot balance before minting to handle fee-on-transfer tokens.
         uint256 preMintBalance = IERC20(projectToken).balanceOf(address(this));
 
-        controller.mintTokensOf({
+        _mint({
+            controller: controller,
             projectId: context.projectId,
             tokenCount: cashOutCountToSell,
             beneficiary: address(this),
-            memo: "",
             useReservedPercent: false
         });
 
@@ -341,7 +342,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             key: key,
             amountIn: actualReceived,
             minimumSwapAmountOut: minimumSwapAmountOut,
-            zeroForOne: projectToken < terminalToken
+            zeroForOne: projectToken < terminalToken,
+            derivedFloorAmountOut: 0
         });
 
         // If the pool reverted, return the reminted project tokens to the holder instead of
@@ -350,9 +352,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // tokens to the holder cannot satisfy that minimum — revert so the user is not silently
         // settled in the wrong token at less than they asked for.
         if (swapFailed) {
-            if (shouldEnforceMinimumSwapAmountOut && minimumSwapAmountOut != 0) {
-                revert JBBuybackHook_SpecifiedSlippageExceeded({amount: 0, minimum: minimumSwapAmountOut});
-            }
+            if (shouldEnforceMinimumSwapAmountOut) _requireMinimum({amount: 0, minimum: minimumSwapAmountOut});
             IERC20(projectToken).safeTransfer({to: context.holder, value: actualReceived});
             emit SellSwapReverted({
                 projectId: context.projectId, holder: context.holder, amount: actualReceived, caller: msg.sender
@@ -364,8 +364,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // value that made this route preferable to the direct cash-out path) soft-lands a successful-but-partial fill
         // the same way the swap-failed branch above soft-lands by returning project tokens: the partial proceeds are
         // forwarded to the beneficiary and the unsold reminted residue is returned to the holder below.
-        if (shouldEnforceMinimumSwapAmountOut && minimumSwapAmountOut != 0 && amountReceived < minimumSwapAmountOut) {
-            revert JBBuybackHook_SpecifiedSlippageExceeded({amount: amountReceived, minimum: minimumSwapAmountOut});
+        if (shouldEnforceMinimumSwapAmountOut) {
+            _requireMinimum({amount: amountReceived, minimum: minimumSwapAmountOut});
         }
 
         // Return only the reminted residue left unsold by THIS execution. The terminal already burned the holder's
@@ -386,9 +386,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 delivered = IERC20(context.reclaimedAmount.token).balanceOf(context.beneficiary) - balBefore;
             // As with the underfill check above, only a caller-specified minimum hard-reverts when a fee-on-transfer
             // token delivers less than the floor. A derived floor soft-lands the partial delivery instead.
-            if (shouldEnforceMinimumSwapAmountOut && minimumSwapAmountOut != 0 && delivered < minimumSwapAmountOut) {
-                revert JBBuybackHook_SpecifiedSlippageExceeded({amount: delivered, minimum: minimumSwapAmountOut});
-            }
+            if (shouldEnforceMinimumSwapAmountOut) _requireMinimum({amount: delivered, minimum: minimumSwapAmountOut});
         }
 
         // Emit the executed sell-side cash-out details for offchain indexers and analytics.
@@ -427,8 +425,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // otherwise the remaining input is minted instead.
         // `weightRatio` is the currency conversion factor computed in `beforePayRecordedWith`, passed through
         // metadata to avoid a redundant `currentRulesetOf` + price lookup in this function.
-        // `quotedAmountToSwapWith` anchors same-terminal split normalization. The remaining metadata fields are
-        // preview-only diagnostics.
+        // `quotedAmountToSwapWith` anchors same-terminal split normalization. `skipSplits` is the payer's opt-out of
+        // the reserved split on swapped tokens, and `reservedPercent` is the ruleset's split so a skipping payer's
+        // minimum can be settled against the beneficiary's receipt. The remaining metadata fields are preview-only
+        // diagnostics.
         (
             bool projectTokenIs0,
             uint256 amountToMintWith,
@@ -437,7 +437,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             IJBController controller,
             uint256 tokenCountWithoutHook,
             uint256 weightRatio,
-            uint256 quotedAmountToSwapWith,,,,,,
+            uint256 quotedAmountToSwapWith,,,,,,,,
+            bool skipSplits,
+            uint256 reservedPercent
         ) = abi.decode(
             context.hookMetadata,
             (
@@ -454,6 +456,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 PoolId,
                 uint256,
                 uint256,
+                uint256,
+                bool,
+                bool,
                 uint256
             )
         );
@@ -505,8 +510,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             context: context,
             projectTokenIs0: projectTokenIs0,
             minimumSwapAmountOut: tokenCountWithoutHook,
-            derivedFloorAmountOut: hasExplicitMinimumSwapAmountOut ? 0 : minimumSwapAmountOut,
-            controller: controller
+            derivedFloorAmountOut: hasExplicitMinimumSwapAmountOut ? 0 : minimumSwapAmountOut
         });
 
         // Compute leftover terminal tokens as a delta (balanceAfter - balanceBefore).
@@ -567,24 +571,41 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Only explicit caller minima are settlement guarantees over the combined output (swap + leftover mint).
         // Oracle-derived minima are routing hints enforced inside the swap attempt, where a miss unwinds the swap
         // to the mint fallback instead of reverting the payment.
-        if (hasExplicitMinimumSwapAmountOut && exactSwapAmountOut + partialMintTokenCount < minimumSwapAmountOut) {
-            revert JBBuybackHook_SpecifiedSlippageExceeded({
-                amount: exactSwapAmountOut + partialMintTokenCount, minimum: minimumSwapAmountOut
-            });
+        if (hasExplicitMinimumSwapAmountOut) {
+            // The minimum is quoted in the payer's own terms: the full swap-route issuance when the swap output is
+            // reminted through the reserved split, or the beneficiary's actual receipt when the payer skips it. The
+            // leftover mint always goes through the split, so its beneficiary share is what a skipping payer sees.
+            uint256 settledAmount = exactSwapAmountOut
+                + (skipSplits ? _beneficiaryShareOf(partialMintTokenCount, reservedPercent) : partialMintTokenCount);
+            _requireMinimum({amount: settledAmount, minimum: minimumSwapAmountOut});
         }
 
         // Add the amount to mint to the leftover mint amount.
         partialMintTokenCount += mulDiv({x: amountToMintWith, y: context.weight, denominator: weightRatio});
 
+        // Settle the swap output. By default it is burned and reminted through the controller below so the reserved
+        // split applies to the market route exactly as it does to issuance. A payer who opted out with `skipSplits`
+        // takes the swapped tokens as-is: they already exist, so nothing is issued and nothing is reserved.
+        uint256 totalTokensToMint = partialMintTokenCount;
+        if (exactSwapAmountOut != 0) {
+            if (skipSplits) {
+                IERC20(projectTokenOf[context.projectId]).safeTransfer(context.beneficiary, exactSwapAmountOut);
+            } else {
+                controller.burnTokensOf({
+                    holder: address(this), projectId: context.projectId, tokenCount: exactSwapAmountOut, memo: ""
+                });
+                totalTokensToMint += exactSwapAmountOut;
+            }
+        }
+
         // Mint the calculated amount of tokens for the beneficiary, including any leftover amount.
         // Skip if there are no tokens to mint (e.g. weight=0 and swap failed).
-        uint256 totalTokensToMint = exactSwapAmountOut + partialMintTokenCount;
         if (totalTokensToMint != 0) {
-            controller.mintTokensOf({
+            _mint({
+                controller: controller,
                 projectId: context.projectId,
                 tokenCount: totalTokensToMint,
-                beneficiary: address(context.beneficiary),
-                memo: "",
+                beneficiary: context.beneficiary,
                 useReservedPercent: true
             });
         }
@@ -969,11 +990,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 });
                 // Enforce the user's explicit minimum against the exact net the terminal would pay out.
                 uint256 netFallbackReclaim = _netAfterTerminalFee({amount: fallbackReclaim, context: context});
-                if (netFallbackReclaim < minimumSwapAmountOut) {
-                    revert JBBuybackHook_SpecifiedSlippageExceeded({
-                        amount: netFallbackReclaim, minimum: minimumSwapAmountOut
-                    });
-                }
+                _requireMinimum({amount: netFallbackReclaim, minimum: minimumSwapAmountOut});
             }
             return (
                 context.cashOutTaxRate,
@@ -1022,11 +1039,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // With no live pool liquidity, the direct terminal path is the only executable settlement route. If the user
         // explicitly required more than that path can net out, revert instead of silently ignoring their floor.
-        if (!poolHasLiquidity && hasUserSpecifiedMinimumSwapAmountOut && netDirectCashOutAmount < minimumSwapAmountOut)
-        {
-            revert JBBuybackHook_SpecifiedSlippageExceeded({
-                amount: netDirectCashOutAmount, minimum: minimumSwapAmountOut
-            });
+        if (!poolHasLiquidity && hasUserSpecifiedMinimumSwapAmountOut) {
+            _requireMinimum({amount: netDirectCashOutAmount, minimum: minimumSwapAmountOut});
         }
 
         // The market route can only be selected when the pool has live liquidity and a non-zero quote/minimum. A zero
@@ -1128,11 +1142,21 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Keep a reference to the amount to be used to swap (out of `totalPaid`).
         uint256 amountToSwapWith;
 
-        // Unpack the quote specified by the payer/client (typically from the pool).
+        // A payer can opt the swap output out of the reserved split and take the swapped tokens directly.
+        // Programmatic payments (split pays, project payers, fee routing) never set this, so they keep honoring the
+        // project's splits by default.
+        bool skipSplits;
+
+        // Unpack the quote specified by the payer/client (typically from the pool). The `skipSplits` word is
+        // optional so two-word quotes from existing integrations keep decoding.
         (bool quoteExists, bytes memory metadata) =
             JBMetadataResolver.getDataFor({id: _PAY_ID, metadata: context.metadata});
         if (quoteExists) {
-            (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
+            if (metadata.length >= 96) {
+                (amountToSwapWith, minimumSwapAmountOut, skipSplits) = abi.decode(metadata, (uint256, uint256, bool));
+            } else {
+                (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
+            }
             // Only honor user quote when they specify an explicit minimum.
             // minimumSwapAmountOut=0 (programmatic orders) falls through to TWAP oracle.
             hasUserSpecifiedQuote = minimumSwapAmountOut != 0;
@@ -1160,8 +1184,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 decimals: context.amount.decimals
             });
 
-        // Calculate how many tokens would be minted by a direct payment to the project.
+        // Calculate how many tokens a direct payment would put in the beneficiary's hands for the swap portion. This
+        // is the bar the pool has to beat and the swap's issuance-rate price limit. Swapped tokens normally pass
+        // through the reserved split just like issuance, so the full mint count is the right comparison; when the
+        // payer skips the split, only the beneficiary's share of a direct mint is.
         uint256 tokenCountWithoutHook = mulDiv({x: amountToSwapWith, y: weight, denominator: weightRatio});
+        if (skipSplits) tokenCountWithoutHook = _beneficiaryShareOf(tokenCountWithoutHook, context.reservedPercent);
 
         // Keep a reference to the project's token.
         address projectToken = projectTokenOf[context.projectId];
@@ -1214,10 +1242,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
             // With no live pool liquidity, minting is the only executable route. If the user supplied a hard quote
             // floor above what direct minting can produce, revert instead of silently minting below their floor.
-            if (!poolHasLiquidity && hasUserSpecifiedQuote && tokenCountWithoutHook < minimumSwapAmountOut) {
-                revert JBBuybackHook_SpecifiedSlippageExceeded({
-                    amount: tokenCountWithoutHook, minimum: minimumSwapAmountOut
-                });
+            if (!poolHasLiquidity && hasUserSpecifiedQuote) {
+                _requireMinimum({amount: tokenCountWithoutHook, minimum: minimumSwapAmountOut});
             }
 
             // A noop leaves the payment on the mint path whenever the market route is unavailable or direct minting
@@ -1257,29 +1283,19 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     minimumBeneficiaryTokenCount,
                     minimumReservedTokenCount,
                     rawSwapQuote,
-                    oracleUnseeded
+                    oracleUnseeded,
+                    skipSplits,
+                    context.reservedPercent
                 )
             });
 
             // All the minting will be done in `afterPayRecordedWith`. Return a weight of 0.
             if (!noop) return (0, hookSpecifications);
         } else {
-            // Preserve the controller preview path for explicit no-pool floors before checking whether direct minting
-            // can satisfy the user's minimum.
-            if (minimumSwapAmountOut != 0) {
-                controller.previewMintOf({
-                    projectId: context.projectId, tokenCount: minimumSwapAmountOut, useReservedPercent: true
-                });
-            }
-
-            if (hasUserSpecifiedQuote && tokenCountWithoutHook < minimumSwapAmountOut) {
-                // User supplied an explicit pool quote with a non-zero minimum, but no pool is configured —
-                // the direct mint alone cannot satisfy the requested minimum. Revert so the user does not
-                // silently receive fewer tokens than they asked for.
-                revert JBBuybackHook_SpecifiedSlippageExceeded({
-                    amount: tokenCountWithoutHook, minimum: minimumSwapAmountOut
-                });
-            }
+            // User supplied an explicit pool quote with a non-zero minimum, but no pool is configured — the direct
+            // mint alone must satisfy the requested minimum. Revert so the user does not silently receive fewer
+            // tokens than they asked for.
+            if (hasUserSpecifiedQuote) _requireMinimum({amount: tokenCountWithoutHook, minimum: minimumSwapAmountOut});
         }
     }
 
@@ -1393,8 +1409,54 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         emit PoolAdded({projectId: projectId, terminalToken: normalizedTerminalToken, poolId: poolId, caller: caller});
     }
 
-    /// @notice Executes the buy-side swap: exchanges terminal tokens for project tokens through the V4 pool, then burns
-    /// them so the controller can re-mint with the reserved rate applied.
+    /// @notice Reverts when a settled amount falls short of a caller-specified minimum.
+    /// @dev A zero minimum is "no floor". One revert site for every explicit-minimum check keeps the error encoding
+    /// out of the bytecode eight times.
+    /// @param amount The amount actually settled.
+    /// @param minimum The caller's minimum.
+    function _requireMinimum(uint256 amount, uint256 minimum) internal pure {
+        if (minimum != 0 && amount < minimum) {
+            revert JBBuybackHook_SpecifiedSlippageExceeded({amount: amount, minimum: minimum});
+        }
+    }
+
+    /// @notice Mints project tokens through the controller with an empty memo.
+    /// @dev One call site for both the buy-side settlement and the sell-side remint keeps the ABI-encoding code
+    /// out of the bytecode twice.
+    function _mint(
+        IJBController controller,
+        uint256 projectId,
+        uint256 tokenCount,
+        address beneficiary,
+        bool useReservedPercent
+    )
+        internal
+    {
+        controller.mintTokensOf({
+            projectId: projectId,
+            tokenCount: tokenCount,
+            beneficiary: beneficiary,
+            memo: "",
+            useReservedPercent: useReservedPercent
+        });
+    }
+
+    /// @notice The share of a mint that lands with the beneficiary once the reserved percent is taken out.
+    /// @dev Mirrors `JBController`'s split rounding exactly so a payer's minimum settles against the same number the
+    /// controller mints.
+    /// @param tokenCount The full mint count.
+    /// @param reservedPercent The ruleset's reserved percent, out of `JBConstants.MAX_RESERVED_PERCENT`.
+    /// @return The beneficiary's share of `tokenCount`.
+    function _beneficiaryShareOf(uint256 tokenCount, uint256 reservedPercent) internal pure returns (uint256) {
+        return mulDiv({
+            x: tokenCount,
+            y: JBConstants.MAX_RESERVED_PERCENT - reservedPercent,
+            denominator: JBConstants.MAX_RESERVED_PERCENT
+        });
+    }
+
+    /// @notice Executes the buy-side swap: exchanges terminal tokens for project tokens through the V4 pool. The
+    /// caller settles the received tokens (burn-and-remint through the reserved split, or a direct transfer).
     /// @param context The `afterPayRecordedContext` passed in by the terminal.
     /// @param projectTokenIs0 Whether the project token is currency0 in the pool.
     /// @param minimumSwapAmountOut The token count used to derive the swap's price limit via
@@ -1403,15 +1465,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock, pro-rated by consumed
     /// input. A miss unwinds the swap (caught below) so the payment falls back to minting. 0 when the caller
     /// supplied an explicit minimum, which is enforced on the combined output in `afterPayRecordedWith` instead.
-    /// @param controller The controller used to mint and burn tokens.
     /// @return amountReceived The amount of project tokens received from the swap.
     /// @return swapFailed True if the swap reverted and was caught by try/catch (triggers mint fallback).
     function _swap(
         JBAfterPayRecordedContext calldata context,
         bool projectTokenIs0,
         uint256 minimumSwapAmountOut,
-        uint256 derivedFloorAmountOut,
-        IJBController controller
+        uint256 derivedFloorAmountOut
     )
         internal
         returns (uint256 amountReceived, bool swapFailed)
@@ -1425,23 +1485,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Get the pool key for this project/token pair.
         PoolKey memory key = _poolKeyOf[context.projectId][normalizedTerminalToken];
 
-        // Encode the callback data.
-        bytes memory callbackData = abi.encode(
-            SwapCallbackData({
-                key: key,
-                zeroForOne: !projectTokenIs0,
-                amountIn: amountToSwapWith,
-                minimumSwapAmountOut: minimumSwapAmountOut,
-                derivedFloorAmountOut: derivedFloorAmountOut
-            })
-        );
-
         // Try the V4 unlock/callback swap. On failure, fall back to minting.
-        try poolManager.unlock(callbackData) returns (bytes memory result) {
-            (, amountReceived) = abi.decode(result, (uint256, uint256));
-        } catch {
-            return (0, true);
-        }
+        (, amountReceived, swapFailed) = _swapExactInput({
+            key: key,
+            amountIn: amountToSwapWith,
+            minimumSwapAmountOut: minimumSwapAmountOut,
+            zeroForOne: !projectTokenIs0,
+            derivedFloorAmountOut: derivedFloorAmountOut
+        });
+        if (swapFailed) return (0, true);
 
         emit Swap({
             projectId: context.projectId,
@@ -1450,13 +1502,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             amountReceived: amountReceived,
             caller: msg.sender
         });
-
-        // Burn the project tokens received from the swap (they'll be re-minted with reserves applied).
-        if (amountReceived != 0) {
-            controller.burnTokensOf({
-                holder: address(this), projectId: context.projectId, tokenCount: amountReceived, memo: ""
-            });
-        }
     }
 
     /// @notice Swap an exact amount of the input token through the configured V4 pool.
@@ -1467,6 +1512,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param amountIn The exact amount of input tokens to sell.
     /// @param minimumSwapAmountOut The minimum acceptable amount of output tokens.
     /// @param zeroForOne Whether the swap should move from `currency0` to `currency1`.
+    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock, pro-rated by consumed input.
+    /// 0 when no in-unlock floor applies (explicit caller minima, and sell-side swaps whose derived floors soft-land
+    /// through the caller's `shouldEnforceMinimumSwapAmountOut` flag).
     /// @return amountSpent The amount of input tokens actually consumed by the swap.
     /// @return amountReceived The amount of output tokens received from the swap.
     /// @return swapFailed True if the swap reverted and was caught by try/catch.
@@ -1474,21 +1522,20 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         PoolKey memory key,
         uint256 amountIn,
         uint256 minimumSwapAmountOut,
-        bool zeroForOne
+        bool zeroForOne,
+        uint256 derivedFloorAmountOut
     )
         internal
         returns (uint256 amountSpent, uint256 amountReceived, bool swapFailed)
     {
         // Encode the swap parameters so `unlockCallback(...)` can execute the swap after the PoolManager unlocks.
-        // Sell-side derived floors already soft-land through the caller's `shouldEnforceMinimumSwapAmountOut` flag,
-        // so no in-unlock derived floor applies here.
         bytes memory callbackData = abi.encode(
             SwapCallbackData({
                 key: key,
                 zeroForOne: zeroForOne,
                 amountIn: amountIn,
                 minimumSwapAmountOut: minimumSwapAmountOut,
-                derivedFloorAmountOut: 0
+                derivedFloorAmountOut: derivedFloorAmountOut
             })
         );
 

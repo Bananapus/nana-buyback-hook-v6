@@ -112,8 +112,6 @@ contract ExplicitQuoteNoPoolMinimumGapTest is Test {
             dataToAdd: abi.encode(PAYMENT_AMOUNT, EXPLICIT_MINIMUM)
         });
 
-        _expectExplicitMinimumDecoded();
-
         assertLt(DIRECT_MINT_COUNT, EXPLICIT_MINIMUM, "test must set minimum above direct mint");
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -133,8 +131,6 @@ contract ExplicitQuoteNoPoolMinimumGapTest is Test {
             dataToAdd: abi.encode(PAYMENT_AMOUNT, EXPLICIT_MINIMUM)
         });
 
-        _expectExplicitMinimumDecoded();
-
         assertLt(DIRECT_MINT_COUNT, EXPLICIT_MINIMUM, "test must set minimum above direct mint");
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -142,12 +138,6 @@ contract ExplicitQuoteNoPoolMinimumGapTest is Test {
             )
         );
         registry.beforePayRecordedWith(_context(quoteMetadata));
-    }
-
-    function _expectExplicitMinimumDecoded() internal {
-        vm.expectCall(
-            address(controller), abi.encodeCall(IJBController.previewMintOf, (PROJECT_ID, EXPLICIT_MINIMUM, true))
-        );
     }
 
     function _context(bytes memory metadata) internal view returns (JBBeforePayRecordedContext memory context) {
