@@ -293,7 +293,7 @@ contract LiveLiquidityPayBrickResistanceTest is Test {
         bytes[] memory data = new bytes[](1);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = JBMetadataResolver.getId("pay", address(hook));
-        data[0] = abi.encode(amountToSwapWith, minimumSwapAmountOut);
+        data[0] = abi.encode(amountToSwapWith, minimumSwapAmountOut, false);
         return JBMetadataResolver.addToMetadata({originalMetadata: "", idToAdd: ids[0], dataToAdd: data[0]});
     }
 }

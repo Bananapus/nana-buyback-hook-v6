@@ -565,7 +565,7 @@ contract V4SandwichForkTest is Test {
         // the manipulated pool can't satisfy it -> mint fallback.
         bytes memory fullMetadata;
         {
-            bytes memory quoteMetadata = abi.encode(victimAmount, payerMinOut);
+            bytes memory quoteMetadata = abi.encode(victimAmount, payerMinOut, false);
             bytes4 metadataId = JBMetadataResolver.getId("pay");
             fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
         }

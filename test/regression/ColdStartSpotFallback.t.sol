@@ -479,7 +479,9 @@ contract ColdStartSpotFallbackTest is Test {
     function _payMetadata(uint256 amountToSwapWith, uint256 minimumSwapAmountOut) internal view returns (bytes memory) {
         bytes4 metadataId = JBMetadataResolver.getId("pay", address(hook));
         return JBMetadataResolver.addToMetadata({
-            originalMetadata: "", idToAdd: metadataId, dataToAdd: abi.encode(amountToSwapWith, minimumSwapAmountOut)
+            originalMetadata: "",
+            idToAdd: metadataId,
+            dataToAdd: abi.encode(amountToSwapWith, minimumSwapAmountOut, false)
         });
     }
 

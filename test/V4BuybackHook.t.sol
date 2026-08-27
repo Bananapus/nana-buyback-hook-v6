@@ -424,9 +424,7 @@ contract V4BuybackHookTest is Test {
         metadata = JBMetadataResolver.addToMetadata(
             "",
             JBMetadataResolver.getId("pay", address(hook)),
-            skipSplits
-                ? abi.encode(amountToSwapWith, minimumSwapAmountOut, true)
-                : abi.encode(amountToSwapWith, minimumSwapAmountOut)
+            abi.encode(amountToSwapWith, minimumSwapAmountOut, skipSplits)
         );
     }
 
@@ -504,18 +502,6 @@ contract V4BuybackHookTest is Test {
         );
         assertEq(tokenCountWithoutHook, 0.75e18, "price limit is the beneficiary share of direct issuance");
         assertTrue(skipSplits, "skipSplits is forwarded to afterPayRecordedWith");
-    }
-
-    /// @notice A three-word quote explicitly encoding `skipSplits = false` behaves like a two-word quote.
-    function test_skipSplits_explicitFalseIsNoop() public {
-        bytes memory metadata = JBMetadataResolver.addToMetadata(
-            "", JBMetadataResolver.getId("pay", address(hook)), abi.encode(1 ether, 0.8e18, false)
-        );
-
-        (, JBPayHookSpecification[] memory specs) =
-            hook.beforePayRecordedWith(_beforePayContext(1 ether, 2500, metadata));
-
-        assertTrue(specs[0].noop, "explicit false keeps the full-issuance comparison");
     }
 
     /// @notice Without `skipSplits`, swapped tokens are burned and re-minted so the reserved percent applies.
@@ -1173,7 +1159,7 @@ contract V4BuybackHookTest is Test {
         uint256 amountToSwapWith = 1 ether;
 
         // Encode the payer's bad quote as metadata.
-        bytes memory quoteMetadata = abi.encode(amountToSwapWith, badPayerQuote);
+        bytes memory quoteMetadata = abi.encode(amountToSwapWith, badPayerQuote, false);
         bytes4 metadataId = JBMetadataResolver.getId("pay", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
 
@@ -1211,7 +1197,7 @@ contract V4BuybackHookTest is Test {
         mockOracle.setObserveData(0, 0, 0, uint160(uint256(twapWindow) << 64));
 
         uint256 amountToSwapWith = 1 ether;
-        bytes memory quoteMetadata = abi.encode(amountToSwapWith, uint256(0));
+        bytes memory quoteMetadata = abi.encode(amountToSwapWith, uint256(0), false);
         bytes4 metadataId = JBMetadataResolver.getId("pay", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
 
@@ -1487,7 +1473,7 @@ contract V4BuybackHookTest is Test {
         uint256 amountToSwapWith = 1 ether;
         uint256 highPayerQuote = 2e18;
 
-        bytes memory quoteMetadata = abi.encode(amountToSwapWith, highPayerQuote);
+        bytes memory quoteMetadata = abi.encode(amountToSwapWith, highPayerQuote, false);
         // Use the hook's address for the metadata ID, since the hook decodes using its own address(this).
         bytes4 metadataId = JBMetadataResolver.getId("pay", address(hook));
         bytes memory fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);

@@ -316,7 +316,7 @@ contract BuybackHookHandler is Test {
             bytes4[] memory ids = new bytes4[](1);
             ids[0] = quoteId;
             bytes[] memory datas = new bytes[](1);
-            datas[0] = abi.encode(amountToSwapWith, payerQuote);
+            datas[0] = abi.encode(amountToSwapWith, payerQuote, false);
             metadata = JBMetadataResolver.createMetadata(ids, datas);
         }
 

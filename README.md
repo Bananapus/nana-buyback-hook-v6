@@ -75,10 +75,8 @@ import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataRes
 // `buybackHook` is the JBBuybackHook (or the registry, which rekeys to the resolved hook).
 bytes4 payId = JBMetadataResolver.getId("pay", address(buybackHook));
 
-// Buy side: (amountToSwapWith, minimumSwapAmountOut[, skipSplits]). abi.encode pads to 32-byte words.
-bytes memory data = abi.encode(amountToSwapWith, minimumSwapAmountOut);
-// ...or, to take the swapped tokens without the project's reserved split:
-bytes memory dataSkippingSplits = abi.encode(amountToSwapWith, minimumSwapAmountOut, true);
+// Buy side: (amountToSwapWith, minimumSwapAmountOut, skipSplits). abi.encode pads to 32-byte words.
+bytes memory data = abi.encode(amountToSwapWith, minimumSwapAmountOut, false);
 
 // Append the entry to any existing metadata (pass "" if you have none).
 bytes memory metadata = JBMetadataResolver.addToMetadata(existingMetadata, payId, data);
@@ -87,7 +85,7 @@ bytes memory metadata = JBMetadataResolver.addToMetadata(existingMetadata, payId
 // "cashOut" and encode (uint256 minimumSwapAmountOut, bool skip) before cashOutTokensOf(...).
 ```
 
-**Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)` (the payer's swap quote), with an optional third word `bool skipSplits`. A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle. The two have intentionally different failure behavior: an explicit floor is a settlement guarantee that hard-reverts the payment when the combined output (swap + leftover mint) falls short, while a TWAP-derived floor is a routing hint — a swap that fills below it is unwound and the full payment falls back to minting at the issuance rate, so no-quote programmatic payments never revert on a stale floor. If the oracle exposes observation coverage, no-quote routing prefers the configured full TWAP window and otherwise quotes against the longest retained best-effort window. If there is no usable coverage, the hook either uses the bounded buy-side cold-start path described below or mints through the protocol path.
+**Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut, bool skipSplits)` (the payer's swap quote and split directive). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle. The two have intentionally different failure behavior: an explicit floor is a settlement guarantee that hard-reverts the payment when the combined output (swap + leftover mint) falls short, while a TWAP-derived floor is a routing hint — a swap that fills below it is unwound and the full payment falls back to minting at the issuance rate, so no-quote programmatic payments never revert on a stale floor. If the oracle exposes observation coverage, no-quote routing prefers the configured full TWAP window and otherwise quotes against the longest retained best-effort window. If there is no usable coverage, the hook either uses the bounded buy-side cold-start path described below or mints through the protocol path.
 
 `skipSplits` (defaults to `false`) sends the swap output straight to the beneficiary instead of burning and
 re-minting it through the project's reserved split. Swapped tokens already exist, so nothing is issued and nothing is

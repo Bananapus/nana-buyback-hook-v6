@@ -576,7 +576,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // reminted through the reserved split, or the beneficiary's actual receipt when the payer skips it. The
             // leftover mint always goes through the split, so its beneficiary share is what a skipping payer sees.
             uint256 settledAmount = exactSwapAmountOut
-                + (skipSplits ? _beneficiaryShareOf(partialMintTokenCount, reservedPercent) : partialMintTokenCount);
+                + (skipSplits
+                        ? _beneficiaryShareOf({tokenCount: partialMintTokenCount, reservedPercent: reservedPercent})
+                        : partialMintTokenCount);
             _requireMinimum({amount: settledAmount, minimum: minimumSwapAmountOut});
         }
 
@@ -589,7 +591,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 totalTokensToMint = partialMintTokenCount;
         if (exactSwapAmountOut != 0) {
             if (skipSplits) {
-                IERC20(projectTokenOf[context.projectId]).safeTransfer(context.beneficiary, exactSwapAmountOut);
+                IERC20(projectTokenOf[context.projectId])
+                    .safeTransfer({to: context.beneficiary, value: exactSwapAmountOut});
             } else {
                 controller.burnTokensOf({
                     holder: address(this), projectId: context.projectId, tokenCount: exactSwapAmountOut, memo: ""
@@ -1147,16 +1150,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // project's splits by default.
         bool skipSplits;
 
-        // Unpack the quote specified by the payer/client (typically from the pool). The `skipSplits` word is
-        // optional so two-word quotes from existing integrations keep decoding.
+        // Unpack the quote specified by the payer/client (typically from the pool).
         (bool quoteExists, bytes memory metadata) =
             JBMetadataResolver.getDataFor({id: _PAY_ID, metadata: context.metadata});
         if (quoteExists) {
-            if (metadata.length >= 96) {
-                (amountToSwapWith, minimumSwapAmountOut, skipSplits) = abi.decode(metadata, (uint256, uint256, bool));
-            } else {
-                (amountToSwapWith, minimumSwapAmountOut) = abi.decode(metadata, (uint256, uint256));
-            }
+            (amountToSwapWith, minimumSwapAmountOut, skipSplits) = abi.decode(metadata, (uint256, uint256, bool));
             // Only honor user quote when they specify an explicit minimum.
             // minimumSwapAmountOut=0 (programmatic orders) falls through to TWAP oracle.
             hasUserSpecifiedQuote = minimumSwapAmountOut != 0;
@@ -1189,7 +1187,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // through the reserved split just like issuance, so the full mint count is the right comparison; when the
         // payer skips the split, only the beneficiary's share of a direct mint is.
         uint256 tokenCountWithoutHook = mulDiv({x: amountToSwapWith, y: weight, denominator: weightRatio});
-        if (skipSplits) tokenCountWithoutHook = _beneficiaryShareOf(tokenCountWithoutHook, context.reservedPercent);
+        if (skipSplits) {
+            tokenCountWithoutHook =
+                _beneficiaryShareOf({tokenCount: tokenCountWithoutHook, reservedPercent: context.reservedPercent});
+        }
 
         // Keep a reference to the project's token.
         address projectToken = projectTokenOf[context.projectId];
@@ -1328,6 +1329,32 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     // ---------------------- internal transactions ---------------------- //
     //*********************************************************************//
 
+    /// @notice Mints project tokens through the controller with an empty memo.
+    /// @dev One call site for both the buy-side settlement and the sell-side remint keeps the ABI-encoding code
+    /// out of the bytecode twice.
+    /// @param controller The project's controller.
+    /// @param projectId The ID of the project whose tokens are minted.
+    /// @param tokenCount The number of tokens to mint, before any reserved split.
+    /// @param beneficiary The address that receives the minted tokens.
+    /// @param useReservedPercent Whether the ruleset's reserved percent is applied to the mint.
+    function _mint(
+        IJBController controller,
+        uint256 projectId,
+        uint256 tokenCount,
+        address beneficiary,
+        bool useReservedPercent
+    )
+        internal
+    {
+        controller.mintTokensOf({
+            projectId: projectId,
+            tokenCount: tokenCount,
+            beneficiary: beneficiary,
+            memo: "",
+            useReservedPercent: useReservedPercent
+        });
+    }
+
     /// @notice Revert if a TWAP window is outside the allowed bounds.
     /// @param window The TWAP window to validate.
     function _requireValidTwapWindow(uint256 window) internal pure {
@@ -1407,57 +1434,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             caller: caller
         });
         emit PoolAdded({projectId: projectId, terminalToken: normalizedTerminalToken, poolId: poolId, caller: caller});
-    }
-
-    /// @notice Reverts when a settled amount falls short of a caller-specified minimum.
-    /// @dev A zero minimum is "no floor". One revert site for every explicit-minimum check keeps the error encoding
-    /// out of the bytecode eight times.
-    /// @param amount The amount actually settled.
-    /// @param minimum The caller's minimum.
-    function _requireMinimum(uint256 amount, uint256 minimum) internal pure {
-        if (minimum != 0 && amount < minimum) {
-            revert JBBuybackHook_SpecifiedSlippageExceeded({amount: amount, minimum: minimum});
-        }
-    }
-
-    /// @notice Mints project tokens through the controller with an empty memo.
-    /// @dev One call site for both the buy-side settlement and the sell-side remint keeps the ABI-encoding code
-    /// out of the bytecode twice.
-    /// @param controller The project's controller.
-    /// @param projectId The ID of the project whose tokens are minted.
-    /// @param tokenCount The number of tokens to mint, before any reserved split.
-    /// @param beneficiary The address that receives the minted tokens.
-    /// @param useReservedPercent Whether the ruleset's reserved percent is applied to the mint.
-    function _mint(
-        IJBController controller,
-        uint256 projectId,
-        uint256 tokenCount,
-        address beneficiary,
-        bool useReservedPercent
-    )
-        internal
-    {
-        controller.mintTokensOf({
-            projectId: projectId,
-            tokenCount: tokenCount,
-            beneficiary: beneficiary,
-            memo: "",
-            useReservedPercent: useReservedPercent
-        });
-    }
-
-    /// @notice The share of a mint that lands with the beneficiary once the reserved percent is taken out.
-    /// @dev Mirrors `JBController`'s split rounding exactly so a payer's minimum settles against the same number the
-    /// controller mints.
-    /// @param tokenCount The full mint count.
-    /// @param reservedPercent The ruleset's reserved percent, out of `JBConstants.MAX_RESERVED_PERCENT`.
-    /// @return The beneficiary's share of `tokenCount`.
-    function _beneficiaryShareOf(uint256 tokenCount, uint256 reservedPercent) internal pure returns (uint256) {
-        return mulDiv({
-            x: tokenCount,
-            y: JBConstants.MAX_RESERVED_PERCENT - reservedPercent,
-            denominator: JBConstants.MAX_RESERVED_PERCENT
-        });
     }
 
     /// @notice Executes the buy-side swap: exchanges terminal tokens for project tokens through the V4 pool. The
@@ -1555,6 +1531,27 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     //*********************************************************************//
     // -------------------------- internal views ------------------------- //
     //*********************************************************************//
+
+    /// @notice The share of a mint that lands with the beneficiary once the reserved percent is taken out.
+    /// @dev Mirrors `JBController`'s split rounding exactly so a payer's minimum settles against the same number the
+    /// controller mints.
+    /// @param tokenCount The full mint count.
+    /// @param reservedPercent The ruleset's reserved percent, out of `JBConstants.MAX_RESERVED_PERCENT`.
+    /// @return beneficiaryTokenCount The beneficiary's share of `tokenCount`.
+    function _beneficiaryShareOf(
+        uint256 tokenCount,
+        uint256 reservedPercent
+    )
+        internal
+        pure
+        returns (uint256 beneficiaryTokenCount)
+    {
+        return mulDiv({
+            x: tokenCount,
+            y: JBConstants.MAX_RESERVED_PERCENT - reservedPercent,
+            denominator: JBConstants.MAX_RESERVED_PERCENT
+        });
+    }
 
     /// @notice Normalize the terminal token, look up the project token, and construct the PoolKey.
     /// @param projectId The ID of the project.
@@ -1870,6 +1867,17 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         return amount - JBFees.standardFeeAmountFrom(feeBase);
+    }
+
+    /// @notice Reverts when a settled amount falls short of a caller-specified minimum.
+    /// @dev A zero minimum is "no floor". One revert site for every explicit-minimum check keeps the error encoding
+    /// out of the bytecode eight times.
+    /// @param amount The amount actually settled.
+    /// @param minimum The caller's minimum.
+    function _requireMinimum(uint256 amount, uint256 minimum) internal pure {
+        if (minimum != 0 && amount < minimum) {
+            revert JBBuybackHook_SpecifiedSlippageExceeded({amount: amount, minimum: minimum});
+        }
     }
 
     /// @notice Returns this contract's balance of the given terminal token.

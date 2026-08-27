@@ -109,7 +109,7 @@ contract ExplicitQuoteNoPoolMinimumGapTest is Test {
         bytes memory quoteMetadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId({purpose: "pay", target: address(hook)}),
-            dataToAdd: abi.encode(PAYMENT_AMOUNT, EXPLICIT_MINIMUM)
+            dataToAdd: abi.encode(PAYMENT_AMOUNT, EXPLICIT_MINIMUM, false)
         });
 
         assertLt(DIRECT_MINT_COUNT, EXPLICIT_MINIMUM, "test must set minimum above direct mint");
@@ -128,7 +128,7 @@ contract ExplicitQuoteNoPoolMinimumGapTest is Test {
         bytes memory quoteMetadata = JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId({purpose: "pay", target: address(registry)}),
-            dataToAdd: abi.encode(PAYMENT_AMOUNT, EXPLICIT_MINIMUM)
+            dataToAdd: abi.encode(PAYMENT_AMOUNT, EXPLICIT_MINIMUM, false)
         });
 
         assertLt(DIRECT_MINT_COUNT, EXPLICIT_MINIMUM, "test must set minimum above direct mint");
