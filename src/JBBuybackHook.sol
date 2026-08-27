@@ -496,9 +496,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // If the token paid in isn't the native token, pull the amount to swap from the terminal.
         if (!isNativeToken) {
-            IERC20(context.forwardedAmount.token).safeTransferFrom({
-                from: msg.sender, to: address(this), value: context.forwardedAmount.value
-            });
+            IERC20(context.forwardedAmount.token)
+                .safeTransferFrom({from: msg.sender, to: address(this), value: context.forwardedAmount.value});
         }
 
         // Get a reference to the number of project tokens that was swapped for.
@@ -525,9 +524,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // If the token paid in wasn't the native token, grant the terminal permission to pull them back.
             if (!isNativeToken) {
                 terminalBalanceBeforeAdd = IERC20(context.forwardedAmount.token).balanceOf(msg.sender);
-                IERC20(context.forwardedAmount.token).forceApprove({
-                    spender: msg.sender, value: leftoverAmountInThisContract
-                });
+                IERC20(context.forwardedAmount.token)
+                    .forceApprove({spender: msg.sender, value: leftoverAmountInThisContract});
             }
 
             uint256 payValue = isNativeToken ? leftoverAmountInThisContract : 0;
@@ -1866,9 +1864,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             feeBase = amount;
         } else {
             // Zero tax: terminal charges only up to its fee-free surplus for this (project, token).
-            uint256 feeFreeSurplus = IJBMultiTerminal(context.terminal).feeFreeSurplusOf({
-                projectId: context.projectId, token: context.surplus.token
-            });
+            uint256 feeFreeSurplus = IJBMultiTerminal(context.terminal)
+                .feeFreeSurplusOf({projectId: context.projectId, token: context.surplus.token});
             feeBase = amount < feeFreeSurplus ? amount : feeFreeSurplus;
         }
 
