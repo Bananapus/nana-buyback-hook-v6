@@ -20,6 +20,8 @@ jobs:
         run: npm install --omit=dev
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.0
       - name: Run tests
         run: forge test --deny notes --fail-fast --summary --detailed --skip "*/script/**"
         env:
