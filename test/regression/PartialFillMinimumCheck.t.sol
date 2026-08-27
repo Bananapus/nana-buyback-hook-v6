@@ -238,6 +238,20 @@ contract PFMC_PartialFillMinimumCheck is Test {
         view
         returns (JBAfterPayRecordedContext memory)
     {
+        return _buildContext(payAmount, minimumSwapAmountOut, tokenCountWithoutHook, false, 0);
+    }
+
+    function _buildContext(
+        uint256 payAmount,
+        uint256 minimumSwapAmountOut,
+        uint256 tokenCountWithoutHook,
+        bool skipSplits,
+        uint256 reservedPercent
+    )
+        internal
+        view
+        returns (JBAfterPayRecordedContext memory)
+    {
         // Native ETH < any deployed address, so projectTokenIs0 = false.
         bool projectTokenIs0 = false;
 
@@ -274,7 +288,10 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                false, // oracleUnseeded
+                skipSplits,
+                reservedPercent
             ),
             payerMetadata: ""
         });
@@ -325,7 +342,10 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                false, // oracleUnseeded
+                false, // skipSplits
+                uint256(0) // reservedPercent
             ),
             payerMetadata: ""
         });
@@ -385,6 +405,51 @@ contract PFMC_PartialFillMinimumCheck is Test {
             abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, 1050e18, 1100e18)
         );
         hook.afterPayRecordedWith{value: payAmount}(ctx);
+    }
+
+    /// @notice With `skipSplits`, an explicit minimum binds on what the beneficiary actually receives: the swap
+    /// output plus the beneficiary's share of the leftover mint. Pool consumes 0.6 ETH for 700 tokens; the leftover
+    /// 0.4 ETH mints 400 tokens of which 25% is reserved, so the beneficiary receives 700 + 300 = 1000 < 1050.
+    function test_skipSplits_partialFill_minimumBindsOnBeneficiaryReceipt_reverts() public {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(-int128(uint128(0.6 ether)), int128(uint128(700e18)));
+        projectToken.mint(address(mockPm), 700e18);
+
+        JBAfterPayRecordedContext memory ctx = _buildContext({
+            payAmount: 1 ether,
+            minimumSwapAmountOut: 1050e18,
+            tokenCountWithoutHook: 750e18,
+            skipSplits: true,
+            reservedPercent: 2500
+        });
+
+        vm.deal(address(terminal), 1 ether);
+        vm.prank(address(terminal));
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_SpecifiedSlippageExceeded.selector, 1000e18, 1050e18)
+        );
+        hook.afterPayRecordedWith{value: 1 ether}(ctx);
+    }
+
+    /// @notice Same fill as above with a minimum the beneficiary's receipt does meet (700 + 300 = 1000 >= 950).
+    function test_skipSplits_partialFill_minimumMetOnBeneficiaryReceipt() public {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(-int128(uint128(0.6 ether)), int128(uint128(700e18)));
+        projectToken.mint(address(mockPm), 700e18);
+
+        JBAfterPayRecordedContext memory ctx = _buildContext({
+            payAmount: 1 ether,
+            minimumSwapAmountOut: 950e18,
+            tokenCountWithoutHook: 750e18,
+            skipSplits: true,
+            reservedPercent: 2500
+        });
+
+        vm.deal(address(terminal), 1 ether);
+        vm.prank(address(terminal));
+        hook.afterPayRecordedWith{value: 1 ether}(ctx);
+
+        assertEq(projectToken.balanceOf(beneficiary), 700e18, "swap output lands with the beneficiary");
     }
 
     /// @notice Complete swap failure still enforces an explicit caller-provided minimum output.

@@ -33,7 +33,9 @@ repo.
 ## Metadata Changes
 
 - Buy-side caller metadata uses the `"pay"` key and encodes
-  `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut)`.
+  `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut, bool skipSplits)`. `skipSplits` sends the swap output to
+  the beneficiary as-is instead of burning and re-minting it through the reserved split; programmatic pays leave it
+  `false`.
 - Sell-side caller metadata uses the `"cashOut"` key and encodes
   `(uint256 minimumSwapAmountOut, bool skip)`.
 - The pay hook specification returned from `beforePayRecordedWith` carries this hook-internal settlement and preview
@@ -54,7 +56,10 @@ repo.
   PoolId poolId,
   uint256 minimumBeneficiaryTokenCount,
   uint256 minimumReservedTokenCount,
-  uint256 rawSwapQuote
+  uint256 rawSwapQuote,
+  bool oracleUnseeded,
+  bool skipSplits,
+  uint256 reservedPercent
 )
 ```
 
@@ -134,4 +139,7 @@ Generated event/error name deltas:
 
 - Replace V3 pool-address configuration with V4 `PoolKey` / `PoolId` handling.
 - Update metadata builders from V5/V6-draft purpose strings to the current `pay` and `cashOut` purposes.
+- Encode the `pay` entry as three words: two-word `(amountToSwapWith, minimumSwapAmountOut)` quotes no longer decode.
+  Pass `skipSplits=false` unless the payer is buying for themselves and wants the swap output outside the reserved
+  split.
 - Regenerate both hook and registry ABIs. The registry is no longer just a small wrapper around the V5 default hook concept.

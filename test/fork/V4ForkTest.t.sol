@@ -688,7 +688,10 @@ contract V4ForkTest is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                false, // oracleUnseeded
+                false, // skipSplits
+                uint256(0) // reservedPercent
             ),
             payerMetadata: ""
         });
@@ -758,7 +761,10 @@ contract V4ForkTest is Test {
                 bytes32(0),
                 uint256(0),
                 uint256(0),
-                uint256(0)
+                uint256(0),
+                false, // oracleUnseeded
+                false, // skipSplits
+                uint256(0) // reservedPercent
             ),
             payerMetadata: ""
         });
@@ -797,7 +803,7 @@ contract V4ForkTest is Test {
         bytes memory fullMetadata;
         {
             uint256 payerMinOut = (orderSize * 9) / 10;
-            bytes memory quoteMetadata = abi.encode(orderSize, payerMinOut);
+            bytes memory quoteMetadata = abi.encode(orderSize, payerMinOut, false);
             bytes4 metadataId = JBMetadataResolver.getId("pay");
             fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
         }
@@ -888,7 +894,7 @@ contract V4ForkTest is Test {
         bytes memory fullMetadata;
         {
             uint256 payerMinOut = (orderSize * 9) / 10;
-            bytes memory quoteMetadata = abi.encode(orderSize, payerMinOut);
+            bytes memory quoteMetadata = abi.encode(orderSize, payerMinOut, false);
             bytes4 metadataId = JBMetadataResolver.getId("pay");
             fullMetadata = JBMetadataResolver.addToMetadata("", metadataId, quoteMetadata);
         }

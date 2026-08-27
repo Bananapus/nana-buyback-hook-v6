@@ -218,7 +218,7 @@ contract RegressionRegistryMetadataBoundaryTest is Test {
         return JBMetadataResolver.addToMetadata({
             originalMetadata: "",
             idToAdd: JBMetadataResolver.getId("pay", target),
-            dataToAdd: abi.encode(amountToSwapWith, minimumSwapAmountOut)
+            dataToAdd: abi.encode(amountToSwapWith, minimumSwapAmountOut, false)
         });
     }
 }

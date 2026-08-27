@@ -68,6 +68,13 @@ This repo decides whether a project-facing buy or sell should execute through Ju
 - explicit caller minima fail or partial fills behave unexpectedly
 - default-hook expectations are misconfigured around the chosen path
 
+**Split opt-out variant:** a payer buying for themselves can set `skipSplits=true` in the `pay` metadata entry
+(`(uint256 amountToSwapWith, uint256 minimumSwapAmountOut, bool skipSplits)`). Swapped tokens then go straight to the
+beneficiary instead of being burned and re-minted through the reserved split, so the pool only has to beat the
+beneficiary's share of a direct mint, and an explicit minimum is settled against what the beneficiary actually
+receives. The leftover mint still passes through the split. Programmatic pays — split payouts, project payers, fee
+routing, revenue deliberately pushed into a project — leave it `false` and keep honoring the project's splits.
+
 **Postconditions**
 - the payment uses whichever route is better under the hook's configured comparison model
 

@@ -59,7 +59,9 @@ payment arrives
   -> if the pool has live liquidity but no usable TWAP liquidity yet, a bounded bootstrap quote can price the first buy
   -> hook confirms the configured pool currently has in-range liquidity
   -> if pool wins, hook returns an active pay-hook spec and later executes the swap
-  -> swapped tokens are burned and re-minted through the controller so reserved-rate semantics still apply
+  -> swapped tokens are burned and re-minted through the controller so reserved-rate semantics still apply, unless
+     the payer set `skipSplits`, in which case the swapped tokens go straight to the beneficiary and only the
+     leftover mint passes through the reserved split
   -> if the swap fills below an oracle-derived floor, the floor check inside the unlock unwinds the swap and the
      full payment degrades to mint fallback (the floor is pro-rated by consumed input, so partial fills at a fair
      per-unit rate survive)
@@ -113,7 +115,7 @@ Cash-out pricing can include aggregate surplus from multiple terminals or remote
 - cold-start bootstrap routing is only a buy-side path; sell-side market routing remains TWAP-only
 - seeded buy-side ranges must cover the current tick and upward price movement, because buybacks buy the project token
 - sell-side routing suppresses direct protocol reclaim only when the market path wins
-- reserved-rate preservation is a primary review target on the buy side
+- reserved-rate preservation is a primary review target on the buy side, including the payer-only `skipSplits` opt-out
 - fee-on-transfer terminal tokens are outside the supported routing model; project-token balance-delta tests do not imply terminal-token FOT support
 
 ## Safe change guide
