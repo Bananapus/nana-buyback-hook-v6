@@ -20,6 +20,8 @@ jobs:
         run: npm install
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.0
       - name: Install Halmos
         run: python -m pip install halmos==0.3.3
       - name: Run Halmos slippage proofs
