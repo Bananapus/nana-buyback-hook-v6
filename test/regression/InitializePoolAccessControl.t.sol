@@ -105,7 +105,8 @@ contract InitializePoolAccessControl is Test {
             twapWindow: 2 days,
             terminalToken: address(0xEEEe),
             sqrtPriceX96: TickMath.getSqrtPriceAtTick(0)
-        }) {} catch {}
+        }) {}
+            catch {}
         // If we reached here without a permission revert, the access control allows the owner through.
     }
 }

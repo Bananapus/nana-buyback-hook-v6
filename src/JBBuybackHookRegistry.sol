@@ -203,13 +203,13 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Forward the call to the resolved hook.
         IJBBuybackHook(address(hook))
             .initializePoolFor({
-                projectId: projectId,
-                fee: fee,
-                tickSpacing: tickSpacing,
-                twapWindow: twapWindow,
-                terminalToken: terminalToken,
-                sqrtPriceX96: sqrtPriceX96
-            });
+            projectId: projectId,
+            fee: fee,
+            tickSpacing: tickSpacing,
+            twapWindow: twapWindow,
+            terminalToken: terminalToken,
+            sqrtPriceX96: sqrtPriceX96
+        });
     }
 
     /// @notice Permanently locks a project's buyback hook assignment, preventing future changes. Once locked, the
@@ -339,12 +339,12 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
         // Forward the call to the resolved hook.
         IJBBuybackHook(address(hook))
             .setPoolFor({
-                projectId: projectId,
-                fee: fee,
-                tickSpacing: tickSpacing,
-                twapWindow: twapWindow,
-                terminalToken: terminalToken
-            });
+            projectId: projectId,
+            fee: fee,
+            tickSpacing: tickSpacing,
+            twapWindow: twapWindow,
+            terminalToken: terminalToken
+        });
     }
 
     //*********************************************************************//

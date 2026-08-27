@@ -1425,6 +1425,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Mints project tokens through the controller with an empty memo.
     /// @dev One call site for both the buy-side settlement and the sell-side remint keeps the ABI-encoding code
     /// out of the bytecode twice.
+    /// @param controller The project's controller.
+    /// @param projectId The ID of the project whose tokens are minted.
+    /// @param tokenCount The number of tokens to mint, before any reserved split.
+    /// @param beneficiary The address that receives the minted tokens.
+    /// @param useReservedPercent Whether the ruleset's reserved percent is applied to the mint.
     function _mint(
         IJBController controller,
         uint256 projectId,
