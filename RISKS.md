@@ -26,6 +26,8 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **JB core contracts behave correctly.** The hook trusts `DIRECTORY`, `controller`, and token operations in core.
 - **Registry owner centralization is scoped.** The first-ever default hook applies to every project that already exists when it is set (so pre-existing, non-pinned projects resolve to it). After that, *changing* the default only affects projects created after the change (`projectId > defaultHookProjectIdThreshold`); earlier cohorts keep their creation-time default and a project can pin its own hook via `setHookFor`.
 
+- **Executed deployment records do not imply every project migrated.** Canonical hook records cover Ethereum, Optimism, Base, Arbitrum, Sepolia, Base Sepolia, and Arbitrum Sepolia after the floor-fix rollout. Existing project pins can still select retired hooks; resolve `hookOf(projectId)` and retain historical ABI and metadata support. OP Sepolia has no buyback hook deployment.
+
 ## 2. Economic risks
 
 - **Mint-vs-swap routing can be manipulated.** The comparison at `beforePayRecordedWith` depends on either explicit caller quote data or TWAP-derived quoting.
@@ -45,7 +47,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 
 - **There is a three-layer protection pipeline.** The hook combines explicit minima or TWAP floors, sigmoid slippage, and a `sqrtPriceLimit` circuit breaker.
 - **Sandwich attacks can force protocol fallback.** When the circuit breaker trips, the intended result is mint/direct-reclaim fallback rather than silent overpayment.
-- **Derived floors fail open to mint, never closed.** A buy-side fill below the oracle-derived floor unwinds the swap inside the unlock and mints the full payment at the issuance rate. An attacker can therefore force a no-quote pay to route at the issuance rate, but the payment then lands in the project's terminal balance — there is nothing to extract, and programmatic fee flows (which cannot retry) always settle. This closes the fee-evasion vector where a payer with a forgiven fee (e.g. REVLoans prepaid fees) could nudge a thin pool to make their own fee pay revert and be refunded while keeping the fee's benefit.
+- **Derived floors fall back to mint.** A buy-side fill below the oracle-derived floor unwinds the swap inside the unlock and mints the full payment at the issuance rate. An attacker can therefore force a no-quote pay to route at the issuance rate, but the payment then lands in the project's terminal balance. This removes the floor-miss cause of fee forgiveness; it does not guarantee settlement if minting, transfers, or price-feed reads fail for another reason. Eligible failed routes through `JBRouterTerminalGateway` retain their input for retry or source-project refund under the gateway's separate rules.
 - **TWAP manipulation is expensive but not impossible.** Risk is lower in deep pools and higher for large trades or thin markets.
 - **Cold-start spot is manipulable.** The buy side only uses raw slot0 while TWAP liquidity is zero, the pool uses the configured oracle hook, and the oracle cannot provide a quote. The hook returns to issuance routing for quotes above the 5% impact cap or fee-adjusted quotes that do not beat issuance, and discounts accepted quotes by 3% plus LP fee plus rounded-up estimated impact. The execution path still uses the issuance-rate price limit and mints leftover input.
 - **Dust liquidity is treated as unsafe routing depth when impact reaches the max-impact guard.**
@@ -82,6 +84,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 
 - **`JBPrices` can revert.** Cross-currency buyback-routed payments then halt.
 - **Controller mint or burn can revert.** There is no fallback around that.
+- **Pay metadata depends on the selected hook generation.** Hook 1.4.0 decodes a present `"pay"` entry as three words `(amountToSwapWith, minimumSwapAmountOut, skipSplits)` and rejects the old two-word encoding. Historical project pins can still select retired hooks, so quote builders must resolve the effective hook before choosing the encoding.
 - **`addToBalanceOf` can revert.** That can trap the flow after a failed swap.
 - **Pool state can become unusable.** If current liquidity is zero, liquidity is only dust, or quotes collapse to zero, the hook can fall back to protocol-only behavior.
 - **Seeded liquidity can be positioned on the wrong side.** Buybacks buy the project token and move price upward, so a seed range that only sits below the current tick can still leave the market path non-executable after routing starts.

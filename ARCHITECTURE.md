@@ -69,11 +69,13 @@ payment arrives
   -> explicit caller minima are settlement guarantees: they hard-revert on the combined output in either case
 ```
 
-Oracle-derived floors never revert a payment. This keeps no-quote programmatic flows (protocol fees, split pays,
+An oracle-derived floor miss falls back to minting instead of reverting the payment. This keeps no-quote programmatic flows (protocol fees, split pays,
 project payers) alive when the TWAP floor is stale for current pool conditions, while a manipulated fill can never
 do better than the protocol's own mint path — an attacker can force a pay to route at the issuance rate, but the
 funds then land in the project's terminal balance, so there is nothing to extract. A derived-floor fallback is
 observable offchain as a swap-routed payment that emits `Mint` without a `Swap`.
+
+This fallback only handles the swap/floor failure: invalid metadata, unavailable accounting price feeds, token transfers, or controller mint failures can still revert settlement. When a payment arrives through a migrated router gateway, an eligible programmatic route failure can instead become a pending call held in the gateway. That custody and retry lifecycle is separate from this hook's synchronous mint fallback.
 
 The cold-start bootstrap path is buy-side only. It exists because the V4 oracle can have an initialized observation but still lack usable full-window TWAP liquidity for a freshly seeded pool. The fallback is deliberately narrow: zero TWAP liquidity, non-zero live liquidity, the configured oracle hook, and a 5% impact cap. The live LP fee is folded into the bootstrap discount, which is 3% plus LP fee plus rounded-up estimated impact. If the fee-adjusted quote still beats issuance, the route can use the AMM; if it does not, or if the discount consumes the quote, the payment mints. If the oracle returns a valid mean tick, the hook uses that tick instead of raw slot0. Raw slot0 is only used when the configured oracle hook cannot provide a quote. Cold-start derived quotes select the route for no-quote pays; the active hook spec encodes the issuance-rate execution floor so a successful underfill below the internal bootstrap quote does not brick the payment.
 

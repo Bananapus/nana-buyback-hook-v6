@@ -87,6 +87,8 @@ bytes memory metadata = JBMetadataResolver.addToMetadata(existingMetadata, payId
 
 **Buy side, key `"pay"`** — encodes `(uint256 amountToSwapWith, uint256 minimumSwapAmountOut, bool skipSplits)` (the payer's swap quote and split directive). A non-zero `minimumSwapAmountOut` is honored as an explicit floor; a zero minimum falls through to the TWAP oracle. The two have intentionally different failure behavior: an explicit floor is a settlement guarantee that hard-reverts the payment when the combined output (swap + leftover mint) falls short, while a TWAP-derived floor is a routing hint — a swap that fills below it is unwound and the full payment falls back to minting at the issuance rate, so no-quote programmatic payments never revert on a stale floor. If the oracle exposes observation coverage, no-quote routing prefers the configured full TWAP window and otherwise quotes against the longest retained best-effort window. If there is no usable coverage, the hook either uses the bounded buy-side cold-start path described below or mints through the protocol path.
 
+This three-word payload is required by hook 1.4.0 and later; an old two-word `(amountToSwapWith, minimumSwapAmountOut)` entry reverts during decoding. Omitting the entry is valid and leaves `skipSplits = false`. Resolve the project's effective hook through `JBBuybackHookRegistry.hookOf(projectId)` and use that deployment generation's ABI and metadata format: retired hooks still serve existing projects, so a package upgrade alone does not change every project's wire format.
+
 `skipSplits` (defaults to `false`) sends the swap output straight to the beneficiary instead of burning and
 re-minting it through the project's reserved split. Swapped tokens already exist, so nothing is issued and nothing is
 reserved; the portion of the payment that is not routed through the pool still mints through the split. Two things
@@ -149,6 +151,8 @@ AMM route should be selected.
 
 ## Integration traps
 
+- read the canonical `deployments/<chain>/JBBuybackHook.json` and retained `_deprecated*.json` records; `_deprecated.json` preserves the original generation and `_deprecated1.json` preserves the next retired generation where that migration executed. Keep historical addresses decodable and discover the effective project hook on-chain
+- the executed floor-fix rollout is recorded on Ethereum, Optimism, Base, Arbitrum, Sepolia, Base Sepolia, and Arbitrum Sepolia. OP Sepolia has a price-feed update but no buyback hook or router stack
 - this hook can fall back between market and protocol paths, so preview behavior is not the same as guaranteed execution
 - oracle-derived minima and caller-supplied minima have intentionally different failure behavior: explicit minima hard-revert, derived floors unwind the swap and mint the full payment instead
 - registering a pool with `twapWindow == MAX_TWAP_WINDOW` (2 days) stores the 30-minute default instead — immutable deployers bake the max in as a default, not a tuning choice; use `setTwapWindowOf` (never remapped) for a deliberate max-length window
