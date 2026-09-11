@@ -59,7 +59,7 @@ max window sets it there, and the `TwapWindowChanged` event always reports the w
 - treat TWAP window changes as oracle-quality changes, not cosmetic tuning
 - treat current in-range liquidity as runtime health; a warm TWAP with no live liquidity is not an active market route
 - remember that failed swaps can degrade into protocol fallback behavior
-- during the floor-fix rollout, the infra Safe moves project 1 and the registry default to the new hook, preserving the live V4 pool while registering it on the new hook with a 1,800-second TWAP window. Projects 2–7 retain their prior hook until their operators execute `setHookFor` and `setPoolFor`, together with `setTerminalFor` to select the new router gateway
+- the executed floor-fix rollout moved project 1 and the registry default to the new hook, preserving the live V4 pool while registering it on the new hook with a 1,800-second TWAP window. Projects 2–7 retain their prior hook until their operators execute `setHookFor` and `setPoolFor`, together with `setTerminalFor` to select the new router gateway
 - use `setPoolFor` to register the existing initialized pool with its exact fee and tick spacing; its liquidity and observation history remain in V4. Read the actual stored TWAP window instead of assuming every project uses either the old two-day window or the new 30-minute setting
 - distinguish current canonical records from retired `_deprecated*.json` records per chain. Do not remove an old address or infer that disallowing it migrates its existing projects
 

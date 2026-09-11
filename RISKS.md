@@ -26,6 +26,8 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 - **JB core contracts behave correctly.** The hook trusts `DIRECTORY`, `controller`, and token operations in core.
 - **Registry owner centralization is scoped.** The first-ever default hook applies to every project that already exists when it is set (so pre-existing, non-pinned projects resolve to it). After that, *changing* the default only affects projects created after the change (`projectId > defaultHookProjectIdThreshold`); earlier cohorts keep their creation-time default and a project can pin its own hook via `setHookFor`.
 
+- **Executed deployment records do not imply every project migrated.** Canonical hook records cover Ethereum, Optimism, Base, Arbitrum, Sepolia, Base Sepolia, and Arbitrum Sepolia after the floor-fix rollout. Existing project pins can still select retired hooks; resolve `hookOf(projectId)` and retain historical ABI and metadata support. OP Sepolia has no buyback hook deployment.
+
 ## 2. Economic risks
 
 - **Mint-vs-swap routing can be manipulated.** The comparison at `beforePayRecordedWith` depends on either explicit caller quote data or TWAP-derived quoting.

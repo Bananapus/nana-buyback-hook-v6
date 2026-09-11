@@ -152,7 +152,7 @@ AMM route should be selected.
 ## Integration traps
 
 - read the canonical `deployments/<chain>/JBBuybackHook.json` and retained `_deprecated*.json` records; `_deprecated.json` preserves the original generation and `_deprecated1.json` preserves the next retired generation where that migration executed. Keep historical addresses decodable and discover the effective project hook on-chain
-- the floor-fix rollout is recorded on Sepolia, Base Sepolia, and Arbitrum Sepolia; mainnet canonical records retain the outgoing hook until that chain executes and distributes its artifacts. OP Sepolia has a price-feed update but no buyback hook or router stack
+- the executed floor-fix rollout is recorded on Ethereum, Optimism, Base, Arbitrum, Sepolia, Base Sepolia, and Arbitrum Sepolia. OP Sepolia has a price-feed update but no buyback hook or router stack
 - this hook can fall back between market and protocol paths, so preview behavior is not the same as guaranteed execution
 - oracle-derived minima and caller-supplied minima have intentionally different failure behavior: explicit minima hard-revert, derived floors unwind the swap and mint the full payment instead
 - registering a pool with `twapWindow == MAX_TWAP_WINDOW` (2 days) stores the 30-minute default instead — immutable deployers bake the max in as a default, not a tuning choice; use `setTwapWindowOf` (never remapped) for a deliberate max-length window
