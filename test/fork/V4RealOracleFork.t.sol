@@ -215,8 +215,7 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint160 secPerLiqDelta = uint160((uint256(twapWindow) << 128) / liquidity);
 
-        MockOracleHook(ORACLE_ADDR)
-            .setObserveData({
+        MockOracleHook(ORACLE_ADDR).setObserveData({
             _tickCumulative0: 0, _tickCumulative1: tickCumulativeDelta, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta
         });
 
@@ -279,8 +278,7 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint160 secPerLiqDelta = uint160((uint256(twapWindow) << 128) / poolLiquidity);
 
-        MockOracleHook(ORACLE_ADDR)
-            .setObserveData({
+        MockOracleHook(ORACLE_ADDR).setObserveData({
             _tickCumulative0: 0,
             _tickCumulative1: 0, // tick=0 -> 1:1 price
             _secPerLiq0: 0,
@@ -331,8 +329,9 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint160 secPerLiqDelta = uint160((uint256(twapWindow) << 128) / poolLiquidity);
 
-        MockOracleHook(ORACLE_ADDR)
-            .setObserveData({_tickCumulative0: 0, _tickCumulative1: 0, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta});
+        MockOracleHook(ORACLE_ADDR).setObserveData({
+            _tickCumulative0: 0, _tickCumulative1: 0, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta
+        });
 
         JBBeforeCashOutRecordedContext memory ctx = JBBeforeCashOutRecordedContext({
             terminal: address(terminal),
@@ -386,8 +385,7 @@ contract V4RealOracleForkTest is Test {
 
         // Configure oracle with valid tick cumulatives but zero liquidity delta.
         // secondsPerLiq0 == secondsPerLiq1 => delta = 0 => harmonicMeanLiquidity = 0.
-        MockOracleHook(ORACLE_ADDR)
-            .setObserveData({
+        MockOracleHook(ORACLE_ADDR).setObserveData({
             _tickCumulative0: 0,
             _tickCumulative1: 0,
             _secPerLiq0: 100, // same value
@@ -470,8 +468,7 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint160 secPerLiqDelta5min = uint160((uint256(window5min) << 128) / liquidity);
 
-        MockOracleHook(ORACLE_ADDR)
-            .setObserveData({
+        MockOracleHook(ORACLE_ADDR).setObserveData({
             _tickCumulative0: 0, _tickCumulative1: tickCumDelta5min, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta5min
         });
 
@@ -508,8 +505,7 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint160 secPerLiqDelta2hr = uint160((uint256(window2hr) << 128) / liquidity);
 
-        MockOracleHook(ORACLE_ADDR)
-            .setObserveData({
+        MockOracleHook(ORACLE_ADDR).setObserveData({
             _tickCumulative0: 0, _tickCumulative1: tickCumDelta2hr, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta2hr
         });
 
@@ -545,8 +541,7 @@ contract V4RealOracleForkTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int56 tickCumDelta2hrShift = int56(recentTick) * int56(int32(window5min)); // = 200 * 300 = 60000
 
-        MockOracleHook(ORACLE_ADDR)
-            .setObserveData({
+        MockOracleHook(ORACLE_ADDR).setObserveData({
             _tickCumulative0: 0,
             _tickCumulative1: tickCumDelta5minShift,
             _secPerLiq0: 0,
@@ -562,8 +557,7 @@ contract V4RealOracleForkTest is Test {
             quoteToken: address(projectToken)
         });
 
-        MockOracleHook(ORACLE_ADDR)
-            .setObserveData({
+        MockOracleHook(ORACLE_ADDR).setObserveData({
             _tickCumulative0: 0, _tickCumulative1: tickCumDelta2hrShift, _secPerLiq0: 0, _secPerLiq1: secPerLiqDelta2hr
         });
 
