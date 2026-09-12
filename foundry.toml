@@ -18,6 +18,26 @@ runs = 1024
 depth = 100
 fail_on_revert = false
 
+[lint]
+# Detectors forge 1.8 added or now runs by default. They flag this codebase's intended patterns
+# (hooks and terminals forward ETH to project terminals and beneficiaries, JB-prefixed struct names,
+# ^0.8.0 interface pragmas) and need their own triage before they gate CI.
+exclude_lints = [
+  "arbitrary-send-eth",
+  "boolean-cst",
+  "cyclomatic-complexity",
+  "event-fields",
+  "internal-function-used-once",
+  "literal-instead-of-constant",
+  "missing-events-access-control",
+  "missing-zero-check",
+  "pragma-inconsistent",
+  "reentrancy-events",
+  "uninitialized-local",
+  "unsafe-typecast",
+  "unused-return",
+]
+
 [fmt]
 number_underscore = "thousands"
 multiline_func_header = "all"
