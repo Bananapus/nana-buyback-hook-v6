@@ -146,6 +146,19 @@ contract ThinPoolRoutingFork is Test {
         assertGt(updated, deployed * 14, "pool route");
     }
 
+    /// @dev Pays larger than the pool can take above the issuance rate swap until the pool reaches that rate and mint
+    /// the rest. Project 13's pool takes about 0.0021 ETH for 14.28 extra tokens; project 7's about 1.23 ETH for about
+    /// 43,100 extra tokens after the reserved split.
+    function test_largePay_swapsToTheIssuanceRateAndMintsTheRest() public {
+        (uint256 deployed, uint256 updated) = _compare(THIN, 0.01 ether);
+        assertEq(deployed, 500e18, "deployed hook minted");
+        assertGt(updated, 514.28e18, "pool leg plus mint");
+
+        (deployed, updated) = _compare(FAR, 10 ether);
+        assertEq(deployed, 77_500e18, "deployed hook minted");
+        assertGt(updated, 120_611e18, "pool leg plus mint");
+    }
+
     function test_paysTheDeployedHookAlreadySwaps_unchanged() public {
         uint256[4] memory sizes = [uint256(0.0001 ether), 0.001 ether, 0.01 ether, 0.1 ether];
         for (uint256 i; i < sizes.length; i++) {
@@ -287,7 +300,15 @@ contract ThinPoolRoutingFork is Test {
     /// money.
     function test_sandwich_partialFillCannotDiluteTheFloor() public {
         uint256 best = _sandwich(0.003 ether, 150e18, 0.0002 ether);
-        // Observed on this state, not a bound the hook guarantees: about 2.9% of the pay (4.1% when pro-rated).
+        // Observed on this state, not a bound the hook guarantees: about 1.3% of the pay (4.1% when pro-rated).
         assertLt(best, 0.003 ether * 3 / 100, "attacker profit");
+    }
+
+    /// @dev A 0.01 ETH pay swaps only the pool's leg above the issuance rate and mints the rest, so a sandwich can only
+    /// work that leg.
+    function test_sandwich_largePay() public {
+        uint256 best = _sandwich(0.01 ether, 500e18, 0.000_05 ether);
+        // Observed on this state, not a bound the hook guarantees: about 0.4% of the pay.
+        assertLt(best, 0.01 ether / 100, "attacker profit");
     }
 }

@@ -158,6 +158,58 @@ library JBSwapLib {
         });
     }
 
+    /// @notice How a pay settles when its swap is limited to the issuance rate: the pool fills until its spot rate
+    /// meets issuance, and the rest of the input mints at issuance.
+    /// @dev In the single-range model of `getExpectedAmountOut`, the spot rate after input fraction φ is
+    ///      quote / (1 + impact * (1 - fee) * φ)^2. The price limit stops the swap where that meets issuance, at
+    ///      φ* = (u - 1) / (impact * (1 - fee)) with u = sqrt(quote / issuance), and the swap leg then returns
+    ///      issuance * u * (1 - fee) * φ*.
+    /// @param quote The oracle quote for the full input at the quoted price, before fee and impact.
+    /// @param impact The estimated price impact of the full input from calculateImpact (scaled by _IMPACT_PRECISION).
+    /// @param poolFeeBps The pool fee in basis points.
+    /// @param issuanceTokenCount The tokens issuance gives for the full input.
+    /// @return swapAmountOut The expected output of the swap leg.
+    /// @return issuedAmountOut The tokens issuance gives for the input the swap leaves.
+    function getExpectedSettlement(
+        uint256 quote,
+        uint256 impact,
+        uint256 poolFeeBps,
+        uint256 issuanceTokenCount
+    )
+        public
+        pure
+        returns (uint256 swapAmountOut, uint256 issuedAmountOut)
+    {
+        // The pool fee is taken from the input before it moves the price, so impact scales by 1 - fee.
+        uint256 kept = _SLIPPAGE_DENOMINATOR - poolFeeBps;
+        uint256 keptImpact = impact / _SLIPPAGE_DENOMINATOR * kept;
+
+        // With no issuance, no impact, or a pool beyond 1e20x issuance, the price limit never stops the swap.
+        if (issuanceTokenCount != 0 && keptImpact != 0 && quote / issuanceTokenCount < 1e40) {
+            // u at 1e18 precision.
+            uint256 u = Math.sqrt(FullMath.mulDiv({a: quote, b: 1e36, denominator: issuanceTokenCount}));
+
+            // A pool whose spot rate is no better than issuance is already at the price limit, so it takes nothing.
+            if (u <= _IMPACT_PRECISION) return (0, issuanceTokenCount);
+
+            // φ* at 1e18 precision; below 1, the swap stops at the price limit before using the whole input.
+            uint256 filled = FullMath.mulDiv({a: u - _IMPACT_PRECISION, b: _IMPACT_PRECISION, denominator: keptImpact});
+            if (filled < _IMPACT_PRECISION) {
+                swapAmountOut = FullMath.mulDiv({
+                    a: FullMath.mulDiv({a: issuanceTokenCount, b: u, denominator: _IMPACT_PRECISION}),
+                    b: filled * kept,
+                    denominator: _IMPACT_PRECISION * _SLIPPAGE_DENOMINATOR
+                });
+                issuedAmountOut = FullMath.mulDiv({
+                    a: issuanceTokenCount, b: _IMPACT_PRECISION - filled, denominator: _IMPACT_PRECISION
+                });
+                return (swapAmountOut, issuedAmountOut);
+            }
+        }
+
+        swapAmountOut = getExpectedAmountOut({quote: quote, impact: impact, poolFeeBps: poolFeeBps});
+    }
+
     /// @notice Compute a continuous sigmoid slippage tolerance based on swap impact and pool fee.
     /// @dev tolerance = minSlippage + (maxSlippage - minSlippage) * impact / (impact + K)
     ///      When impact is 0 (negligible swap in deep pool), returns minSlippage.

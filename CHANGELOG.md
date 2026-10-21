@@ -27,8 +27,10 @@ repo.
   enough to activate the market route if the pool is drained.
 - Sell-side route selection compares against what the selected terminal can locally settle, not only aggregate
   project surplus.
-- A pay with no caller quote floors its swap at the expected single-range output less 2% when the sigmoid floor would
-  sit under direct issuance. Thin pools that beat issuance now route to the swap instead of minting.
+- A pay with no caller quote floors its settlement at the expected single-range swap leg up to the issuance-rate price
+  limit, less 2%, plus issuance for the input that leg leaves, when the sigmoid floor would sit under direct issuance.
+  Thin pools that beat issuance route to the swap instead of minting, including pays larger than the pool can take
+  above the issuance rate.
 - The expected-output floor covers the whole settlement (swap output plus unconsumed input at the issuance rate), so a
   partial fill whose settlement misses it unwinds and the pay mints. Sigmoid floors stay pro-rated by consumed input.
 - From 1.5.0 `JBSwapLib.getQuoteFromOracle` is public, so deployments link `JBSwapLib` into the hook.

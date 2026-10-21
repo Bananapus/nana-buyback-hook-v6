@@ -1851,12 +1851,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // The sigmoid tolerance grows far faster than real impact, so in a thin pool its floor can sit under direct
-        // issuance while the pool still beats it. Then floor the swap at the expected output less a small buffer. The
-        // swap routes only if that floor beats issuance, and a miss mints, so the payer never gets less than before.
+        // issuance while the pool still beats it. Then floor the pay at its expected settlement: the swap leg up to the
+        // issuance-rate price limit, less a small buffer, plus issuance for the input that leg leaves. The swap routes
+        // only if that floor beats issuance, and a miss mints the whole pay.
         if (payRoute && amountOut <= issuanceTokenCount) {
             floorCoversSettlement = true;
-            amountOut = JBSwapLib.getExpectedAmountOut({quote: rawAmountOut, impact: impact, poolFeeBps: poolFeeBps})
-                / TWAP_SLIPPAGE_DENOMINATOR * (TWAP_SLIPPAGE_DENOMINATOR - _EXPECTED_OUT_SLIPPAGE);
+            (uint256 swapAmountOut, uint256 issuedAmountOut) = JBSwapLib.getExpectedSettlement({
+                quote: rawAmountOut, impact: impact, poolFeeBps: poolFeeBps, issuanceTokenCount: issuanceTokenCount
+            });
+            amountOut = issuedAmountOut + swapAmountOut / TWAP_SLIPPAGE_DENOMINATOR
+                * (TWAP_SLIPPAGE_DENOMINATOR - _EXPECTED_OUT_SLIPPAGE);
         }
 
         // With no floor, report no quote, as routing and preview consumers read a zero quote as no route.
