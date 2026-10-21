@@ -63,8 +63,9 @@ payment arrives
      the payer set `skipSplits`, in which case the swapped tokens go straight to the beneficiary and only the
      leftover mint passes through the reserved split
   -> if the swap settles below an oracle-derived floor, the floor check inside the unlock unwinds the swap and the
-     full payment degrades to mint fallback (a partial fill counts its unconsumed input at the issuance rate, so a
-     front-run that forces a small fill cannot dilute the floor)
+     full payment degrades to mint fallback (a sigmoid floor is pro-rated by consumed input, so partial fills at a fair
+     per-unit rate survive; the expected-output floor counts unconsumed input at the issuance rate, so a front-run
+     that forces a small fill cannot dilute it)
   -> if the swap fully fails, the payment likewise degrades to mint fallback
   -> explicit caller minima are settlement guarantees: they hard-revert on the combined output in either case
 ```

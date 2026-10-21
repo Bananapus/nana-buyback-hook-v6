@@ -345,7 +345,7 @@ contract DFMF_DerivedFloorMintFallback is Test {
         assertTrue(mockPm.swapCalled(), "swap should have executed");
     }
 
-    /// @notice The derived floor is pro-rated by consumed input: a partial fill whose per-unit rate satisfies the
+    /// @notice A sigmoid derived floor is pro-rated by consumed input: a partial fill whose per-unit rate satisfies the
     /// floor keeps the swap, and the unconsumed remainder mints at the issuance rate.
     function test_derivedFloorPartialFill_proRatedByConsumedInput() public {
         uint256 payAmount = 1 ether;
@@ -405,6 +405,49 @@ contract DFMF_DerivedFloorMintFallback is Test {
 
         assertFalse(mockPm.swapCalled(), "swap should have been unwound by the pro-rated floor miss");
         assertEq(address(mockTerminal).balance, payAmount, "full payment should return to the project's terminal");
+    }
+
+    /// @dev A 0.6 ETH partial fill of 675 tokens against a 1100 floor: 675 clears the pro-rated 660, but with the 400
+    /// leftover mint the settlement is 1075, under the whole floor.
+    function _partialFillBetweenTheRules(bool floorCoversSettlement) internal {
+        uint256 payAmount = 1 ether;
+        uint256 swapOut = 675e18;
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        mockPm.setMockDeltas(-int128(uint128(0.6 ether)), int128(uint128(swapOut)));
+        projectToken.mint(address(mockPm), swapOut);
+
+        JBAfterPayRecordedContext memory ctx = _buildContext({
+            payAmount: payAmount,
+            minimumSwapAmountOut: 1100e18,
+            hasExplicitMinimumSwapAmountOut: false,
+            tokenCountWithoutHook: 1000e18
+        });
+        if (floorCoversSettlement) ctx.hookMetadata = abi.encodePacked(ctx.hookMetadata, uint256(1));
+
+        vm.expectCall(
+            address(controller),
+            abi.encodeCall(
+                IJBController.mintTokensOf,
+                (projectId, floorCoversSettlement ? 1000e18 : 1075e18, beneficiary, "", true)
+            )
+        );
+
+        vm.deal(address(terminal), payAmount);
+        vm.prank(address(terminal));
+        hook.afterPayRecordedWith{value: payAmount}(ctx);
+    }
+
+    /// @notice A sigmoid floor stays pro-rated, so a fair partial fill keeps the swap.
+    function test_sigmoidFloor_partialFillKeepsTheSwap() public {
+        _partialFillBetweenTheRules(false);
+        assertTrue(mockPm.swapCalled(), "fair partial fill kept");
+    }
+
+    /// @notice The expected-output floor covers the whole settlement, so the same fill unwinds and the pay mints.
+    function test_expectedOutputFloor_partialFillUnderTheSettlementFloorMints() public {
+        _partialFillBetweenTheRules(true);
+        assertFalse(mockPm.swapCalled(), "diluted partial fill unwound");
     }
 
     /// @notice An EXPLICIT caller minimum remains a settlement guarantee: a successful swap whose combined output

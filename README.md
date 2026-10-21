@@ -196,7 +196,7 @@ Useful scripts:
 
 This package is meant to compose with [`@bananapus/univ4-router-v6`](https://www.npmjs.com/package/@bananapus/univ4-router-v6), which provides the Uniswap V4 hook and TWAP oracle surface used for market comparison and protection.
 
-From 1.5.0, `JBBuybackHook` links `JBSwapLib` (its public `getQuoteFromOracle`) to stay under EIP-170. Deploy `JBSwapLib` first and link it into the hook's bytecode; Foundry and Sphinx do this for `new JBBuybackHook`, while artifact-based pipelines must collect, deploy and link it themselves.
+From 1.5.0, `JBBuybackHook` links `JBSwapLib` (its public `getQuoteFromOracle`) to stay under EIP-170. Deploy `JBSwapLib` first and link it into the hook's bytecode. Sphinx 0.33.3 rejects linked libraries, so `script/Deploy.s.sol` cannot deploy 1.5.0; deploy through an artifact pipeline that collects, deploys and links `JBSwapLib` (deploy-all already does this for other hook libraries).
 
 ## Repository layout
 
