@@ -120,7 +120,8 @@ preview payload consumed by `afterPayRecordedWith` and by router-terminal previe
   uint256 rawSwapQuote,
   bool oracleUnseeded,
   bool skipSplits,
-  uint256 reservedPercent
+  uint256 reservedPercent,
+  bool floorCoversSettlement
 )
 ```
 
@@ -128,7 +129,10 @@ preview payload consumed by `afterPayRecordedWith` and by router-terminal previe
 and issuance-rate price limits when a same-terminal split forwards only a net post-fee amount. Explicit caller minima
 are settlement guarantees and are not scaled.
 
-Buy-side metadata is 544 bytes. `skipSplits` echoes the payer's directive and `reservedPercent` is the ruleset's
+Buy-side metadata is 576 bytes from 1.5.0 (544 before). `floorCoversSettlement`, the appended 18th word, is true when
+`minimumSwapAmountOut` is the expected-output floor, which the unlock checks against the whole settlement instead of
+pro-rating it; `afterPayRecordedWith` reads a missing 18th word as false, so 17-word metadata keeps the pro-rated rule.
+Decoders that require exactly 17 words must accept 18. `skipSplits` echoes the payer's directive and `reservedPercent` is the ruleset's
 split, carried so `afterPayRecordedWith` can settle a skipping payer's minimum against the beneficiary's receipt. `oracleUnseeded == true` means the configured pool has live liquidity but no usable TWAP
 liquidity yet. In that state, a non-noop spec means the hook selected the bounded cold-start bootstrap path; a noop spec
 means issuance still won or the fallback guardrails rejected the quote. Explicit caller quotes still supply the

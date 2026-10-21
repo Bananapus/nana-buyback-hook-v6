@@ -64,7 +64,8 @@ repo.
   uint256 rawSwapQuote,
   bool oracleUnseeded,
   bool skipSplits,
-  uint256 reservedPercent
+  uint256 reservedPercent,
+  bool floorCoversSettlement
 )
 ```
 
@@ -123,7 +124,7 @@ Shared ABI artifacts with changes:
 - `IJBBuybackHookRegistry`: `11` added, `6` removed, `1` modified ABI item.
 - `JBBuybackHook`: `28` added, `18` removed, `1` modified ABI item.
 - `JBBuybackHookRegistry`: `17` added, `6` removed, `1` modified ABI item.
-- `JBSwapLib`: no ABI item changes.
+- `JBSwapLib`: from 1.5.0 `getQuoteFromOracle` is public, so it is an ABI item of the linked library.
 
 Generated event/error name deltas:
 - Event names added:

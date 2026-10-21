@@ -73,7 +73,8 @@ payment arrives
 An oracle-derived floor miss falls back to minting instead of reverting the payment. This keeps no-quote programmatic flows (protocol fees, split pays,
 project payers) alive when the TWAP floor is stale for current pool conditions, while a manipulated fill can never
 do better than the protocol's own mint path — an attacker can force a pay to route at the issuance rate, but the
-funds then land in the project's terminal balance, so there is nothing to extract. A derived-floor fallback is
+funds then land in the project's terminal balance, so an unwound floor miss leaves nothing to extract. A fill that
+clears the floor can still be sandwiched down toward it (RISKS.md). A derived-floor fallback is
 observable offchain as a swap-routed payment that emits `Mint` without a `Swap`.
 
 This fallback only handles the swap/floor failure: invalid metadata, unavailable accounting price feeds, token transfers, or controller mint failures can still revert settlement. When a payment arrives through a migrated router gateway, an eligible programmatic route failure can instead become a pending call held in the gateway. That custody and retry lifecycle is separate from this hook's synchronous mint fallback.
