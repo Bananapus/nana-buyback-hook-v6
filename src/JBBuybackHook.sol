@@ -975,6 +975,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             hasUserSpecifiedMinimumSwapAmountOut = minimumSwapAmountOut != 0;
         }
 
+        // Compute the direct protocol reclaim amount for this cash-out request. The fallback below and the route
+        // comparison both use it.
+        uint256 directCashOutAmount = JBCashOuts.cashOutFrom({
+            surplus: context.surplus.value,
+            cashOutCount: context.cashOutCount,
+            totalSupply: context.totalSupply,
+            cashOutTaxRate: context.cashOutTaxRate
+        });
+
         // Fall back to the protocol cash-out path if the caller forced it via `skip`, if no pool is
         // configured, if no project token is known, or if no project tokens are being cashed out. When the
         // user supplied an explicit minimum, the fallback must still satisfy it — otherwise revert so the
@@ -985,14 +994,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 || context.cashOutCount == 0
         ) {
             if (hasUserSpecifiedMinimumSwapAmountOut) {
-                uint256 fallbackReclaim = JBCashOuts.cashOutFrom({
-                    surplus: context.surplus.value,
-                    cashOutCount: context.cashOutCount,
-                    totalSupply: context.totalSupply,
-                    cashOutTaxRate: context.cashOutTaxRate
-                });
                 // Enforce the user's explicit minimum against the exact net the terminal would pay out.
-                uint256 netFallbackReclaim = _netAfterTerminalFee({amount: fallbackReclaim, context: context});
+                uint256 netFallbackReclaim = _netAfterTerminalFee({amount: directCashOutAmount, context: context});
                 _requireMinimum({amount: netFallbackReclaim, minimum: minimumSwapAmountOut});
             }
             return (
@@ -1003,14 +1006,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 hookSpecifications
             );
         }
-
-        // Compute the direct protocol reclaim amount for this cash-out request.
-        uint256 directCashOutAmount = JBCashOuts.cashOutFrom({
-            surplus: context.surplus.value,
-            cashOutCount: context.cashOutCount,
-            totalSupply: context.totalSupply,
-            cashOutTaxRate: context.cashOutTaxRate
-        });
 
         // Keep references to pool diagnostics. Explicit minimums skip the TWAP lookup, so diagnostics remain zeroed.
         uint256 rawSwapQuote;
