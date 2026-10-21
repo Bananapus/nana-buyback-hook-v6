@@ -283,6 +283,7 @@ contract ThinPoolRoutingFork is Test {
             assertTrue(
                 victim == minted || victim >= honest * 96 / 100, "the floor or a full mint, never a diluted fill"
             );
+            assertGe(victim, minted, "never below issuance");
             if (back > x && back - x > best) best = back - x;
         }
     }
@@ -300,7 +301,7 @@ contract ThinPoolRoutingFork is Test {
     /// money.
     function test_sandwich_partialFillCannotDiluteTheFloor() public {
         uint256 best = _sandwich(0.003 ether, 150e18, 0.0002 ether);
-        // Observed on this state, not a bound the hook guarantees: about 1.3% of the pay (4.1% when pro-rated).
+        // Observed on this state, not a bound the hook guarantees: about 2.9% of the pay (4.1% when pro-rated).
         assertLt(best, 0.003 ether * 3 / 100, "attacker profit");
     }
 

@@ -281,6 +281,29 @@ contract JBSwapLibTest is Test {
         }
     }
 
+    /// @notice An unrepresentable impact gives no expected output instead of overflowing the denominator.
+    function test_expectedAmountOutMaxImpact() public pure {
+        assertEq(JBSwapLib.getExpectedAmountOut({quote: 1e22, impact: type(uint256).max, poolFeeBps: 0}), 0);
+    }
+
+    /// @notice With no impact, the expected output is the quote less the fee.
+    function test_expectedAmountOutZeroImpact() public pure {
+        assertEq(JBSwapLib.getExpectedAmountOut({quote: 1e22, impact: 0, poolFeeBps: 30}), 1e22 * 9970 / 10_000);
+    }
+
+    /// @notice With no issuance or no impact, nothing stops the swap, so the whole input swaps.
+    function test_expectedSettlementFullFill() public view {
+        uint256 expected = JBSwapLib.getExpectedAmountOut({quote: 1000e18, impact: 1e17, poolFeeBps: 100});
+        (uint256 swapAmountOut, uint256 issuedAmountOut) =
+            JBSwapLib.getExpectedSettlement({quote: 1000e18, impact: 1e17, poolFeeBps: 100, issuanceTokenCount: 0});
+        assertEq(swapAmountOut, expected);
+        assertEq(issuedAmountOut, 0);
+        (swapAmountOut, issuedAmountOut) =
+            JBSwapLib.getExpectedSettlement({quote: 1000e18, impact: 0, poolFeeBps: 100, issuanceTokenCount: 500e18});
+        assertEq(swapAmountOut, 1000e18 * 9900 / 10_000);
+        assertEq(issuedAmountOut, 0);
+    }
+
     /// @notice The expected settlement matches a real single-range swap limited to the issuance price, with the
     /// unconsumed input minted at issuance, across pool-to-issuance ratios and sizes that do and do not hit the limit.
     function test_expectedSettlementMatchesIssuanceLimitedSwap() public view {
@@ -337,29 +360,6 @@ contract JBSwapLibTest is Test {
         assertEq(issuedAmountOut, 1000e18);
     }
 
-    /// @notice With no issuance or no impact, nothing stops the swap, so the whole input swaps.
-    function test_expectedSettlementFullFill() public view {
-        uint256 expected = JBSwapLib.getExpectedAmountOut({quote: 1000e18, impact: 1e17, poolFeeBps: 100});
-        (uint256 swapAmountOut, uint256 issuedAmountOut) =
-            JBSwapLib.getExpectedSettlement({quote: 1000e18, impact: 1e17, poolFeeBps: 100, issuanceTokenCount: 0});
-        assertEq(swapAmountOut, expected);
-        assertEq(issuedAmountOut, 0);
-        (swapAmountOut, issuedAmountOut) =
-            JBSwapLib.getExpectedSettlement({quote: 1000e18, impact: 0, poolFeeBps: 100, issuanceTokenCount: 500e18});
-        assertEq(swapAmountOut, 1000e18 * 9900 / 10_000);
-        assertEq(issuedAmountOut, 0);
-    }
-
-    /// @notice An unrepresentable impact gives no expected output instead of overflowing the denominator.
-    function test_expectedAmountOutMaxImpact() public pure {
-        assertEq(JBSwapLib.getExpectedAmountOut({quote: 1e22, impact: type(uint256).max, poolFeeBps: 0}), 0);
-    }
-
-    /// @notice With no impact, the expected output is the quote less the fee.
-    function test_expectedAmountOutZeroImpact() public pure {
-        assertEq(JBSwapLib.getExpectedAmountOut({quote: 1e22, impact: 0, poolFeeBps: 30}), 1e22 * 9970 / 10_000);
-    }
-
     //*********************************************************************//
     // ----- Fuzz Tests -------------------------------------------------- //
     //*********************************************************************//
@@ -383,6 +383,63 @@ contract JBSwapLibTest is Test {
         assert(limit <= TickMath.MAX_SQRT_PRICE);
     }
 
+    /// @notice Fuzz: the expected output never reverts over the whole input domain and never exceeds the quote.
+    function testFuzz_expectedAmountOutBounded(uint256 quote, uint256 impact, uint16 feeBps) public pure {
+        uint256 out = JBSwapLib.getExpectedAmountOut({
+            quote: quote, impact: impact, poolFeeBps: bound(uint256(feeBps), 0, 10_000)
+        });
+        assertLe(out, quote);
+    }
+
+    /// @notice Fuzz: across ticks, liquidity, sizes, directions and issuance rates, the expected settlement tracks a
+    /// real single-range swap limited to the issuance price, in fills that do and do not hit the limit.
+    function testFuzz_expectedSettlementMatchesIssuanceLimitedSwap(
+        int24 tick,
+        uint128 liquidity,
+        uint128 amountIn,
+        uint256 issuancePercent,
+        bool zeroForOne
+    )
+        public
+        view
+    {
+        tick = int24(bound(tick, -200_000, 200_000));
+        liquidity = uint128(bound(liquidity, 1e15, 1e27));
+        amountIn = uint128(bound(amountIn, 1e9, 1e27));
+        issuancePercent = bound(issuancePercent, 10, 99);
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(tick);
+        uint256 quote = JBSwapLib.getQuoteAtTick({
+            tick: tick,
+            baseAmount: amountIn,
+            baseToken: zeroForOne ? address(1) : address(2),
+            quoteToken: zeroForOne ? address(2) : address(1)
+        });
+        // Keep to quotes with enough precision to compare at 0.01%.
+        vm.assume(quote > 1e12);
+        uint256 issuance = quote * issuancePercent / 100;
+
+        (, uint256 used, uint256 out, uint256 fee) = SwapMath.computeSwapStep({
+            sqrtPriceCurrentX96: sqrtP,
+            sqrtPriceTargetX96: JBSwapLib.sqrtPriceLimitFromAmounts({
+                amountIn: amountIn, minimumAmountOut: issuance, zeroForOne: zeroForOne
+            }),
+            liquidity: liquidity,
+            amountRemaining: -int256(uint256(amountIn)),
+            feePips: 10_000
+        });
+        uint256 settled = out + issuance * (amountIn - used - fee) / amountIn;
+
+        (uint256 swapAmountOut, uint256 issuedAmountOut) = JBSwapLib.getExpectedSettlement({
+            quote: quote,
+            impact: JBSwapLib.calculateImpact({
+                amountIn: amountIn, liquidity: liquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
+            }),
+            poolFeeBps: 100,
+            issuanceTokenCount: issuance
+        });
+        assertApproxEqRel(swapAmountOut + issuedAmountOut, settled, 1e14, "issuance-limited settlement");
+    }
+
     /// @notice Fuzz: the expected settlement never reverts over amounts far past any token supply, and never estimates
     /// more than the better of the quote and issuance.
     function testFuzz_expectedSettlementBounded(
@@ -400,13 +457,5 @@ contract JBSwapLibTest is Test {
             quote: quote, impact: impact, poolFeeBps: bound(uint256(feeBps), 0, 10_000), issuanceTokenCount: issuance
         });
         assertLe(swapAmountOut + issuedAmountOut, (quote > issuance ? quote : issuance) + 2);
-    }
-
-    /// @notice Fuzz: the expected output never reverts over the whole input domain and never exceeds the quote.
-    function testFuzz_expectedAmountOutBounded(uint256 quote, uint256 impact, uint16 feeBps) public pure {
-        uint256 out = JBSwapLib.getExpectedAmountOut({
-            quote: quote, impact: impact, poolFeeBps: bound(uint256(feeBps), 0, 10_000)
-        });
-        assertLe(out, quote);
     }
 }

@@ -184,7 +184,8 @@ library JBSwapLib {
         uint256 kept = _SLIPPAGE_DENOMINATOR - poolFeeBps;
         uint256 keptImpact = impact / _SLIPPAGE_DENOMINATOR * kept;
 
-        // With no issuance, no impact, or a pool beyond 1e20x issuance, the price limit never stops the swap.
+        // With no issuance or no impact the price limit never stops the swap. A quote 1e40 times issuance or more
+        // also takes the full-input estimate, a conservative bound that keeps the square root in range.
         if (issuanceTokenCount != 0 && keptImpact != 0 && quote / issuanceTokenCount < 1e40) {
             // u at 1e18 precision.
             uint256 u = Math.sqrt(FullMath.mulDiv({a: quote, b: 1e36, denominator: issuanceTokenCount}));
