@@ -81,7 +81,7 @@ contract ThinPoolRoutingFork is Test {
     receive() external payable {}
 
     function setUp() public {
-        vm.createSelectFork(vm.envOr("RPC_BASE_MAINNET", string("https://mainnet.base.org")), BLOCK);
+        vm.createSelectFork("base", BLOCK);
         swapper = new ThinPoolSwapper(PM);
         vm.deal(address(this), 1000 ether);
         vm.deal(PAYER, 1000 ether);

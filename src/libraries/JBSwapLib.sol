@@ -128,6 +128,36 @@ library JBSwapLib {
     // -------------------- Slippage Tolerance -------------------------- //
     //*********************************************************************//
 
+    /// @notice The output an exact-input swap gets from a constant-liquidity range, given its oracle quote.
+    /// @dev out = quote * (1 - fee) / (1 + impact * (1 - fee)). `calculateImpact` is the relative move of the sqrt
+    ///      price the input causes, so this is the exact single-range swap output. Liquidity that changes across
+    ///      ticks moves the real output either way.
+    /// @param quote The oracle quote for the full input at the quoted price, before fee and impact.
+    /// @param impact The estimated price impact from calculateImpact (scaled by _IMPACT_PRECISION).
+    /// @param poolFeeBps The pool fee in basis points.
+    /// @return amountOut The expected output.
+    function getExpectedAmountOut(
+        uint256 quote,
+        uint256 impact,
+        uint256 poolFeeBps
+    )
+        internal
+        pure
+        returns (uint256 amountOut)
+    {
+        // An impact past 1e36 (a million-fold price move) leaves no meaningful output, and bounding it keeps the
+        // denominator below overflow for any input.
+        if (impact > 1e36) return 0;
+
+        // The pool fee is taken from the input before it moves the price, so both quote and impact scale by 1 - fee.
+        uint256 kept = _SLIPPAGE_DENOMINATOR - poolFeeBps;
+        return FullMath.mulDiv({
+            a: quote / _SLIPPAGE_DENOMINATOR * kept,
+            b: _IMPACT_PRECISION,
+            denominator: _IMPACT_PRECISION + impact / _SLIPPAGE_DENOMINATOR * kept
+        });
+    }
+
     /// @notice Compute a continuous sigmoid slippage tolerance based on swap impact and pool fee.
     /// @dev tolerance = minSlippage + (maxSlippage - minSlippage) * impact / (impact + K)
     ///      When impact is 0 (negligible swap in deep pool), returns minSlippage.
@@ -155,26 +185,6 @@ library JBSwapLib {
         uint256 tolerance = minSlippage + FullMath.mulDiv({a: range, b: impact, denominator: impact + _SIGMOID_K});
 
         return tolerance;
-    }
-
-    /// @notice The output an exact-input swap gets from a constant-liquidity range, given its oracle quote.
-    /// @dev out = quote * (1 - fee) / (1 + impact * (1 - fee)). `calculateImpact` is the relative move of the sqrt
-    ///      price the input causes, so this is the exact single-range swap output. Liquidity that changes across
-    ///      ticks moves the real output either way.
-    /// @param quote The oracle quote for the full input at the quoted price, before fee and impact.
-    /// @param impact The estimated price impact from calculateImpact (scaled by _IMPACT_PRECISION).
-    /// @param poolFeeBps The pool fee in basis points.
-    /// @return The expected output.
-    function getExpectedAmountOut(uint256 quote, uint256 impact, uint256 poolFeeBps) internal pure returns (uint256) {
-        // An impact past 1e36 (a million-fold price move) leaves no meaningful output, and bounding it keeps the
-        // denominator below overflow for any input.
-        if (impact > 1e36) return 0;
-        uint256 kept = _SLIPPAGE_DENOMINATOR - poolFeeBps;
-        return FullMath.mulDiv({
-            a: quote / _SLIPPAGE_DENOMINATOR * kept,
-            b: _IMPACT_PRECISION,
-            denominator: _IMPACT_PRECISION + impact / _SLIPPAGE_DENOMINATOR * kept
-        });
     }
 
     //*********************************************************************//

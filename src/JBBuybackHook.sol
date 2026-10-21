@@ -148,6 +148,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// `twapWindowOf`.
     uint256 internal constant _DEFAULT_TWAP_WINDOW = 30 minutes;
 
+    /// @notice The buffer under a pay's expected swap output when that output, not the sigmoid floor, decides the
+    /// route. It covers price drift since the TWAP and liquidity changes across ticks; a miss unwinds the swap and the
+    /// payment mints, the same outcome as not routing.
+    uint256 internal constant _EXPECTED_OUT_SLIPPAGE = 200;
+
     /// @notice Cold-start spot quotes are capped to 5% estimated impact against live in-range liquidity.
     uint256 internal constant _MAX_COLD_START_SPOT_IMPACT = 50e15;
 
@@ -158,11 +163,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice The maximum slippage tolerance returned by `JBSwapLib`. Hitting this means the pool is too thin to
     /// quote safely.
     uint256 internal constant _MAX_TWAP_SLIPPAGE = 8800;
-
-    /// @notice The buffer under a pay's expected swap output when that output, not the sigmoid floor, decides the
-    /// route. It covers price drift since the TWAP and liquidity changes across ticks; a miss unwinds the swap and the
-    /// payment mints, the same outcome as not routing.
-    uint256 internal constant _EXPECTED_OUT_SLIPPAGE = 200;
 
     //*********************************************************************//
     // ----------------- public immutable stored properties --------------- //
