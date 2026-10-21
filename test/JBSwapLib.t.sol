@@ -280,6 +280,11 @@ contract JBSwapLibTest is Test {
         }
     }
 
+    /// @notice An unrepresentable impact gives no expected output instead of overflowing the denominator.
+    function test_expectedAmountOutMaxImpact() public pure {
+        assertEq(JBSwapLib.getExpectedAmountOut({quote: 1e22, impact: type(uint256).max, poolFeeBps: 0}), 0);
+    }
+
     /// @notice With no impact, the expected output is the quote less the fee.
     function test_expectedAmountOutZeroImpact() public pure {
         assertEq(JBSwapLib.getExpectedAmountOut({quote: 1e22, impact: 0, poolFeeBps: 30}), 1e22 * 9970 / 10_000);
@@ -310,7 +315,6 @@ contract JBSwapLibTest is Test {
 
     /// @notice Fuzz: the expected output never reverts over the whole input domain and never exceeds the quote.
     function testFuzz_expectedAmountOutBounded(uint256 quote, uint256 impact, uint16 feeBps) public pure {
-        impact = bound(impact, 0, 1 << 252); // calculateImpact's range
         uint256 out = JBSwapLib.getExpectedAmountOut({
             quote: quote, impact: impact, poolFeeBps: bound(uint256(feeBps), 0, 10_000)
         });

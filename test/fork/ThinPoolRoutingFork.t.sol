@@ -5,6 +5,10 @@ import {Test} from "forge-std/Test.sol";
 
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
+import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
+import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
+import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -68,6 +72,9 @@ contract ThinPoolRoutingFork is Test {
     address constant PAYER = address(0xBEEF);
     uint256 constant THIN = 13; // pool price about 1.3x the mint rate, thin liquidity
     uint256 constant FAR = 7; // pool price about 31x the mint rate
+    uint256 constant MINTED = 20_347_527_251_483_950_000; // the reported pay's tokens from issuance
+    uint256 constant THIN_PAYER_RATE = 50_000; // tokens per ETH a mint gives the payer
+    uint256 constant FAR_PAYER_RATE = 7750; // after project 7's reserved split
 
     ThinPoolSwapper swapper;
 
@@ -125,7 +132,7 @@ contract ThinPoolRoutingFork is Test {
 
     function test_reportedPay_swapsInsteadOfMinting() public {
         (uint256 deployed, uint256 updated) = _compare(THIN, TX_AMOUNT);
-        assertEq(deployed, 20_347_527_251_483_950_000, "deployed hook minted 20.35");
+        assertEq(deployed, MINTED, "deployed hook minted 20.35");
         // The pool pays about 25.74; the floor is 98% of the expected 25.73.
         assertGt(updated, 25.7e18, "pool route");
     }
@@ -143,28 +150,95 @@ contract ThinPoolRoutingFork is Test {
         uint256[4] memory sizes = [uint256(0.0001 ether), 0.001 ether, 0.01 ether, 0.1 ether];
         for (uint256 i; i < sizes.length; i++) {
             (uint256 deployed, uint256 updated) = _compare(FAR, sizes[i]);
+            assertGt(deployed, sizes[i] * FAR_PAYER_RATE, "the deployed hook swaps");
             assertEq(updated, deployed, "same route and output");
         }
         (uint256 d, uint256 u) = _compare(THIN, 0.0001 ether);
+        assertGt(d, 0.0001 ether * THIN_PAYER_RATE, "the deployed hook swaps");
         assertEq(u, d, "same route and output");
     }
 
-    /// @dev Across sizes, both pools, and a pool a third party just pumped or dumped in the same block (spot off the
-    /// TWAP, which the hook cannot tell from a front-run), the payer never gets less than from the deployed hook.
+    /// @dev The raw quote word in the hook spec, for a pay with an explicit quote.
+    function _explicitQuoteRaw(
+        uint256 pid,
+        uint256 amount,
+        uint256 weight,
+        uint256 reservedPercent
+    )
+        internal
+        view
+        returns (uint256 raw)
+    {
+        bytes memory metadata = JBMetadataResolver.addToMetadata({
+            originalMetadata: "",
+            idToAdd: JBMetadataResolver.getId("pay", HOOK),
+            dataToAdd: abi.encode(amount, uint256(1), false)
+        });
+        (, JBPayHookSpecification[] memory specs) = JBBuybackHook(payable(HOOK))
+            .beforePayRecordedWith(
+                JBBeforePayRecordedContext({
+                terminal: address(TERMINAL),
+                payer: PAYER,
+                amount: JBTokenAmount({
+                token: JBConstants.NATIVE_TOKEN,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                value: amount
+            }),
+                projectId: pid,
+                rulesetId: 0,
+                beneficiary: PAYER,
+                weight: weight,
+                reservedPercent: reservedPercent,
+                metadata: metadata
+            })
+            );
+        bytes memory word = specs[0].metadata;
+        // The raw quote is the 14th word of the spec metadata.
+        assembly {
+            raw := mload(add(word, mul(14, 32)))
+        }
+    }
+
+    /// @dev An explicit-quote pay past the impact cap reports no raw quote, as the deployed hook does, so routers
+    /// scoring routes by the larger of the raw quote and the minimum do not overrate it.
+    function test_explicitQuotePastTheImpactCap_reportsNoRawQuote() public {
+        uint256 deployed = _explicitQuoteRaw(FAR, 0.3 ether, 12_500e18, 3800);
+        _upgrade();
+        assertEq(_explicitQuoteRaw(FAR, 0.3 ether, 12_500e18, 3800), deployed, "same raw quote");
+        assertEq(deployed, 0, "no raw quote past the cap");
+    }
+
+    /// @dev Pays `amount` for tokens, then sells them all into the pool.
+    function dump(uint256 pid, uint256 amount) external {
+        vm.prank(PAYER);
+        TERMINAL.pay{value: amount}(pid, JBConstants.NATIVE_TOKEN, amount, address(this), 0, "", "");
+        uint256 held = _token(pid).balanceOf(address(this));
+        _token(pid).approve(address(swapper), held);
+        swapper.swap(_key(pid), false, held);
+    }
+
+    /// @dev Across sizes, both pools, and a pool a third party just pumped or dumped by various amounts in the same
+    /// block (spot off the TWAP, which the hook cannot tell from a front-run), the payer never gets less than from the
+    /// deployed hook. Dumps push spot toward the issuance rate, where swaps partially fill.
     function test_neverBelowTheDeployedHook() public {
         uint256[8] memory sizes =
             [uint256(0.0002 ether), 0.002 ether, 0.003 ether, 0.01 ether, 0.03 ether, 0.3 ether, 1 ether, 3 ether];
+        uint256[6] memory dumps = [uint256(0), 0.001 ether, 0.003 ether, 0.01 ether, 0.03 ether, 0.3 ether];
         for (uint256 p; p < 2; p++) {
             uint256 pid = p == 0 ? THIN : FAR;
-            for (uint256 m; m < 3; m++) {
+            for (uint256 m; m < dumps.length + 1; m++) {
                 uint256 snap = vm.snapshotState();
-                if (m == 1) swapper.swap{value: 0.001 ether}(_key(pid), true, 0.001 ether);
-                if (m == 2) {
-                    vm.prank(PAYER);
-                    TERMINAL.pay{value: 0.01 ether}(pid, JBConstants.NATIVE_TOKEN, 0.01 ether, address(this), 0, "", "");
-                    uint256 held = _token(pid).balanceOf(address(this));
-                    _token(pid).approve(address(swapper), held);
-                    swapper.swap(_key(pid), false, held);
+                if (m == dumps.length) {
+                    swapper.swap{value: 0.001 ether}(_key(pid), true, 0.001 ether);
+                } else if (dumps[m] != 0) {
+                    // Skip dumps the pool cannot absorb.
+                    try this.dump(pid, dumps[m]) {}
+                    catch {
+                        emit log_named_uint("skipped dump on project", pid);
+                        vm.revertToState(snap);
+                        continue;
+                    }
                 }
                 for (uint256 i; i < sizes.length; i++) {
                     (uint256 deployed, uint256 updated) = _compare(pid, sizes[i]);
@@ -175,23 +249,45 @@ contract ThinPoolRoutingFork is Test {
         }
     }
 
-    /// @dev A sandwich around the reported pay on the new route: the payer keeps at least the 98% floor, which beats
-    /// the mint, and no front-run size nets the attacker more than the 2% buffer of the payment.
-    function test_sandwich_boundedByTheBuffer() public {
+    /// @dev Sandwiches around a pay on the new route, front-run sizes `step` apart. The floor covers the whole
+    /// settlement, so a front-run that forces a partial fill at the issuance-rate price limit cannot pass it with a
+    /// diluted share: the payer keeps at least the floor, or the swap unwinds and the whole pay mints.
+    function _sandwich(uint256 amount, uint256 minted, uint256 step) internal returns (uint256 best) {
         _upgrade();
-        uint256 best;
-        for (uint256 k; k < 12; k++) {
-            uint256 x = TX_AMOUNT * (1 << k) / 32;
+        uint256 start = vm.snapshotState();
+        uint256 honest = _pay(THIN, amount);
+        vm.revertToState(start);
+        for (uint256 k = 1; k < 30; k++) {
+            uint256 x = k * step;
             uint256 snap = vm.snapshotState();
             uint256 bought = swapper.swap{value: x}(_key(THIN), true, x);
-            uint256 victim = _pay(THIN, TX_AMOUNT);
+            uint256 victim = _pay(THIN, amount);
             _token(THIN).approve(address(swapper), bought);
             uint256 back = swapper.swap(_key(THIN), false, bought);
             vm.revertToState(snap);
 
-            assertGe(victim, 20_347_527_251_483_950_000, "never below the mint");
+            // The floor is 98% of a modeled output a little under `honest`.
+            assertTrue(
+                victim == minted || victim >= honest * 96 / 100, "the floor or a full mint, never a diluted fill"
+            );
             if (back > x && back - x > best) best = back - x;
         }
-        assertLe(best, TX_AMOUNT * 2 / 100, "attacker takes at most the buffer");
+    }
+
+    function test_sandwich_reportedPay() public {
+        uint256 best = _sandwich(TX_AMOUNT, MINTED, TX_AMOUNT / 16);
+        // Observed on this state, not a bound the hook guarantees: up to about 1.3% of the pay.
+        assertLt(best, TX_AMOUNT * 2 / 100, "attacker profit");
+    }
+
+    /// @dev At 0.003 ETH the floor (about 159) sits close to the 150-token mint. A floor pro-rated by consumed input
+    /// let 0.0006-0.001 ETH front-runs force partial fills paying the victim 153.5-156.8 while netting the attacker up
+    /// to
+    /// 4.1% of the pay; checked on the whole settlement, those front-runs make the pay mint and lose the attacker
+    /// money.
+    function test_sandwich_partialFillCannotDiluteTheFloor() public {
+        uint256 best = _sandwich(0.003 ether, 150e18, 0.0002 ether);
+        // Observed on this state, not a bound the hook guarantees: about 2.9% of the pay (4.1% when pro-rated).
+        assertLt(best, 0.003 ether * 3 / 100, "attacker profit");
     }
 }

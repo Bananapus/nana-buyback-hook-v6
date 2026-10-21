@@ -883,14 +883,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 actualOutputAmount = balanceAfterTake - balanceBeforeTake;
 
         // Enforce any oracle-derived floor inside the unlock so a miss unwinds the swap itself: the revert is caught
-        // by `_swap`'s try/catch and the payment falls back to minting at the issuance rate. The floor is pro-rated
-        // by consumed input because the issuance-rate price limit can partial-fill — the unconsumed remainder mints
-        // at the issuance rate, which needs no oracle protection.
+        // by `_swap`'s try/catch and the payment falls back to minting at the issuance rate. The issuance-rate price
+        // limit can partial-fill, and the unconsumed input then mints at the issuance rate the limit is built from, so
+        // the floor applies to the whole settlement. A front-run that forces a small fill cannot dilute it.
         if (params.derivedFloorAmountOut != 0) {
-            uint256 proRatedFloor =
-                mulDiv({x: params.derivedFloorAmountOut, y: inputAmount, denominator: params.amountIn});
-            if (actualOutputAmount < proRatedFloor) {
-                revert JBBuybackHook_DerivedFloorNotMet({amount: actualOutputAmount, minimum: proRatedFloor});
+            uint256 settledAmountOut = actualOutputAmount
+                + mulDiv({
+                    x: params.minimumSwapAmountOut, y: params.amountIn - inputAmount, denominator: params.amountIn
+                });
+            if (settledAmountOut < params.derivedFloorAmountOut) {
+                revert JBBuybackHook_DerivedFloorNotMet({
+                    amount: settledAmountOut, minimum: params.derivedFloorAmountOut
+                });
             }
         }
 
@@ -1441,8 +1445,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param minimumSwapAmountOut The token count used to derive the swap's price limit via
     /// `JBSwapLib.sqrtPriceLimitFromAmounts`. When set to the issuance-rate equivalent (`tokenCountWithoutHook`),
     /// the swap fills only while the pool offers a better rate than minting.
-    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock, pro-rated by consumed
-    /// input. A miss unwinds the swap (caught below) so the payment falls back to minting. 0 when the caller
+    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock on the whole settlement.
+    /// A miss unwinds the swap (caught below) so the payment falls back to minting. 0 when the caller
     /// supplied an explicit minimum, which is enforced on the combined output in `afterPayRecordedWith` instead.
     /// @return amountReceived The amount of project tokens received from the swap.
     /// @return swapFailed True if the swap reverted and was caught by try/catch (triggers mint fallback).
@@ -1491,7 +1495,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param amountIn The exact amount of input tokens to sell.
     /// @param minimumSwapAmountOut The minimum acceptable amount of output tokens.
     /// @param zeroForOne Whether the swap should move from `currency0` to `currency1`.
-    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock, pro-rated by consumed input.
+    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock on the whole settlement.
     /// 0 when no in-unlock floor applies (explicit caller minima, and sell-side swaps whose derived floors soft-land
     /// through the caller's `shouldEnforceMinimumSwapAmountOut` flag).
     /// @return amountSpent The amount of input tokens actually consumed by the swap.
@@ -1825,12 +1829,15 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // The sigmoid tolerance grows far faster than real impact, so in a thin pool its floor can sit under direct
-        // issuance while the pool still beats it. Then floor the swap at the expected output less a small buffer: the
-        // swap routes only if that floor beats issuance, and a sandwich can take at most the buffer.
+        // issuance while the pool still beats it. Then floor the swap at the expected output less a small buffer. The
+        // swap routes only if that floor beats issuance, and a miss mints, so the payer never gets less than before.
         if (payRoute && amountOut <= issuanceTokenCount) {
             amountOut = JBSwapLib.getExpectedAmountOut({quote: rawAmountOut, impact: impact, poolFeeBps: poolFeeBps})
                 / TWAP_SLIPPAGE_DENOMINATOR * (TWAP_SLIPPAGE_DENOMINATOR - _EXPECTED_OUT_SLIPPAGE);
         }
+
+        // With no floor, report no quote, as routing and preview consumers read a zero quote as no route.
+        if (amountOut == 0) rawAmountOut = 0;
     }
 
     /// @notice The calldata. Preferred to use over `msg.data`.

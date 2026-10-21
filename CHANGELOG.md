@@ -29,6 +29,9 @@ repo.
   project surplus.
 - A pay with no caller quote floors its swap at the expected single-range output less 2% when the sigmoid floor would
   sit under direct issuance. Thin pools that beat issuance now route to the swap instead of minting.
+- Oracle-derived floors apply to the whole settlement (swap output plus unconsumed input at the issuance rate) instead
+  of being pro-rated by consumed input, so a front-run that forces a partial fill makes the pay mint.
+- From 1.5.0 `JBSwapLib.getQuoteFromOracle` is public, so deployments link `JBSwapLib` into the hook.
 - Metadata purpose names align with V6 lifecycle phases: use `pay` and `cashOut` caller metadata keyed to the relevant
   hook address.
 

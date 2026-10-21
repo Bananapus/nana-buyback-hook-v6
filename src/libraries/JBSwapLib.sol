@@ -166,8 +166,10 @@ library JBSwapLib {
     /// @param poolFeeBps The pool fee in basis points.
     /// @return The expected output.
     function getExpectedAmountOut(uint256 quote, uint256 impact, uint256 poolFeeBps) internal pure returns (uint256) {
+        // An impact past 1e36 (a million-fold price move) leaves no meaningful output, and bounding it keeps the
+        // denominator below overflow for any input.
+        if (impact > 1e36) return 0;
         uint256 kept = _SLIPPAGE_DENOMINATOR - poolFeeBps;
-        // `calculateImpact` stays under 2^252, so dividing before multiplying by `kept` cannot overflow.
         return FullMath.mulDiv({
             a: quote / _SLIPPAGE_DENOMINATOR * kept,
             b: _IMPACT_PRECISION,
