@@ -159,6 +159,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// quote safely.
     uint256 internal constant _MAX_TWAP_SLIPPAGE = 8800;
 
+    /// @notice The buffer under a pay's expected swap output when that output, not the sigmoid floor, decides the
+    /// route. It covers price drift since the TWAP and liquidity changes across ticks; a miss unwinds the swap and the
+    /// payment mints, the same outcome as not routing.
+    uint256 internal constant _EXPECTED_OUT_SLIPPAGE = 200;
+
     //*********************************************************************//
     // ----------------- public immutable stored properties --------------- //
     //*********************************************************************//
@@ -1024,7 +1029,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 baseToken: projectToken,
                 quoteToken: terminalToken,
                 terminalToken: terminalToken,
-                allowColdStartSpotFallback: false
+                payRoute: false,
+                issuanceTokenCount: 0
             });
         }
 
@@ -1216,7 +1222,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 baseToken: terminalToken,
                 quoteToken: projectToken,
                 terminalToken: terminalToken,
-                allowColdStartSpotFallback: !hasUserSpecifiedQuote
+                payRoute: !hasUserSpecifiedQuote,
+                issuanceTokenCount: tokenCountWithoutHook
             });
             if (!hasUserSpecifiedQuote) minimumSwapAmountOut = quotedMinimum;
         }
@@ -1645,7 +1652,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param quoteToken The token to swap out.
     /// @param terminalToken The terminal token address (already normalized: address(0) for native). Passed by the
     /// caller to avoid a redundant `projectTokenOf` SLOAD that would otherwise be needed to derive it.
-    /// @param allowColdStartSpotFallback Whether to allow the buy-side, bounded spot fallback when no TWAP exists.
+    /// @param payRoute Whether this quote decides a pay's route. Only a pay route may use the bounded spot fallback
+    /// when no TWAP exists, or the expected-output floor.
+    /// @param issuanceTokenCount For a pay route, the tokens direct issuance gives for `amountIn`. When the sigmoid
+    /// floor does not beat it, the expected swap output less `_EXPECTED_OUT_SLIPPAGE` becomes the floor if that does.
     /// @return rawAmountOut The raw oracle quote before slippage adjustment.
     /// @return amountOut The minimum number of tokens to receive after slippage adjustment.
     /// @return twapTick The arithmetic mean tick from the TWAP oracle.
@@ -1658,7 +1668,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         address baseToken,
         address quoteToken,
         address terminalToken,
-        bool allowColdStartSpotFallback
+        bool payRoute,
+        uint256 issuanceTokenCount
     )
         internal
         view
@@ -1714,7 +1725,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
             // Cash-outs and explicit diagnostic lookups must not use spot pricing, because spot is manipulable inside
             // one block and is only acceptable for the bounded buy-side bootstrap path.
-            if (!allowColdStartSpotFallback) return (0, 0, twapTick, 0, poolId, oracleUnseeded);
+            if (!payRoute) return (0, 0, twapTick, 0, poolId, oracleUnseeded);
 
             // Raw slot0 is only trusted for pools using this hook's configured oracle hook; an arbitrary pool hook can
             // keep TWAP liquidity at zero forever and would otherwise make spot routing a permanent mode.
@@ -1796,25 +1807,30 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             amountIn: amountIn, liquidity: effectiveLiquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
         });
 
-        // Treat a max-impact quote as unusable. Returning zero keeps route selection on the protocol path.
-        if (impact >= _MAX_TWAP_IMPACT) return (0, 0, twapTick, twapLiquidity, poolId, false);
-
         // Get the actual LP fee from slot0 (key.fee may differ for dynamic-fee pools).
         // V4 fees are in hundredths of a bip, so divide by 100 to get basis points.
         (,,, uint24 lpFee) = poolManager.getSlot0(poolId);
         uint256 poolFeeBps = uint256(lpFee) / 100;
 
-        // Calculate continuous sigmoid slippage tolerance.
-        uint256 slippageTolerance = JBSwapLib.getSlippageTolerance({impact: impact, poolFeeBps: poolFeeBps});
-
-        // If the slippage tolerance is the maximum, return 0 to trigger mint.
-        if (slippageTolerance >= _MAX_TWAP_SLIPPAGE) return (0, 0, twapTick, twapLiquidity, poolId, false);
-
         // Save the raw oracle quote before slippage adjustment.
         rawAmountOut = amountOut;
 
-        // Apply slippage to the oracle quote.
-        amountOut -= (amountOut * slippageTolerance) / TWAP_SLIPPAGE_DENOMINATOR;
+        // A max-impact quote, or a sigmoid tolerance at its ceiling, leaves no sigmoid floor.
+        amountOut = 0;
+        if (impact < _MAX_TWAP_IMPACT) {
+            uint256 slippageTolerance = JBSwapLib.getSlippageTolerance({impact: impact, poolFeeBps: poolFeeBps});
+            if (slippageTolerance < _MAX_TWAP_SLIPPAGE) {
+                amountOut = rawAmountOut - (rawAmountOut * slippageTolerance) / TWAP_SLIPPAGE_DENOMINATOR;
+            }
+        }
+
+        // The sigmoid tolerance grows far faster than real impact, so in a thin pool its floor can sit under direct
+        // issuance while the pool still beats it. Then floor the swap at the expected output less a small buffer: the
+        // swap routes only if that floor beats issuance, and a sandwich can take at most the buffer.
+        if (payRoute && amountOut <= issuanceTokenCount) {
+            amountOut = JBSwapLib.getExpectedAmountOut({quote: rawAmountOut, impact: impact, poolFeeBps: poolFeeBps})
+                / TWAP_SLIPPAGE_DENOMINATOR * (TWAP_SLIPPAGE_DENOMINATOR - _EXPECTED_OUT_SLIPPAGE);
+        }
     }
 
     /// @notice The calldata. Preferred to use over `msg.data`.

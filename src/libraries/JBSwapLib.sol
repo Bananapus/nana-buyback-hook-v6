@@ -156,6 +156,24 @@ library JBSwapLib {
         return tolerance;
     }
 
+    /// @notice The output an exact-input swap gets from a constant-liquidity range, given its oracle quote.
+    /// @dev out = quote * (1 - fee) / (1 + impact * (1 - fee)). `calculateImpact` is the relative move of the sqrt
+    ///      price the input causes, so this is the exact single-range swap output. Liquidity that changes across
+    ///      ticks moves the real output either way.
+    /// @param quote The oracle quote for the full input at the quoted price, before fee and impact.
+    /// @param impact The estimated price impact from calculateImpact (scaled by _IMPACT_PRECISION).
+    /// @param poolFeeBps The pool fee in basis points.
+    /// @return The expected output.
+    function getExpectedAmountOut(uint256 quote, uint256 impact, uint256 poolFeeBps) internal pure returns (uint256) {
+        uint256 kept = _SLIPPAGE_DENOMINATOR - poolFeeBps;
+        // `calculateImpact` stays under 2^252, so dividing before multiplying by `kept` cannot overflow.
+        return FullMath.mulDiv({
+            a: quote / _SLIPPAGE_DENOMINATOR * kept,
+            b: _IMPACT_PRECISION,
+            denominator: _IMPACT_PRECISION + impact / _SLIPPAGE_DENOMINATOR * kept
+        });
+    }
+
     //*********************************************************************//
     // -------------------- Impact Calculation -------------------------- //
     //*********************************************************************//

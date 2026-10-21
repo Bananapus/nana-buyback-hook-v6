@@ -32,7 +32,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 
 - **Mint-vs-swap routing can be manipulated.** The comparison at `beforePayRecordedWith` depends on either explicit caller quote data or TWAP-derived quoting.
 - **TWAP window selection is a tradeoff.** Short windows are easier to manipulate. Long windows lag real markets.
-- **Sigmoid slippage has edge cases.** Hardcoded parameters can tolerate large price movement in thin pools and may not fit every market.
+- **Sigmoid slippage has edge cases.** Hardcoded parameters can tolerate large price movement in thin pools and may not fit every market. Its tolerance grows far faster than real impact (33% for about 2.8% impact on Base project 13, 2026-10-21). Where that pushes the floor under direct issuance, a pay route uses the expected-output floor instead (INVARIANTS A.4.4).
 - **Non-18-decimal token handling is less tested.** The functional risk is conservative slippage rather than direct over-issuance, but coverage is thinner.
 - **Cross-currency weight ratios depend on `JBPrices`.** Bad or missing price feeds can route incorrectly or revert.
 - **`amountToSwapWith` defaults to the full payment.** Partial minting only happens through explicit metadata.
@@ -46,6 +46,7 @@ This file covers the routing, MEV, and composition risks in the buyback hook tha
 ## 3. MEV and sandwich risks
 
 - **There is a three-layer protection pipeline.** The hook combines explicit minima or TWAP floors, sigmoid slippage, and a `sqrtPriceLimit` circuit breaker.
+- **Generous sigmoid floors are sandwichable where the pool is far above issuance.** The expected-output floor applies only where the sigmoid floor does not beat issuance, so routes that already swapped keep the sigmoid floor. Measured on Base project 7 (pool about 31x the issuance rate, 2026-10-21): a 0.1 ETH no-quote pay can be pushed from about 28,100 tokens to about 10,400 while the attacker nets about 0.066 ETH. Tightening that floor would also reject swaps after real price moves, which the hook cannot tell apart from a front-run, and a miss mints the whole payment. Payers can avoid this by sending an explicit minimum.
 - **Sandwich attacks can force protocol fallback.** When the circuit breaker trips, the intended result is mint/direct-reclaim fallback rather than silent overpayment.
 - **Derived floors fall back to mint.** A buy-side fill below the oracle-derived floor unwinds the swap inside the unlock and mints the full payment at the issuance rate. An attacker can therefore force a no-quote pay to route at the issuance rate, but the payment then lands in the project's terminal balance. This removes the floor-miss cause of fee forgiveness; it does not guarantee settlement if minting, transfers, or price-feed reads fail for another reason. Eligible failed routes through `JBRouterTerminalGateway` retain their input for retry or source-project refund under the gateway's separate rules.
 - **TWAP manipulation is expensive but not impossible.** Risk is lower in deep pools and higher for large trades or thin markets.

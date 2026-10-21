@@ -8,6 +8,7 @@ import {MockPoolManager} from "./mock/MockPoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
@@ -226,6 +227,65 @@ contract JBSwapLibTest is Test {
     }
 
     //*********************************************************************//
+    // ----- Expected Output Tests --------------------------------------- //
+    //*********************************************************************//
+
+    /// @dev The exact constant-liquidity output of an exact-input swap with a fee taken from the input.
+    function _singleRangeOut(
+        uint160 sqrtP,
+        uint128 liquidity,
+        uint256 amountIn,
+        uint256 feeBps,
+        bool zeroForOne
+    )
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 inAfterFee = amountIn * (10_000 - feeBps) / 10_000;
+        uint160 next = SqrtPriceMath.getNextSqrtPriceFromInput(sqrtP, liquidity, inAfterFee, zeroForOne);
+        return zeroForOne
+            ? SqrtPriceMath.getAmount1Delta(next, sqrtP, liquidity, false)
+            : SqrtPriceMath.getAmount0Delta(sqrtP, next, liquidity, false);
+    }
+
+    /// @notice The expected output matches a real single-range swap, from tiny to range-exhausting sizes, both ways.
+    function test_expectedAmountOutMatchesSingleRangeSwap() public pure {
+        address token0 = address(1);
+        address token1 = address(2);
+        int24 tick = 110_927; // Base project 13's pool on 2026-10-21
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(tick);
+        uint128 liquidity = 3_692_864_483_889_946_900;
+        uint256[5] memory sizes = [uint256(1e12), 1e14, 406_950_545_029_679, 3e15, 1e17];
+        for (uint256 i; i < sizes.length; i++) {
+            for (uint256 d; d < 2; d++) {
+                bool zeroForOne = d == 0;
+                uint256 amountIn = zeroForOne ? sizes[i] : sizes[i] * 65_000; // similar value the other way
+                uint256 quote = JBSwapLib.getQuoteAtTick({
+                    tick: tick,
+                    baseAmount: uint128(amountIn),
+                    baseToken: zeroForOne ? token0 : token1,
+                    quoteToken: zeroForOne ? token1 : token0
+                });
+                uint256 impact = JBSwapLib.calculateImpact({
+                    amountIn: amountIn, liquidity: liquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
+                });
+                assertApproxEqRel(
+                    JBSwapLib.getExpectedAmountOut({quote: quote, impact: impact, poolFeeBps: 100}),
+                    _singleRangeOut(sqrtP, liquidity, amountIn, 100, zeroForOne),
+                    1e12, // 0.0001%
+                    "single-range output"
+                );
+            }
+        }
+    }
+
+    /// @notice With no impact, the expected output is the quote less the fee.
+    function test_expectedAmountOutZeroImpact() public pure {
+        assertEq(JBSwapLib.getExpectedAmountOut({quote: 1e22, impact: 0, poolFeeBps: 30}), 1e22 * 9970 / 10_000);
+    }
+
+    //*********************************************************************//
     // ----- Fuzz Tests -------------------------------------------------- //
     //*********************************************************************//
 
@@ -246,5 +306,14 @@ contract JBSwapLibTest is Test {
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(uint256(amountIn), uint256(minOut), zeroForOne);
         assert(limit >= TickMath.MIN_SQRT_PRICE);
         assert(limit <= TickMath.MAX_SQRT_PRICE);
+    }
+
+    /// @notice Fuzz: the expected output never reverts over the whole input domain and never exceeds the quote.
+    function testFuzz_expectedAmountOutBounded(uint256 quote, uint256 impact, uint16 feeBps) public pure {
+        impact = bound(impact, 0, 1 << 252); // calculateImpact's range
+        uint256 out = JBSwapLib.getExpectedAmountOut({
+            quote: quote, impact: impact, poolFeeBps: bound(uint256(feeBps), 0, 10_000)
+        });
+        assertLe(out, quote);
     }
 }

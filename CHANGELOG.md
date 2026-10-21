@@ -27,6 +27,8 @@ repo.
   enough to activate the market route if the pool is drained.
 - Sell-side route selection compares against what the selected terminal can locally settle, not only aggregate
   project surplus.
+- A pay with no caller quote floors its swap at the expected single-range output less 2% when the sigmoid floor would
+  sit under direct issuance. Thin pools that beat issuance now route to the swap instead of minting.
 - Metadata purpose names align with V6 lifecycle phases: use `pay` and `cashOut` caller metadata keyed to the relevant
   hook address.
 
