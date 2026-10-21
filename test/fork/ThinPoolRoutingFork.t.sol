@@ -306,7 +306,8 @@ contract ThinPoolRoutingFork is Test {
     }
 
     /// @dev A 0.01 ETH pay swaps only the pool's leg above the issuance rate and mints the rest, so a sandwich can only
-    /// work that leg.
+    /// work that leg. Without the settlement floor this pay mints, so the attacker takes part of the gain over
+    /// issuance, never the issuance itself.
     function test_sandwich_largePay() public {
         uint256 best = _sandwich(0.01 ether, 500e18, 0.000_05 ether);
         // Observed on this state, not a bound the hook guarantees: about 0.4% of the pay.
