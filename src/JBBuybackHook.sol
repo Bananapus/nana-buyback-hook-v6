@@ -1209,25 +1209,21 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // Only compute poolId from storage when skipping _getQuote (which would return it).
             poolId = _poolKeyOf[context.projectId][terminalToken].toId();
             poolHasLiquidity = _poolIsSet[context.projectId][terminalToken] && poolManager.getLiquidity(poolId) != 0;
-            if (poolHasLiquidity) {
-                (rawSwapQuote,, twapTick, twapLiquidity,, oracleUnseeded) = _getQuote({
-                    projectId: context.projectId,
-                    amountIn: amountToSwapWith,
-                    baseToken: terminalToken,
-                    quoteToken: projectToken,
-                    terminalToken: terminalToken,
-                    allowColdStartSpotFallback: false
-                });
-            }
-        } else {
-            (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId, oracleUnseeded) = _getQuote({
+        }
+
+        // A user quote still reads the TWAP for diagnostics, without the cold-start spot fallback, and keeps its own
+        // minimum. Both paths share one call site to keep the runtime under EIP-170.
+        if (poolHasLiquidity) {
+            uint256 quotedMinimum;
+            (rawSwapQuote, quotedMinimum, twapTick, twapLiquidity, poolId, oracleUnseeded) = _getQuote({
                 projectId: context.projectId,
                 amountIn: amountToSwapWith,
                 baseToken: terminalToken,
                 quoteToken: projectToken,
                 terminalToken: terminalToken,
-                allowColdStartSpotFallback: true
+                allowColdStartSpotFallback: !hasUserSpecifiedQuote
             });
+            if (!hasUserSpecifiedQuote) minimumSwapAmountOut = quotedMinimum;
         }
 
         uint256 minimumBeneficiaryTokenCount;
