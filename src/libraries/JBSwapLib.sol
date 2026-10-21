@@ -38,6 +38,7 @@ library JBSwapLib {
     //*********************************************************************//
 
     /// @notice Query a V4 oracle hook for TWAP data. Returns 0 if the oracle is unavailable.
+    /// @dev Public, so the buyback hook links it instead of inlining it, keeping the hook under EIP-170.
     /// @param poolManager The V4 PoolManager.
     /// @param key The pool key (whose `hooks` field points to the oracle hook).
     /// @param twapWindow The TWAP window in seconds.
@@ -55,7 +56,7 @@ library JBSwapLib {
         address baseToken,
         address quoteToken
     )
-        internal
+        public
         view
         returns (uint256 amountOut, int24 arithmeticMeanTick, uint128 harmonicMeanLiquidity)
     {
