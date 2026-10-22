@@ -301,13 +301,19 @@ contract ThinPoolRoutingFork is Test {
 
     /// @dev A pay larger than the pool can take above the issuance rate, right after a small buy moved the pool, keeps
     /// the full-input floor (98% of the expected output) wherever that floor routes. Flooring every such pay at its
-    /// partial-fill settlement instead mints this one at 38,750.
+    /// partial-fill settlement instead mints these at 38,750.
     function test_largePayAfterABuy_keepsTheFullInputFloor() public {
-        swapper.swap{value: 0.01 ether}(_key(FAR), true, 0.01 ether);
-        (uint256 deployed, uint256 updated) = _compare(FAR, 5 ether);
-        assertEq(deployed, 38_750e18, "deployed hook minted");
-        emit log_named_decimal_uint("updated", updated, 18);
-        assertGt(updated, 79_000e18, "pool route");
+        uint256[3] memory buys = [uint256(0.01 ether), 0.03 ether, 0.1 ether];
+        uint256[3] memory minimums = [uint256(79_000e18), 75_000e18, 65_000e18];
+        for (uint256 i; i < buys.length; i++) {
+            uint256 snap = vm.snapshotState();
+            swapper.swap{value: buys[i]}(_key(FAR), true, buys[i]);
+            (uint256 deployed, uint256 updated) = _compare(FAR, 5 ether);
+            vm.revertToState(snap);
+            assertEq(deployed, 38_750e18, "deployed hook minted");
+            emit log_named_decimal_uint("updated", updated, 18);
+            assertGt(updated, minimums[i], "pool route");
+        }
     }
 
     /// @dev Pays `amount` for tokens, then sells them all into the pool.
