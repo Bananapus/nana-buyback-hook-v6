@@ -357,7 +357,8 @@ contract V4BuybackHookTest is Test {
                 uint256(0),
                 false, // oracleUnseeded
                 skipSplits,
-                uint256(0) // reservedPercent
+                uint256(0), // reservedPercent
+                false // floorCoversSettlement
             ),
             payerMetadata: ""
         });
@@ -607,7 +608,8 @@ contract V4BuybackHookTest is Test {
                 zeroForOne: !(address(projectToken) < address(0)),
                 amountIn: 1 ether,
                 minimumSwapAmountOut: 0,
-                derivedFloorAmountOut: 0
+                derivedFloorAmountOut: 0,
+                floorCoversSettlement: false
             })
         );
 

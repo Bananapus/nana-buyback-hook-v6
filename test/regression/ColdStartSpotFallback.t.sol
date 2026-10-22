@@ -358,12 +358,20 @@ contract ColdStartSpotFallbackTest is Test {
         assertFalse(metadata.oracleUnseeded, "warm oracle should not be flagged as cold-start");
         assertEq(metadata.twapTick, twapTick, "route should use the TWAP tick, not manipulated slot0");
         assertGt(metadata.twapLiquidity, 0, "warm oracle should report harmonic liquidity");
-        assertEq(
-            metadata.rawSwapQuote,
-            JBSwapLib.getQuoteAtTick({
+        // A no-quote pay publishes the expected settlement of the TWAP quote, priced at the TWAP tick and the 0.3%
+        // live fee, with 1 ether issuing 1e18 tokens.
+        (uint256 swapAmountOut, uint256 issuedAmountOut) = JBSwapLib.getExpectedSettlement({
+            quote: JBSwapLib.getQuoteAtTick({
                 tick: twapTick, baseAmount: uint128(1 ether), baseToken: address(0), quoteToken: address(projectToken)
             }),
-            "raw quote should come from TWAP"
+            impact: JBSwapLib.calculateImpact({
+                amountIn: 1 ether, liquidity: liquidity, sqrtP: TickMath.getSqrtPriceAtTick(twapTick), zeroForOne: true
+            }),
+            poolFeeBps: 30,
+            issuanceTokenCount: 1e18
+        });
+        assertEq(
+            metadata.rawSwapQuote, swapAmountOut + issuedAmountOut, "quote should be the settlement from the TWAP quote"
         );
     }
 
