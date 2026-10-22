@@ -58,13 +58,16 @@ payment arrives
   -> hook estimates pool output from explicit quote metadata or TWAP-derived quoting
   -> if the pool has live liquidity but no usable TWAP liquidity yet, a bounded bootstrap quote can price the first buy
   -> hook confirms the configured pool currently has in-range liquidity
+  -> a no-quote pay reports its expected settlement (swap leg to the issuance-rate price limit plus issuance for the
+     rest) as `rawSwapQuote`, so route scorers rank it by what it settles
   -> if pool wins, hook returns an active pay-hook spec and later executes the swap
   -> swapped tokens are burned and re-minted through the controller so reserved-rate semantics still apply, unless
      the payer set `skipSplits`, in which case the swapped tokens go straight to the beneficiary and only the
      leftover mint passes through the reserved split
-  -> if the swap fills below an oracle-derived floor, the floor check inside the unlock unwinds the swap and the
-     full payment degrades to mint fallback (the floor is pro-rated by consumed input, so partial fills at a fair
-     per-unit rate survive)
+  -> if the swap settles below an oracle-derived floor, the floor check inside the unlock unwinds the swap and the
+     full payment degrades to mint fallback (a sigmoid floor is pro-rated by consumed input, so partial fills at a fair
+     per-unit rate survive; the expected-output floor counts unconsumed input at the issuance rate, so a front-run
+     that forces a small fill cannot dilute it)
   -> if the swap fully fails, the payment likewise degrades to mint fallback
   -> explicit caller minima are settlement guarantees: they hard-revert on the combined output in either case
 ```
@@ -72,7 +75,8 @@ payment arrives
 An oracle-derived floor miss falls back to minting instead of reverting the payment. This keeps no-quote programmatic flows (protocol fees, split pays,
 project payers) alive when the TWAP floor is stale for current pool conditions, while a manipulated fill can never
 do better than the protocol's own mint path — an attacker can force a pay to route at the issuance rate, but the
-funds then land in the project's terminal balance, so there is nothing to extract. A derived-floor fallback is
+funds then land in the project's terminal balance, so an unwound floor miss leaves nothing to extract. A fill that
+clears the floor can still be sandwiched down toward it (RISKS.md). A derived-floor fallback is
 observable offchain as a swap-routed payment that emits `Mint` without a `Swap`.
 
 This fallback only handles the swap/floor failure: invalid metadata, unavailable accounting price feeds, token transfers, or controller mint failures can still revert settlement. When a payment arrives through a migrated router gateway, an eligible programmatic route failure can instead become a pending call held in the gateway. That custody and retry lifecycle is separate from this hook's synchronous mint fallback.

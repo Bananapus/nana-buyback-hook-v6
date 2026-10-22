@@ -120,7 +120,8 @@ preview payload consumed by `afterPayRecordedWith` and by router-terminal previe
   uint256 rawSwapQuote,
   bool oracleUnseeded,
   bool skipSplits,
-  uint256 reservedPercent
+  uint256 reservedPercent,
+  bool floorCoversSettlement
 )
 ```
 
@@ -128,7 +129,18 @@ preview payload consumed by `afterPayRecordedWith` and by router-terminal previe
 and issuance-rate price limits when a same-terminal split forwards only a net post-fee amount. Explicit caller minima
 are settlement guarantees and are not scaled.
 
-Buy-side metadata is 544 bytes. `skipSplits` echoes the payer's directive and `reservedPercent` is the ruleset's
+Buy-side metadata is 576 bytes from 1.5.0 (544 before). `floorCoversSettlement`, the appended 18th word, is true when
+`minimumSwapAmountOut` is the expected-output floor, which the unlock checks against the whole settlement instead of
+pro-rating it; `afterPayRecordedWith` reads a missing 18th word as false, so 17-word metadata keeps the pro-rated rule.
+Decoders that require exactly 17 words must accept 18.
+
+For a pay with no caller quote priced from the TWAP, `rawSwapQuote` is the pay's expected settlement in gross project
+tokens: the swap leg up to the issuance-rate price limit plus issuance for the input it leaves. Route scorers and
+previews that read `max(rawSwapQuote, minimumSwapAmountOut)` therefore compare what the pay settles to. For cash-outs,
+explicit-quote pays and the cold-start bootstrap quote it stays the raw oracle quote. The settlement uses one liquidity
+range at the lesser of current and TWAP liquidity, so it can misrank routes when liquidity deepens within the move
+(about 8.8% in the worst case found). A router terminal binds one buyback hook address, so it must be redeployed with
+the 1.5.0 hook to read this quote. `skipSplits` echoes the payer's directive and `reservedPercent` is the ruleset's
 split, carried so `afterPayRecordedWith` can settle a skipping payer's minimum against the beneficiary's receipt. `oracleUnseeded == true` means the configured pool has live liquidity but no usable TWAP
 liquidity yet. In that state, a non-noop spec means the hook selected the bounded cold-start bootstrap path; a noop spec
 means issuance still won or the fallback guardrails rejected the quote. Explicit caller quotes still supply the
