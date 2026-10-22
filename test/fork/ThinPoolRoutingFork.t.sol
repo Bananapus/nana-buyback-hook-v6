@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 
+import {IJBCashOutTerminal} from "@bananapus/core-v6/src/interfaces/IJBCashOutTerminal.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
@@ -325,33 +326,186 @@ contract ThinPoolRoutingFork is Test {
         swapper.swap(_key(pid), false, held);
     }
 
-    /// @dev Across sizes, both pools, and a pool a third party just pumped or dumped by various amounts in the same
-    /// block (spot off the TWAP, which the hook cannot tell from a front-run), the payer never gets less than from the
-    /// deployed hook. Dumps push spot toward the issuance rate, where swaps partially fill.
-    function test_neverBelowTheDeployedHook() public {
-        uint256[8] memory sizes =
-            [uint256(0.0002 ether), 0.002 ether, 0.003 ether, 0.01 ether, 0.03 ether, 0.3 ether, 1 ether, 3 ether];
-        uint256[6] memory dumps = [uint256(0), 0.001 ether, 0.003 ether, 0.01 ether, 0.03 ether, 0.3 ether];
+    bytes deployedCode;
+    bytes updatedCode;
+
+    /// @dev Captures the deployed hook's code and this source's code, deployed over it with the same immutables. The
+    /// constructor only sets immutables, so etching the deployed code back restores the deployed hook.
+    function _captureCodes() internal {
+        deployedCode = HOOK.code;
+        _upgrade();
+        updatedCode = HOOK.code;
+        vm.etch(HOOK, deployedCode);
+    }
+
+    /// @dev Whether a pay of `amount` succeeds, and the tokens the payer receives. Mode 0 is a plain pay, 1 skips the
+    /// reserved split, 2 sends an explicit quote 1% over issuance, and 3 pays from the terminal itself, as a
+    /// same-terminal split does (without that split's fee deduction).
+    function payAs(uint256 pid, uint256 amount, uint256 mode) external returns (bool paid, uint256 tokens) {
+        bytes memory metadata;
+        if (mode == 1 || mode == 2) {
+            metadata = JBMetadataResolver.addToMetadata({
+                originalMetadata: "",
+                idToAdd: JBMetadataResolver.getId("pay", HOOK),
+                dataToAdd: abi.encode(
+                    uint256(0), mode == 2 ? amount * (pid == FAR ? 12_500 : 50_000) * 101 / 100 : 0, mode == 1
+                )
+            });
+        }
+        address payer = mode == 3 ? address(TERMINAL) : PAYER;
+        vm.deal(payer, payer.balance + amount);
+        uint256 before = _token(pid).balanceOf(PAYER);
+        vm.prank(payer);
+        try TERMINAL.pay{value: amount, gas: 30_000_000}(
+            pid, JBConstants.NATIVE_TOKEN, amount, PAYER, 0, "", metadata
+        ) {
+            (paid, tokens) = (true, _token(pid).balanceOf(PAYER) - before);
+        } catch {}
+    }
+
+    /// @dev On the current state, each size pays at least as many tokens through this source as through the deployed
+    /// hook, and reverts exactly when the deployed hook reverts (explicit quotes the pool cannot meet).
+    function checkSizes(uint256 pid, uint256 mode) external {
+        uint256[11] memory sizes = [
+            uint256(0.0001 ether),
+            0.0003 ether,
+            0.001 ether,
+            0.003 ether,
+            0.01 ether,
+            0.03 ether,
+            0.1 ether,
+            0.3 ether,
+            1 ether,
+            5 ether,
+            10 ether
+        ];
+        for (uint256 i; i < sizes.length; i++) {
+            uint256 snap = vm.snapshotState();
+            (bool deployedPaid, uint256 deployed) = this.payAs(pid, sizes[i], mode);
+            vm.revertToState(snap);
+            vm.etch(HOOK, updatedCode);
+            (bool updatedPaid, uint256 updated) = this.payAs(pid, sizes[i], mode);
+            vm.revertToStateAndDelete(snap);
+            assertEq(updatedPaid, deployedPaid, "reverts only where the deployed hook does");
+            assertGe(updated, deployed, "payer never gets less than from the deployed hook");
+        }
+    }
+
+    /// @dev Pool states: as-is, then a third party's same-block buy or dump of 0.001, 0.01 or 0.1 ETH, each also with
+    /// spot held there for a quarter and half of the TWAP window (so the TWAP partly follows it). The hook cannot tell
+    /// these from a front-run. Dumps pay through the deployed hook and sell the payer's tokens back into the pool.
+    function _everyState(uint256 mode) internal {
+        _captureCodes();
+        uint256[3] memory moves = [uint256(0.001 ether), 0.01 ether, 0.1 ether];
         for (uint256 p; p < 2; p++) {
             uint256 pid = p == 0 ? THIN : FAR;
-            for (uint256 m; m < dumps.length + 1; m++) {
+            uint256 window = JBBuybackHook(payable(HOOK)).twapWindowOf(pid, address(0));
+            this.checkSizes(pid, mode);
+            for (uint256 m; m < moves.length * 2; m++) {
                 uint256 snap = vm.snapshotState();
-                if (m == dumps.length) {
-                    swapper.swap{value: 0.001 ether}(_key(pid), true, 0.001 ether);
-                } else if (dumps[m] != 0) {
-                    // Skip dumps the pool cannot absorb.
-                    try this.dump(pid, dumps[m]) {}
+                if (m < moves.length) {
+                    swapper.swap{value: moves[m]}(_key(pid), true, moves[m]);
+                } else {
+                    // Project 13's pool cannot absorb its largest dump; skip it.
+                    try this.dump(pid, moves[m - moves.length]) {}
                     catch {
-                        emit log_named_uint("skipped dump on project", pid);
-                        vm.revertToState(snap);
+                        vm.revertToStateAndDelete(snap);
                         continue;
                     }
                 }
-                for (uint256 i; i < sizes.length; i++) {
-                    (uint256 deployed, uint256 updated) = _compare(pid, sizes[i]);
-                    assertGe(updated, deployed, "payer never gets less");
+                this.checkSizes(pid, mode);
+                vm.warp(block.timestamp + window / 4);
+                vm.roll(block.number + window / 8);
+                this.checkSizes(pid, mode);
+                vm.warp(block.timestamp + window / 4);
+                vm.roll(block.number + window / 8);
+                this.checkSizes(pid, mode);
+                vm.revertToStateAndDelete(snap);
+            }
+        }
+    }
+
+    /// @dev Across sizes from 0.0001 to 10 ETH, both pools and every pool state above, the payer never gets fewer
+    /// tokens than from the deployed hook. Accepted exceptions: none.
+    function test_neverBelowTheDeployedHook_plainPays() public {
+        _everyState(0);
+    }
+
+    function test_neverBelowTheDeployedHook_skipSplitsPays() public {
+        _everyState(1);
+    }
+
+    function test_neverBelowTheDeployedHook_explicitQuotePays() public {
+        _everyState(2);
+    }
+
+    function test_neverBelowTheDeployedHook_sameTerminalPays() public {
+        _everyState(3);
+    }
+
+    /// @dev Victim's tokens after a front-run of `x`.
+    function attacked(uint256 pid, uint256 amount, uint256 x) external returns (bool, uint256) {
+        swapper.swap{value: x}(_key(pid), true, x);
+        return this.payAs(pid, amount, 0);
+    }
+
+    /// @dev For the same front-run buy, an attacked payer never gets fewer tokens than from the deployed hook.
+    /// Accepted exceptions: none.
+    function test_neverBelowTheDeployedHook_attackedPays() public {
+        _captureCodes();
+        uint256[5] memory far = [uint256(0.001 ether), 0.01 ether, 0.1 ether, 1 ether, 5 ether];
+        uint256[5] memory thin = [TX_AMOUNT, 0.003 ether, 0.01 ether, 0.03 ether, 0.3 ether];
+        for (uint256 p; p < 2; p++) {
+            uint256 pid = p == 0 ? THIN : FAR;
+            for (uint256 i; i < 5; i++) {
+                uint256 amount = p == 0 ? thin[i] : far[i];
+                for (uint256 k; k < 8; k++) {
+                    uint256 x = amount * (2 ** k) / 8;
+                    uint256 snap = vm.snapshotState();
+                    (bool deployedPaid, uint256 deployed) = this.attacked(pid, amount, x);
+                    vm.revertToState(snap);
+                    vm.etch(HOOK, updatedCode);
+                    (bool updatedPaid, uint256 updated) = this.attacked(pid, amount, x);
+                    vm.revertToStateAndDelete(snap);
+                    assertEq(updatedPaid, deployedPaid, "reverts only where the deployed hook does");
+                    assertGe(updated, deployed, "attacked payer never gets less than from the deployed hook");
                 }
-                vm.revertToState(snap);
+            }
+        }
+    }
+
+    /// @dev The holder's ETH received and project tokens left after cashing out `count`.
+    function _cashOut(uint256 pid, uint256 count) internal returns (uint256 eth, uint256 tokens) {
+        uint256 before = PAYER.balance;
+        vm.prank(PAYER);
+        IJBCashOutTerminal(address(TERMINAL))
+            .cashOutTokensOf(PAYER, pid, count, JBConstants.NATIVE_TOKEN, 0, payable(PAYER), "");
+        return (PAYER.balance - before, _token(pid).balanceOf(PAYER));
+    }
+
+    /// @dev Cash-outs settle exactly as through the deployed hook (the holder's ETH and project tokens, which include
+    /// any hook swap proceeds sent straight to the beneficiary), as-is, after a buy and after a dump.
+    function test_cashOuts_matchTheDeployedHook() public {
+        _captureCodes();
+        for (uint256 p; p < 2; p++) {
+            uint256 pid = p == 0 ? THIN : FAR;
+            _pay(pid, 1 ether);
+            for (uint256 s; s < 3; s++) {
+                uint256 snap = vm.snapshotState();
+                if (s == 1) swapper.swap{value: 0.01 ether}(_key(pid), true, 0.01 ether);
+                if (s == 2) this.dump(pid, 0.003 ether);
+                uint256 held = _token(pid).balanceOf(PAYER);
+                for (uint256 d = 2; d <= 2000; d *= 10) {
+                    uint256 inner = vm.snapshotState();
+                    (uint256 deployedEth, uint256 deployedTokens) = _cashOut(pid, held / d);
+                    vm.revertToState(inner);
+                    vm.etch(HOOK, updatedCode);
+                    (uint256 updatedEth, uint256 updatedTokens) = _cashOut(pid, held / d);
+                    vm.revertToStateAndDelete(inner);
+                    assertEq(updatedEth, deployedEth, "same ETH to the holder");
+                    assertEq(updatedTokens, deployedTokens, "same project tokens left");
+                }
+                vm.revertToStateAndDelete(snap);
             }
         }
     }
