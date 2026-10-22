@@ -357,7 +357,8 @@ contract V4BuybackHookTest is Test {
                 uint256(0),
                 false, // oracleUnseeded
                 skipSplits,
-                uint256(0) // reservedPercent
+                uint256(0), // reservedPercent
+                false // floorCoversSettlement
             ),
             payerMetadata: ""
         });

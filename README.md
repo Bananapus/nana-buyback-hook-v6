@@ -131,8 +131,10 @@ are settlement guarantees and are not scaled.
 
 Buy-side metadata is 576 bytes from 1.5.0 (544 before). `floorCoversSettlement`, the appended 18th word, is true when
 `minimumSwapAmountOut` is the expected-output floor, which the unlock checks against the whole settlement instead of
-pro-rating it; `afterPayRecordedWith` reads a missing 18th word as false, so 17-word metadata keeps the pro-rated rule.
-Decoders that require exactly 17 words must accept 18.
+pro-rating it. `afterPayRecordedWith` requires all 18 words and reverts on fewer or on a non-boolean 18th word. It
+only accepts calls from a project terminal, but that check alone does not prove where the metadata came from: a data
+hook that wraps this one must forward its full 18-word spec unchanged. Off-chain decoders that require exactly 17 words
+must accept 18.
 
 For a pay with no caller quote priced from the TWAP, `rawSwapQuote` is the pay's expected settlement: the swap leg up to
 the issuance-rate price limit plus issuance for the input it leaves. It counts gross project tokens, or beneficiary tokens

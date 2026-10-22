@@ -235,7 +235,8 @@ contract DFMF_DerivedFloorMintFallback is Test {
         uint256 payAmount,
         uint256 minimumSwapAmountOut,
         bool hasExplicitMinimumSwapAmountOut,
-        uint256 tokenCountWithoutHook
+        uint256 tokenCountWithoutHook,
+        bool floorCoversSettlement
     )
         internal
         view
@@ -277,7 +278,8 @@ contract DFMF_DerivedFloorMintFallback is Test {
                 uint256(0),
                 false, // oracleUnseeded
                 false, // skipSplits
-                uint256(0) // reservedPercent
+                uint256(0), // reservedPercent
+                floorCoversSettlement
             ),
             payerMetadata: ""
         });
@@ -299,7 +301,8 @@ contract DFMF_DerivedFloorMintFallback is Test {
             payAmount: payAmount,
             minimumSwapAmountOut: derivedFloor,
             hasExplicitMinimumSwapAmountOut: false,
-            tokenCountWithoutHook: 1000e18
+            tokenCountWithoutHook: 1000e18,
+            floorCoversSettlement: false
         });
 
         // The full payment falls back to minting at the issuance rate.
@@ -330,7 +333,8 @@ contract DFMF_DerivedFloorMintFallback is Test {
             payAmount: payAmount,
             minimumSwapAmountOut: derivedFloor,
             hasExplicitMinimumSwapAmountOut: false,
-            tokenCountWithoutHook: 1000e18
+            tokenCountWithoutHook: 1000e18,
+            floorCoversSettlement: false
         });
 
         // The swapped tokens are burned and re-minted with the reserved rate applied.
@@ -361,7 +365,8 @@ contract DFMF_DerivedFloorMintFallback is Test {
             payAmount: payAmount,
             minimumSwapAmountOut: derivedFloor,
             hasExplicitMinimumSwapAmountOut: false,
-            tokenCountWithoutHook: 1000e18
+            tokenCountWithoutHook: 1000e18,
+            floorCoversSettlement: false
         });
 
         // 700 swapped + 400 leftover mint.
@@ -391,7 +396,8 @@ contract DFMF_DerivedFloorMintFallback is Test {
             payAmount: payAmount,
             minimumSwapAmountOut: derivedFloor,
             hasExplicitMinimumSwapAmountOut: false,
-            tokenCountWithoutHook: 1000e18
+            tokenCountWithoutHook: 1000e18,
+            floorCoversSettlement: false
         });
 
         // The whole 1 ETH mints at the issuance rate — not just the unconsumed 0.4.
@@ -421,9 +427,9 @@ contract DFMF_DerivedFloorMintFallback is Test {
             payAmount: payAmount,
             minimumSwapAmountOut: 1100e18,
             hasExplicitMinimumSwapAmountOut: false,
-            tokenCountWithoutHook: 1000e18
+            tokenCountWithoutHook: 1000e18,
+            floorCoversSettlement: floorCoversSettlement
         });
-        if (floorCoversSettlement) ctx.hookMetadata = abi.encodePacked(ctx.hookMetadata, uint256(1));
 
         vm.expectCall(
             address(controller),
@@ -465,7 +471,8 @@ contract DFMF_DerivedFloorMintFallback is Test {
             payAmount: payAmount,
             minimumSwapAmountOut: explicitMinimum,
             hasExplicitMinimumSwapAmountOut: true,
-            tokenCountWithoutHook: 1000e18
+            tokenCountWithoutHook: 1000e18,
+            floorCoversSettlement: false
         });
 
         vm.deal(address(terminal), payAmount);

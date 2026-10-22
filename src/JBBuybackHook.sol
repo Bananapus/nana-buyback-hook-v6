@@ -433,8 +433,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // metadata to avoid a redundant `currentRulesetOf` + price lookup in this function.
         // `quotedAmountToSwapWith` anchors same-terminal split normalization. `skipSplits` is the payer's opt-out of
         // the reserved split on swapped tokens, and `reservedPercent` is the ruleset's split so a skipping payer's
-        // minimum can be settled against the beneficiary's receipt. The remaining metadata fields are preview-only
-        // diagnostics.
+        // minimum can be settled against the beneficiary's receipt. `floorCoversSettlement` marks the expected-output
+        // floor, which the unlock checks against the whole settlement instead of pro-rating it. The remaining metadata
+        // fields are preview-only diagnostics.
         (
             bool projectTokenIs0,
             uint256 amountToMintWith,
@@ -445,7 +446,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             uint256 weightRatio,
             uint256 quotedAmountToSwapWith,,,,,,,,
             bool skipSplits,
-            uint256 reservedPercent
+            uint256 reservedPercent,
+            bool floorCoversSettlement
         ) = abi.decode(
             context.hookMetadata,
             (
@@ -465,13 +467,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 uint256,
                 bool,
                 bool,
-                uint256
+                uint256,
+                bool
             )
         );
-
-        // An optional 18th word marks the expected-output floor; metadata without it keeps the pro-rated floor.
-        bool floorCoversSettlement =
-            context.hookMetadata.length >= 18 * 32 && uint256(bytes32(context.hookMetadata[17 * 32:18 * 32])) != 0;
 
         // Same-terminal split pays can quote the destination payment gross, then forward the hook only the post-fee
         // net amount. Derived TWAP floors and issuance-rate price limits must scale down with that forwarded amount;
