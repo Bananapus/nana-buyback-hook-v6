@@ -292,7 +292,7 @@ contract JBSwapLibTest is Test {
     }
 
     /// @notice With no issuance or no impact, nothing stops the swap, so the whole input swaps.
-    function test_expectedSettlementFullFill() public view {
+    function test_expectedSettlementFullFill() public pure {
         uint256 expected = JBSwapLib.getExpectedAmountOut({quote: 1000e18, impact: 1e17, poolFeeBps: 100});
         (uint256 swapAmountOut, uint256 issuedAmountOut) =
             JBSwapLib.getExpectedSettlement({quote: 1000e18, impact: 1e17, poolFeeBps: 100, issuanceTokenCount: 0});
@@ -306,7 +306,7 @@ contract JBSwapLibTest is Test {
 
     /// @notice The expected settlement matches a real single-range swap limited to the issuance price, with the
     /// unconsumed input minted at issuance, across pool-to-issuance ratios and sizes that do and do not hit the limit.
-    function test_expectedSettlementMatchesIssuanceLimitedSwap() public view {
+    function test_expectedSettlementMatchesIssuanceLimitedSwap() public pure {
         int24 tick = 110_927; // Base project 13's pool on 2026-10-21
         uint160 sqrtP = TickMath.getSqrtPriceAtTick(tick);
         uint128 liquidity = 3_692_864_483_889_946_900;
@@ -352,7 +352,7 @@ contract JBSwapLibTest is Test {
     }
 
     /// @notice A pool whose spot rate is no better than issuance takes nothing, so the whole input mints.
-    function test_expectedSettlementPoolNoBetterThanIssuance() public view {
+    function test_expectedSettlementPoolNoBetterThanIssuance() public pure {
         (uint256 swapAmountOut, uint256 issuedAmountOut) = JBSwapLib.getExpectedSettlement({
             quote: 1000e18, impact: 1e16, poolFeeBps: 100, issuanceTokenCount: 1000e18
         });
@@ -401,7 +401,7 @@ contract JBSwapLibTest is Test {
         bool zeroForOne
     )
         public
-        view
+        pure
     {
         tick = int24(bound(tick, -200_000, 200_000));
         liquidity = uint128(bound(liquidity, 1e15, 1e27));
@@ -449,7 +449,7 @@ contract JBSwapLibTest is Test {
         uint256 issuance
     )
         public
-        view
+        pure
     {
         quote = bound(quote, 0, 1e50);
         issuance = bound(issuance, 0, 1e50);
