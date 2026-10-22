@@ -985,6 +985,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             hasUserSpecifiedMinimumSwapAmountOut = minimumSwapAmountOut != 0;
         }
 
+        // Compute the direct protocol reclaim amount for this cash-out request.
+        uint256 directCashOutAmount = _reclaimOf({cashOutCount: context.cashOutCount, context: context});
+
         // Fall back to the protocol cash-out path if the caller forced it via `skip`, if no pool is
         // configured, if no project token is known, or if no project tokens are being cashed out. When the
         // user supplied an explicit minimum, the fallback must still satisfy it — otherwise revert so the
@@ -995,15 +998,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 || context.cashOutCount == 0
         ) {
             if (hasUserSpecifiedMinimumSwapAmountOut) {
-                uint256 fallbackReclaim = JBCashOuts.cashOutFrom({
-                    surplus: context.surplus.value,
-                    cashOutCount: context.cashOutCount,
-                    totalSupply: context.totalSupply,
-                    cashOutTaxRate: context.cashOutTaxRate
-                });
                 // Enforce the user's explicit minimum against the exact net the terminal would pay out.
-                uint256 netFallbackReclaim = _netAfterTerminalFee({amount: fallbackReclaim, context: context});
-                _requireMinimum({amount: netFallbackReclaim, minimum: minimumSwapAmountOut});
+                _requireMinimum({
+                    amount: _netAfterTerminalFee({amount: directCashOutAmount, context: context}),
+                    minimum: minimumSwapAmountOut
+                });
             }
             return (
                 context.cashOutTaxRate,
@@ -1013,14 +1012,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 hookSpecifications
             );
         }
-
-        // Compute the direct protocol reclaim amount for this cash-out request.
-        uint256 directCashOutAmount = JBCashOuts.cashOutFrom({
-            surplus: context.surplus.value,
-            cashOutCount: context.cashOutCount,
-            totalSupply: context.totalSupply,
-            cashOutTaxRate: context.cashOutTaxRate
-        });
 
         // Keep references to pool diagnostics. Explicit minimums skip the TWAP lookup, so diagnostics remain zeroed.
         uint256 rawSwapQuote;
@@ -1930,6 +1921,26 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         return amount - JBFees.standardFeeAmountFrom(feeBase);
+    }
+
+    /// @notice What the terminal's bonding curve reclaims for a count under this cash-out's surplus, supply and tax.
+    /// @param cashOutCount The number of tokens to price.
+    /// @param context The before-cashout context the data hook is processing.
+    /// @return The gross reclaim before any terminal fee.
+    function _reclaimOf(
+        uint256 cashOutCount,
+        JBBeforeCashOutRecordedContext calldata context
+    )
+        internal
+        pure
+        returns (uint256)
+    {
+        return JBCashOuts.cashOutFrom({
+            surplus: context.surplus.value,
+            cashOutCount: cashOutCount,
+            totalSupply: context.totalSupply,
+            cashOutTaxRate: context.cashOutTaxRate
+        });
     }
 
     /// @notice Reverts when a settled amount falls short of a caller-specified minimum.
