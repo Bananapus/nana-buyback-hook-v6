@@ -338,15 +338,17 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 actualReceived = IERC20(projectToken).balanceOf(address(this)) - preMintBalance;
 
         // Sell the reminted project tokens for the terminal token using the configured pool direction.
-        (uint256 amountSpent, uint256 amountReceived, bool swapFailed) = _swapExactInput({
-            key: key,
-            amountIn: actualReceived,
-            // A no-quote sale stops at the limit chosen during route selection, not at the routing floor.
-            minimumSwapAmountOut: sellLimitAmountOut == 0 ? minimumSwapAmountOut : sellLimitAmountOut,
-            zeroForOne: projectToken < terminalToken,
-            derivedFloorAmountOut: 0,
-            floorCoversSettlement: false
-        });
+        (uint256 amountSpent, uint256 amountReceived, bool swapFailed) = _swapExactInput(
+            SwapCallbackData({
+                key: key,
+                zeroForOne: projectToken < terminalToken,
+                amountIn: actualReceived,
+                // A no-quote sale stops at the limit chosen during route selection, not at the routing floor.
+                minimumSwapAmountOut: sellLimitAmountOut == 0 ? minimumSwapAmountOut : sellLimitAmountOut,
+                derivedFloorAmountOut: 0,
+                floorCoversSettlement: false
+            })
+        );
 
         // If the pool reverted, return the reminted project tokens to the holder instead of
         // blocking the cash-out entirely. The holder keeps their tokens and can sell manually or retry.
@@ -866,11 +868,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Take the output (PoolManager owes us).
         // Use balance-delta accounting to handle fee-on-transfer tokens that deliver less than `outputAmount`.
-        uint256 balanceBeforeTake = _currencyBalanceOf(outputCurrency);
+        uint256 balanceBeforeTake = _terminalTokenBalance(Currency.unwrap(outputCurrency));
 
         poolManager.take({currency: outputCurrency, to: address(this), amount: outputAmount});
 
-        uint256 balanceAfterTake = _currencyBalanceOf(outputCurrency);
+        uint256 balanceAfterTake = _terminalTokenBalance(Currency.unwrap(outputCurrency));
 
         // The actual received amount accounts for any fee-on-transfer deduction.
         uint256 actualOutputAmount = balanceAfterTake - balanceBeforeTake;
@@ -1026,8 +1028,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool poolHasLiquidity = true;
         if (hasUserSpecifiedMinimumSwapAmountOut) {
             // Only compute poolId from storage when skipping _getQuote (which would return it).
-            poolId = _poolKeyOf[context.projectId][terminalToken].toId();
-            poolHasLiquidity = poolManager.getLiquidity(poolId) != 0;
+            (poolId, poolHasLiquidity) = _liveLiquidityOf({projectId: context.projectId, terminalToken: terminalToken});
         } else {
             (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId,, floorCoversSettlement) = _getQuote({
                 projectId: context.projectId,
@@ -1222,8 +1223,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool poolHasLiquidity = true;
         if (hasUserSpecifiedQuote) {
             // Only compute poolId from storage when skipping _getQuote (which would return it).
-            poolId = _poolKeyOf[context.projectId][terminalToken].toId();
-            poolHasLiquidity = _poolIsSet[context.projectId][terminalToken] && poolManager.getLiquidity(poolId) != 0;
+            (poolId, poolHasLiquidity) = _liveLiquidityOf({projectId: context.projectId, terminalToken: terminalToken});
         }
 
         // A user quote still reads the TWAP for diagnostics, without the cold-start spot fallback, and keeps its own
@@ -1494,14 +1494,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         PoolKey memory key = _poolKeyOf[context.projectId][normalizedTerminalToken];
 
         // Try the V4 unlock/callback swap. On failure, fall back to minting.
-        (, amountReceived, swapFailed) = _swapExactInput({
-            key: key,
-            amountIn: amountToSwapWith,
-            minimumSwapAmountOut: minimumSwapAmountOut,
-            zeroForOne: !projectTokenIs0,
-            derivedFloorAmountOut: derivedFloorAmountOut,
-            floorCoversSettlement: floorCoversSettlement
-        });
+        (, amountReceived, swapFailed) = _swapExactInput(
+            SwapCallbackData({
+                key: key,
+                zeroForOne: !projectTokenIs0,
+                amountIn: amountToSwapWith,
+                minimumSwapAmountOut: minimumSwapAmountOut,
+                derivedFloorAmountOut: derivedFloorAmountOut,
+                floorCoversSettlement: floorCoversSettlement
+            })
+        );
         if (swapFailed) return (0, true);
 
         emit Swap({
@@ -1517,42 +1519,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @dev Encodes the swap parameters into callback data, hands control to the PoolManager through `unlock(...)`,
     /// and decodes the amount received from the callback result. If the pool reverts, returns `swapFailed = true`
     /// instead of propagating the revert, allowing the caller to implement a fallback path.
-    /// @param key The V4 pool key to swap against.
-    /// @param amountIn The exact amount of input tokens to sell.
-    /// @param minimumSwapAmountOut The minimum acceptable amount of output tokens.
-    /// @param zeroForOne Whether the swap should move from `currency0` to `currency1`.
-    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock.
-    /// 0 when no in-unlock floor applies (explicit caller minima, and sell-side swaps whose derived floors soft-land
-    /// through the caller's `shouldEnforceMinimumSwapAmountOut` flag).
-    /// @param floorCoversSettlement Whether the derived floor covers the whole settlement, not the consumed input.
+    /// @param params The swap to execute. Its `derivedFloorAmountOut` is 0 when no in-unlock floor applies (explicit
+    /// caller minima, and sell-side swaps whose derived floors soft-land through the caller's
+    /// `shouldEnforceMinimumSwapAmountOut` flag).
     /// @return amountSpent The amount of input tokens actually consumed by the swap.
     /// @return amountReceived The amount of output tokens received from the swap.
     /// @return swapFailed True if the swap reverted and was caught by try/catch.
-    function _swapExactInput(
-        PoolKey memory key,
-        uint256 amountIn,
-        uint256 minimumSwapAmountOut,
-        bool zeroForOne,
-        uint256 derivedFloorAmountOut,
-        bool floorCoversSettlement
-    )
+    function _swapExactInput(SwapCallbackData memory params)
         internal
         returns (uint256 amountSpent, uint256 amountReceived, bool swapFailed)
     {
-        // Encode the swap parameters so `unlockCallback(...)` can execute the swap after the PoolManager unlocks.
-        bytes memory callbackData = abi.encode(
-            SwapCallbackData({
-                key: key,
-                zeroForOne: zeroForOne,
-                amountIn: amountIn,
-                minimumSwapAmountOut: minimumSwapAmountOut,
-                derivedFloorAmountOut: derivedFloorAmountOut,
-                floorCoversSettlement: floorCoversSettlement
-            })
-        );
-
         // Try the V4 unlock/callback swap. On failure, signal the caller to handle the fallback.
-        try poolManager.unlock(callbackData) returns (bytes memory result) {
+        try poolManager.unlock(abi.encode(params)) returns (bytes memory result) {
             (amountSpent, amountReceived) = abi.decode(result, (uint256, uint256));
         } catch {
             return (0, 0, true);
@@ -1622,16 +1600,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @dev `ERC-2771` specifies the context as being a single address (20 bytes).
     function _contextSuffixLength() internal view override(ERC2771Context, Context) returns (uint256) {
         return super._contextSuffixLength();
-    }
-
-    /// @notice This contract's balance of a V4 currency (native or ERC-20).
-    /// @param currency The V4 currency to read the balance of.
-    /// @return The balance held by this contract.
-    function _currencyBalanceOf(Currency currency) internal view returns (uint256) {
-        return
-            currency.isAddressZero()
-                ? address(this).balance
-                : IERC20(Currency.unwrap(currency)).balanceOf(address(this));
     }
 
     /// @notice Whether the selected terminal can settle the direct protocol reclaim used in route comparison.
@@ -1893,6 +1861,23 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         if (amountOut == 0) rawAmountOut = 0;
     }
 
+    /// @notice A pair's pool ID, and whether the pool is set and has live in-range liquidity.
+    /// @param projectId The ID of the project.
+    /// @param terminalToken The terminal token, normalized to address(0) for native.
+    /// @return poolId The pool's ID.
+    /// @return hasLiquidity Whether the pool is set and has live in-range liquidity.
+    function _liveLiquidityOf(
+        uint256 projectId,
+        address terminalToken
+    )
+        internal
+        view
+        returns (PoolId poolId, bool hasLiquidity)
+    {
+        poolId = _poolKeyOf[projectId][terminalToken].toId();
+        hasLiquidity = _poolIsSet[projectId][terminalToken] && poolManager.getLiquidity(poolId) != 0;
+    }
+
     /// @notice The calldata. Preferred to use over `msg.data`.
     function _msgData() internal view override(ERC2771Context, Context) returns (bytes calldata) {
         return ERC2771Context._msgData();
@@ -1967,10 +1952,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
     }
 
-    /// @notice Returns this contract's balance of the given terminal token.
-    /// @param token The terminal token address (NATIVE_TOKEN for ETH).
+    /// @notice Returns this contract's balance of the given token.
+    /// @param token The token address: NATIVE_TOKEN for ETH as a terminal token, or address(0) as a V4 currency.
     /// @return balance The current balance held by this contract.
     function _terminalTokenBalance(address token) internal view returns (uint256 balance) {
-        return token == JBConstants.NATIVE_TOKEN ? address(this).balance : IERC20(token).balanceOf(address(this));
+        return token == JBConstants.NATIVE_TOKEN || token == address(0)
+            ? address(this).balance
+            : IERC20(token).balanceOf(address(this));
     }
 }
