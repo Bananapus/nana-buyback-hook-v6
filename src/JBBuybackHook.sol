@@ -640,9 +640,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Enforce permissions.
         // The buyback hook registry (or any other contract) can call these functions on behalf of project owners
         // by having SET_BUYBACK_POOL permission granted through JBPermissions — no special-casing needed here.
-        _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
-        });
+        _requireOwnerPermission({projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL});
         (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
             _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
 
@@ -711,9 +709,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Enforce permissions.
         // The buyback hook registry (or any other contract) can call these functions on behalf of project owners
         // by having SET_BUYBACK_POOL permission granted through JBPermissions — no special-casing needed here.
-        _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
-        });
+        _requireOwnerPermission({projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL});
 
         // Normalize the terminal token — use address(0) for native.
         address normalizedTerminalToken = terminalToken == JBConstants.NATIVE_TOKEN ? address(0) : terminalToken;
@@ -755,9 +751,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Enforce permissions.
         // The buyback hook registry (or any other contract) can call these functions on behalf of project owners
         // by having SET_BUYBACK_POOL permission granted through JBPermissions — no special-casing needed here.
-        _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL
-        });
+        _requireOwnerPermission({projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_POOL});
 
         (PoolKey memory poolKey, address normalizedTerminalToken, address projectToken) =
             _buildPoolKey({projectId: projectId, fee: fee, tickSpacing: tickSpacing, terminalToken: terminalToken});
@@ -777,9 +771,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param newWindow The new TWAP window.
     function setTwapWindowOf(uint256 projectId, address terminalToken, uint256 newWindow) external override {
         // Enforce permissions.
-        _requirePermissionFrom({
-            account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_TWAP
-        });
+        _requireOwnerPermission({projectId: projectId, permissionId: JBPermissionIds.SET_BUYBACK_TWAP});
 
         _requireValidTwapWindow(newWindow);
 
@@ -1353,6 +1345,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             memo: "",
             useReservedPercent: useReservedPercent
         });
+    }
+
+    /// @notice Reverts unless the sender has the given permission from the project's owner.
+    /// @param projectId The ID of the project.
+    /// @param permissionId The permission required.
+    function _requireOwnerPermission(uint256 projectId, uint256 permissionId) internal view {
+        _requirePermissionFrom({account: PROJECTS.ownerOf(projectId), projectId: projectId, permissionId: permissionId});
     }
 
     /// @notice Revert if a TWAP window is outside the allowed bounds.

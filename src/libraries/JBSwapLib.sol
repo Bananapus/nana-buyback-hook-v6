@@ -186,9 +186,11 @@ library JBSwapLib {
         uint256 base = FullMath.mulDiv({a: amountIn, b: _IMPACT_PRECISION, denominator: uint256(liquidity)});
 
         // Normalize by sqrtP for direction.
-        impact = zeroForOne
-            ? FullMath.mulDiv({a: base, b: uint256(sqrtP), denominator: uint256(1) << 96})
-            : FullMath.mulDiv({a: base, b: uint256(1) << 96, denominator: uint256(sqrtP)});
+        impact = FullMath.mulDiv({
+            a: base,
+            b: zeroForOne ? uint256(sqrtP) : uint256(1) << 96,
+            denominator: zeroForOne ? uint256(1) << 96 : uint256(sqrtP)
+        });
     }
 
     //*********************************************************************//
@@ -214,18 +216,16 @@ library JBSwapLib {
     {
         uint160 sqrtRatioX96 = TickMath.getSqrtPriceAtTick(tick);
 
-        // Calculate quoteAmount with better precision if it doesn't overflow when multiplied by itself.
-        if (sqrtRatioX96 <= type(uint128).max) {
-            uint256 ratioX192 = uint256(sqrtRatioX96) * sqrtRatioX96;
-            quoteAmount = baseToken < quoteToken
-                ? FullMath.mulDiv({a: ratioX192, b: baseAmount, denominator: 1 << 192})
-                : FullMath.mulDiv({a: 1 << 192, b: baseAmount, denominator: ratioX192});
-        } else {
-            uint256 ratioX128 = FullMath.mulDiv({a: sqrtRatioX96, b: sqrtRatioX96, denominator: 1 << 64});
-            quoteAmount = baseToken < quoteToken
-                ? FullMath.mulDiv({a: ratioX128, b: baseAmount, denominator: 1 << 128})
-                : FullMath.mulDiv({a: 1 << 128, b: baseAmount, denominator: ratioX128});
-        }
+        // Square the sqrt price at X192 for better precision when that cannot overflow, otherwise at X128. One
+        // mulDiv call site per step, with the shifts as operands, keeps the EIP-170 size down.
+        uint256 shift = sqrtRatioX96 <= type(uint128).max ? 192 : 128;
+        uint256 ratio = FullMath.mulDiv({a: sqrtRatioX96, b: sqrtRatioX96, denominator: uint256(1) << (192 - shift)});
+        bool zeroIsBase = baseToken < quoteToken;
+        quoteAmount = FullMath.mulDiv({
+            a: zeroIsBase ? ratio : uint256(1) << shift,
+            b: baseAmount,
+            denominator: zeroIsBase ? uint256(1) << shift : ratio
+        });
     }
 
     //*********************************************************************//
@@ -281,50 +281,34 @@ library JBSwapLib {
             den = minimumAmountOut;
         }
 
-        uint256 sqrtResult;
-
         if (num / den >= (uint256(1) << 128)) {
             // The implied sqrt price is outside V4's representable range. Use the normal direction-specific
             // no-limit value here; callers enforce non-zero output floors after the swap using the settled amount.
             return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
-        } else if (num / den >= (uint256(1) << 64)) {
-            // Extended range: use ratioX128 to avoid mulDiv overflow.
-            // Shift before sqrt for better precision: sqrt(ratioX128 << 64) vs sqrt(ratioX128) << 32.
-            uint256 ratioX128 = FullMath.mulDiv({a: num, b: uint256(1) << 128, denominator: den});
-            if (ratioX128 <= type(uint256).max >> 64) {
-                sqrtResult = Math.sqrt(ratioX128 << 64);
-            } else {
-                // Overflow guard: fall back to post-sqrt shift when the pre-shift would overflow.
-                sqrtResult = Math.sqrt(ratioX128) * (uint256(1) << 32);
-            }
-        } else {
-            // Normal range: full precision via ratioX192.
-            uint256 ratioX192 = FullMath.mulDiv({a: num, b: uint256(1) << 192, denominator: den});
-            sqrtResult = Math.sqrt(ratioX192);
         }
 
-        // Clamp to valid V4 range.
-        if (zeroForOne) {
-            if (sqrtResult <= uint256(TickMath.MIN_SQRT_PRICE)) {
-                return TickMath.MIN_SQRT_PRICE + 1;
+        // Normal range: full precision via ratioX192. Extended range: ratioX128 to avoid mulDiv overflow.
+        bool extended = num / den >= (uint256(1) << 64);
+        uint256 ratio = FullMath.mulDiv({a: num, b: uint256(1) << (extended ? 128 : 192), denominator: den});
+        uint256 shift;
+        if (extended) {
+            // Shift before sqrt for better precision: sqrt(ratioX128 << 64) vs sqrt(ratioX128) << 32.
+            if (ratio <= type(uint256).max >> 64) {
+                ratio <<= 64;
+            } else {
+                // Overflow guard: fall back to post-sqrt shift when the pre-shift would overflow.
+                shift = 32;
             }
-            if (sqrtResult >= uint256(TickMath.MAX_SQRT_PRICE)) {
-                return TickMath.MAX_SQRT_PRICE - 1;
-            }
-            // Safe: sqrtResult is clamped above to < MAX_SQRT_PRICE (a uint160), so it fits in uint160.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            return uint160(sqrtResult);
-        } else {
-            if (sqrtResult >= uint256(TickMath.MAX_SQRT_PRICE)) {
-                return TickMath.MAX_SQRT_PRICE - 1;
-            }
-            if (sqrtResult <= uint256(TickMath.MIN_SQRT_PRICE)) {
-                return TickMath.MIN_SQRT_PRICE + 1;
-            }
-            // Safe: sqrtResult is clamped above to < MAX_SQRT_PRICE (a uint160), so it fits in uint160.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            return uint160(sqrtResult);
         }
+
+        uint256 sqrtResult = Math.sqrt(ratio) << shift;
+
+        // Clamp to valid V4 range.
+        if (sqrtResult <= uint256(TickMath.MIN_SQRT_PRICE)) return TickMath.MIN_SQRT_PRICE + 1;
+        if (sqrtResult >= uint256(TickMath.MAX_SQRT_PRICE)) return TickMath.MAX_SQRT_PRICE - 1;
+        // Safe: sqrtResult is clamped above to < MAX_SQRT_PRICE (a uint160), so it fits in uint160.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return uint160(sqrtResult);
     }
 
     //*********************************************************************//
