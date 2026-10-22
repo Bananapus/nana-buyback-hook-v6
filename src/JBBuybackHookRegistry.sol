@@ -106,7 +106,8 @@ contract JBBuybackHookRegistry is IJBBuybackHookRegistry, ERC2771Context, JBPerm
     mapping(uint256 projectId => IJBRulesetDataHook) internal _hookOf;
 
     /// @notice Snapshots of the default hook that applied to each past cohort of projects, keyed by the project-count
-    /// window each one covered. @dev Each `setDefaultHook` call pushes one segment whose `maxProjectId` is the project
+    /// window each one covered.
+    /// @dev Each `setDefaultHook` call pushes one segment whose `maxProjectId` is the project
     /// count at that moment. On the first-ever call the segment covers the already-existing projects and maps them to
     /// the new default, so projects that existed before the first default still resolve to it. On every later call the
     /// segment maps the just-closed window to the OUTGOING default, so a project whose ID is
