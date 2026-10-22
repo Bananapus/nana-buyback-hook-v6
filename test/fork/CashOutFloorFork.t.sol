@@ -22,6 +22,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 import {JBBuybackHook} from "src/JBBuybackHook.sol";
+import {JBSwapLib} from "src/libraries/JBSwapLib.sol";
 
 /// @notice Exact-input swaps with a price limit on a native/project-token pool.
 contract CashOutFloorSwapper is IUnlockCallback {
@@ -258,9 +259,9 @@ contract CashOutFloorFork is Test {
             );
             if (updated < deployed) {
                 // Accepted: a dump inside the TWAP window leaves a stale quote that routes a large cash-out to the
-                // pool. The sale stops at the marginal reclaim rate, so it sells little or nothing, and reclaiming the
-                // returned tokens pays the revnet's 2.5% token tranche a second time.
-                assertTrue(pid == 7 && (state == 2 || state == 3) && held < 1800, "below 1.4 outside a stale dump");
+                // pool. Spot is past the sale's limit, but the pool holds little depth before it, so the sale fills
+                // a small part and reclaiming the returned tokens pays the revnet's 2.5% token tranche a second time.
+                assertTrue(pid == 7 && state == 2 && held < 1800, "below 1.4 outside a stale dump");
                 assertGe(updated, deployed * 974 / 1000, "stale dump costs at most the second tranche");
                 staleDump++;
             } else if (updated < reclaim) {
@@ -292,7 +293,7 @@ contract CashOutFloorFork is Test {
     function test_cashOutsNeverBelowTheDeployedHookOrReclaim_project7() public {
         (uint256 inherited, uint256 staleDump) = _grid(7);
         assertEq(inherited, 20, "cells below reclaim exactly as with the deployed hook");
-        assertEq(staleDump, 11, "stale-dump cells below the deployed hook");
+        assertEq(staleDump, 4, "stale-dump cells below the deployed hook");
     }
 
     function test_cashOutsNeverBelowTheDeployedHookOrReclaim_project13() public {
@@ -369,18 +370,21 @@ contract CashOutFloorFork is Test {
         }
     }
 
-    /// @dev Over any surplus, supply and tax on the live pools, a cash-out routed on the expected-output floor has a
-    /// sale limit at or above net reclaim and below that floor, so the sale can start and never undercuts reclaiming,
-    /// and it is at most half the supply, where the limit is exact.
+    /// @dev Over any surplus, supply and tax on the live pools in each grid state, a cash-out routed on the
+    /// expected-output floor has a sale limit at or above net reclaim and below that floor, with spot short of the
+    /// limit's price, so the sale can start and never undercuts reclaiming, and it is at most half the supply, where
+    /// the limit is exact.
     function testFuzz_expectedOutputRoutesOnlyWhenTheSaleCanStart(
         bool p7,
         uint256 count,
         uint256 supply,
         uint256 surplus,
-        uint256 tax
+        uint256 tax,
+        uint8 state
     )
         public
     {
+        if (!_setState(p7 ? 7 : 13, state % 5, 0)) return;
         vm.etch(HOOK, updatedCode);
         supply = bound(supply, 1e18, 1e30);
         count = bound(count, 1, supply);
@@ -415,5 +419,10 @@ contract CashOutFloorFork is Test {
         assertGt(floor, limit, "the expected output beats the count at the limit rate");
         assertGe(limit, netDirect, "the limit is at or above net reclaim");
         assertLe(2 * count, supply, "at most half the supply");
+        assertLt(
+            _sqrtP(p7 ? 7 : 13),
+            JBSwapLib.sqrtPriceLimitFromAmounts({amountIn: count, minimumAmountOut: limit, zeroForOne: false}),
+            "spot is short of the limit, so the sale can start"
+        );
     }
 }

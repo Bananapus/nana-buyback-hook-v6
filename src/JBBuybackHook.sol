@@ -1044,12 +1044,22 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // reclaim rate. The reclaim curve is quadratic in the count, so half of reclaiming twice the count is the
             // count at that rate. Reclaim is convex, so each token sold beats what reclaiming it would add, and the
             // proceeds plus a later reclaim of any unsold tokens do not fall below reclaiming them all. Past half the
-            // supply the curve caps at the surplus and would understate the rate, so those cash-outs reclaim.
+            // supply the curve caps at the surplus and would understate the rate, so those cash-outs reclaim. A
+            // stale TWAP can also price a sale whose limit spot has already passed, so that sale could not start;
+            // those cash-outs reclaim too.
             if (floorCoversSettlement) {
                 sellLimitAmountOut = _netAfterTerminalFee({
                     amount: _reclaimOf({cashOutCount: 2 * context.cashOutCount, context: context}) / 2, context: context
                 });
-                if (2 * context.cashOutCount > context.totalSupply) sellLimitAmountOut = type(uint256).max;
+                (uint160 spotSqrtPrice,,,) = poolManager.getSlot0(poolId);
+                bool zeroForOne = projectToken < terminalToken;
+                uint160 limitSqrtPrice = JBSwapLib.sqrtPriceLimitFromAmounts({
+                    amountIn: context.cashOutCount, minimumAmountOut: sellLimitAmountOut, zeroForOne: zeroForOne
+                });
+                if (
+                    2 * context.cashOutCount > context.totalSupply
+                        || (zeroForOne ? spotSqrtPrice <= limitSqrtPrice : spotSqrtPrice >= limitSqrtPrice)
+                ) sellLimitAmountOut = type(uint256).max;
             }
         }
 
