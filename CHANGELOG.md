@@ -38,8 +38,8 @@ repo.
   `max(rawSwapQuote, minimumSwapAmountOut)` rank such pays by what they settle. Cash-outs, explicit-quote pays and
   cold-start bootstrap quotes keep the raw oracle quote.
 - A cash-out with no caller minimum whose sigmoid floor would sit under net reclaim routes on the same expected-output
-  floor when it beats both net reclaim and the count at its marginal net reclaim rate, and the count is at most half
-  the supply. That floor only chooses the route: the sale stops at the marginal rate (half the net reclaim of twice the
+  floor when it beats both net reclaim and the count at its marginal net reclaim rate, spot is short of the price that
+  rate implies, and the count is at most half the supply. That floor only chooses the route: the sale stops at the marginal rate (half the net reclaim of twice the
   count), and unsold tokens return to the holder. See RISKS 9.11.
 - Metadata purpose names align with V6 lifecycle phases: use `pay` and `cashOut` caller metadata keyed to the relevant
   hook address.
@@ -86,7 +86,7 @@ repo.
   uint128 twapLiquidity, PoolId poolId, uint256 rawSwapQuote, bool hasUserSpecifiedMinimumSwapAmountOut,
   uint256 sellLimitAmountOut)`. `minimumSwapAmountOut` is the routing floor. `sellLimitAmountOut` is the no-quote sale's
   price limit as an output amount for the whole count, 0 when the sale uses `minimumSwapAmountOut` as its limit, or
-  `type(uint256).max` on a noop spec past half the supply.
+  `type(uint256).max` on a noop spec past half the supply or with spot past the limit.
   `afterCashOutRecordedWith` requires all nine words.
 
 ## ABI, Event, and Error Changes
