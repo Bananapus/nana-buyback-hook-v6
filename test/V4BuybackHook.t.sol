@@ -607,7 +607,8 @@ contract V4BuybackHookTest is Test {
                 zeroForOne: !(address(projectToken) < address(0)),
                 amountIn: 1 ether,
                 minimumSwapAmountOut: 0,
-                derivedFloorAmountOut: 0
+                derivedFloorAmountOut: 0,
+                floorCoversSettlement: false
             })
         );
 

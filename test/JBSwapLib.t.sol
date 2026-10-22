@@ -8,6 +8,8 @@ import {MockPoolManager} from "./mock/MockPoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
+import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
@@ -226,6 +228,139 @@ contract JBSwapLibTest is Test {
     }
 
     //*********************************************************************//
+    // ----- Expected Output Tests --------------------------------------- //
+    //*********************************************************************//
+
+    /// @dev The exact constant-liquidity output of an exact-input swap with a fee taken from the input.
+    function _singleRangeOut(
+        uint160 sqrtP,
+        uint128 liquidity,
+        uint256 amountIn,
+        uint256 feeBps,
+        bool zeroForOne
+    )
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 inAfterFee = amountIn * (10_000 - feeBps) / 10_000;
+        uint160 next = SqrtPriceMath.getNextSqrtPriceFromInput(sqrtP, liquidity, inAfterFee, zeroForOne);
+        return zeroForOne
+            ? SqrtPriceMath.getAmount1Delta(next, sqrtP, liquidity, false)
+            : SqrtPriceMath.getAmount0Delta(sqrtP, next, liquidity, false);
+    }
+
+    /// @notice The expected output matches a real single-range swap, from tiny to range-exhausting sizes, both ways.
+    function test_expectedAmountOutMatchesSingleRangeSwap() public pure {
+        address token0 = address(1);
+        address token1 = address(2);
+        int24 tick = 110_927; // Base project 13's pool on 2026-10-21
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(tick);
+        uint128 liquidity = 3_692_864_483_889_946_900;
+        uint256[5] memory sizes = [uint256(1e12), 1e14, 406_950_545_029_679, 3e15, 1e17];
+        for (uint256 i; i < sizes.length; i++) {
+            for (uint256 d; d < 2; d++) {
+                bool zeroForOne = d == 0;
+                uint256 amountIn = zeroForOne ? sizes[i] : sizes[i] * 65_000; // similar value the other way
+                uint256 quote = JBSwapLib.getQuoteAtTick({
+                    tick: tick,
+                    baseAmount: uint128(amountIn),
+                    baseToken: zeroForOne ? token0 : token1,
+                    quoteToken: zeroForOne ? token1 : token0
+                });
+                uint256 impact = JBSwapLib.calculateImpact({
+                    amountIn: amountIn, liquidity: liquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
+                });
+                assertApproxEqRel(
+                    JBSwapLib.getExpectedAmountOut({quote: quote, impact: impact, poolFeeBps: 100}),
+                    _singleRangeOut(sqrtP, liquidity, amountIn, 100, zeroForOne),
+                    1e12, // 0.0001%
+                    "single-range output"
+                );
+            }
+        }
+    }
+
+    /// @notice An unrepresentable impact gives no expected output instead of overflowing the denominator.
+    function test_expectedAmountOutMaxImpact() public pure {
+        assertEq(JBSwapLib.getExpectedAmountOut({quote: 1e22, impact: type(uint256).max, poolFeeBps: 0}), 0);
+    }
+
+    /// @notice With no impact, the expected output is the quote less the fee.
+    function test_expectedAmountOutZeroImpact() public pure {
+        assertEq(JBSwapLib.getExpectedAmountOut({quote: 1e22, impact: 0, poolFeeBps: 30}), 1e22 * 9970 / 10_000);
+    }
+
+    /// @notice With no issuance or no impact, nothing stops the swap, so the whole input swaps.
+    function test_expectedSettlementFullFill() public view {
+        uint256 expected = JBSwapLib.getExpectedAmountOut({quote: 1000e18, impact: 1e17, poolFeeBps: 100});
+        (uint256 swapAmountOut, uint256 issuedAmountOut) =
+            JBSwapLib.getExpectedSettlement({quote: 1000e18, impact: 1e17, poolFeeBps: 100, issuanceTokenCount: 0});
+        assertEq(swapAmountOut, expected);
+        assertEq(issuedAmountOut, 0);
+        (swapAmountOut, issuedAmountOut) =
+            JBSwapLib.getExpectedSettlement({quote: 1000e18, impact: 0, poolFeeBps: 100, issuanceTokenCount: 500e18});
+        assertEq(swapAmountOut, 1000e18 * 9900 / 10_000);
+        assertEq(issuedAmountOut, 0);
+    }
+
+    /// @notice The expected settlement matches a real single-range swap limited to the issuance price, with the
+    /// unconsumed input minted at issuance, across pool-to-issuance ratios and sizes that do and do not hit the limit.
+    function test_expectedSettlementMatchesIssuanceLimitedSwap() public view {
+        int24 tick = 110_927; // Base project 13's pool on 2026-10-21
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(tick);
+        uint128 liquidity = 3_692_864_483_889_946_900;
+        uint256[4] memory sizes = [uint256(1e15), 3e15, 1e16, 1e17];
+        uint256[3] memory issuancePercents = [uint256(50), 77, 95];
+        for (uint256 i; i < sizes.length; i++) {
+            for (uint256 r; r < issuancePercents.length; r++) {
+                for (uint256 d; d < 2; d++) {
+                    bool zeroForOne = d == 0;
+                    uint256 amountIn = zeroForOne ? sizes[i] : sizes[i] * 65_000; // similar value the other way
+                    uint256 quote = JBSwapLib.getQuoteAtTick({
+                        tick: tick,
+                        baseAmount: uint128(amountIn),
+                        baseToken: zeroForOne ? address(1) : address(2),
+                        quoteToken: zeroForOne ? address(2) : address(1)
+                    });
+                    uint256 issuance = quote * issuancePercents[r] / 100;
+
+                    // The real swap stops at the issuance price; the input it leaves mints at issuance.
+                    (, uint256 used, uint256 out, uint256 fee) = SwapMath.computeSwapStep({
+                        sqrtPriceCurrentX96: sqrtP,
+                        sqrtPriceTargetX96: JBSwapLib.sqrtPriceLimitFromAmounts({
+                            amountIn: amountIn, minimumAmountOut: issuance, zeroForOne: zeroForOne
+                        }),
+                        liquidity: liquidity,
+                        amountRemaining: -int256(amountIn),
+                        feePips: 10_000
+                    });
+                    uint256 settled = out + issuance * (amountIn - used - fee) / amountIn;
+
+                    (uint256 swapAmountOut, uint256 issuedAmountOut) = JBSwapLib.getExpectedSettlement({
+                        quote: quote,
+                        impact: JBSwapLib.calculateImpact({
+                            amountIn: amountIn, liquidity: liquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
+                        }),
+                        poolFeeBps: 100,
+                        issuanceTokenCount: issuance
+                    });
+                    assertApproxEqRel(swapAmountOut + issuedAmountOut, settled, 1e13, "issuance-limited settlement");
+                }
+            }
+        }
+    }
+
+    /// @notice A pool whose spot rate is no better than issuance takes nothing, so the whole input mints.
+    function test_expectedSettlementPoolNoBetterThanIssuance() public view {
+        (uint256 swapAmountOut, uint256 issuedAmountOut) = JBSwapLib.getExpectedSettlement({
+            quote: 1000e18, impact: 1e16, poolFeeBps: 100, issuanceTokenCount: 1000e18
+        });
+        assertEq(swapAmountOut, 0);
+        assertEq(issuedAmountOut, 1000e18);
+    }
+
+    //*********************************************************************//
     // ----- Fuzz Tests -------------------------------------------------- //
     //*********************************************************************//
 
@@ -246,5 +381,81 @@ contract JBSwapLibTest is Test {
         uint160 limit = JBSwapLib.sqrtPriceLimitFromAmounts(uint256(amountIn), uint256(minOut), zeroForOne);
         assert(limit >= TickMath.MIN_SQRT_PRICE);
         assert(limit <= TickMath.MAX_SQRT_PRICE);
+    }
+
+    /// @notice Fuzz: the expected output never reverts over the whole input domain and never exceeds the quote.
+    function testFuzz_expectedAmountOutBounded(uint256 quote, uint256 impact, uint16 feeBps) public pure {
+        uint256 out = JBSwapLib.getExpectedAmountOut({
+            quote: quote, impact: impact, poolFeeBps: bound(uint256(feeBps), 0, 10_000)
+        });
+        assertLe(out, quote);
+    }
+
+    /// @notice Fuzz: across ticks, liquidity, sizes, directions and issuance rates, the expected settlement tracks a
+    /// real single-range swap limited to the issuance price, in fills that do and do not hit the limit.
+    function testFuzz_expectedSettlementMatchesIssuanceLimitedSwap(
+        int24 tick,
+        uint128 liquidity,
+        uint128 amountIn,
+        uint256 issuancePercent,
+        bool zeroForOne
+    )
+        public
+        view
+    {
+        tick = int24(bound(tick, -200_000, 200_000));
+        liquidity = uint128(bound(liquidity, 1e15, 1e27));
+        amountIn = uint128(bound(amountIn, 1e9, 1e27));
+        issuancePercent = bound(issuancePercent, 10, 99);
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(tick);
+        uint256 quote = JBSwapLib.getQuoteAtTick({
+            tick: tick,
+            baseAmount: amountIn,
+            baseToken: zeroForOne ? address(1) : address(2),
+            quoteToken: zeroForOne ? address(2) : address(1)
+        });
+        // Keep to quotes with enough precision to compare at 0.01%.
+        vm.assume(quote > 1e12);
+        uint256 issuance = quote * issuancePercent / 100;
+
+        (, uint256 used, uint256 out, uint256 fee) = SwapMath.computeSwapStep({
+            sqrtPriceCurrentX96: sqrtP,
+            sqrtPriceTargetX96: JBSwapLib.sqrtPriceLimitFromAmounts({
+                amountIn: amountIn, minimumAmountOut: issuance, zeroForOne: zeroForOne
+            }),
+            liquidity: liquidity,
+            amountRemaining: -int256(uint256(amountIn)),
+            feePips: 10_000
+        });
+        uint256 settled = out + issuance * (amountIn - used - fee) / amountIn;
+
+        (uint256 swapAmountOut, uint256 issuedAmountOut) = JBSwapLib.getExpectedSettlement({
+            quote: quote,
+            impact: JBSwapLib.calculateImpact({
+                amountIn: amountIn, liquidity: liquidity, sqrtP: sqrtP, zeroForOne: zeroForOne
+            }),
+            poolFeeBps: 100,
+            issuanceTokenCount: issuance
+        });
+        assertApproxEqRel(swapAmountOut + issuedAmountOut, settled, 1e14, "issuance-limited settlement");
+    }
+
+    /// @notice Fuzz: the expected settlement never reverts over amounts far past any token supply, and never estimates
+    /// more than the better of the quote and issuance.
+    function testFuzz_expectedSettlementBounded(
+        uint256 quote,
+        uint256 impact,
+        uint16 feeBps,
+        uint256 issuance
+    )
+        public
+        view
+    {
+        quote = bound(quote, 0, 1e50);
+        issuance = bound(issuance, 0, 1e50);
+        (uint256 swapAmountOut, uint256 issuedAmountOut) = JBSwapLib.getExpectedSettlement({
+            quote: quote, impact: impact, poolFeeBps: bound(uint256(feeBps), 0, 10_000), issuanceTokenCount: issuance
+        });
+        assertLe(swapAmountOut + issuedAmountOut, (quote > issuance ? quote : issuance) + 2);
     }
 }
