@@ -95,9 +95,8 @@ library JBSwapLib {
                 tick: arithmeticMeanTick, baseAmount: amountIn, baseToken: baseToken, quoteToken: quoteToken
             });
         } catch {
-            // Oracle hook not available — return zero to force the mint path.
-            // Falling back to spot price is trivially sandwich-attackable. Swaps will
-            // activate once the oracle warms up (~30 min after pool creation).
+            // Oracle hook not available: return zero so the caller treats the oracle as unseeded. A spot fallback here
+            // would be trivially sandwich-attackable; the hook's bounded buy-side bootstrap is the only spot path.
             return (0, 0, 0);
         }
     }
@@ -298,7 +297,8 @@ library JBSwapLib {
     ///         if the execution price would be worse than the minimum acceptable rate.
     /// @dev When `minimumAmountOut == 0`, returns the direction's extreme price bound (no swap-price limit).
     /// @param amountIn The amount of tokens to swap in.
-    /// @param minimumAmountOut The minimum acceptable output (from payer quote or TWAP).
+    /// @param minimumAmountOut The output the whole input must at least reach at the limit rate (a payer quote, a TWAP
+    /// floor, the issuance-rate count or a cash-out's marginal reclaim).
     /// @param zeroForOne True when selling token0 for token1 (price decreases).
     /// @return sqrtPriceLimit The V4-compatible sqrtPriceLimitX96.
     function sqrtPriceLimitFromAmounts(

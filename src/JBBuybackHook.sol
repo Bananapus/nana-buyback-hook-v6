@@ -735,8 +735,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     }
 
     /// @notice Set the V4 pool to use for a given project and terminal token pair, constructing the PoolKey internally.
-    /// @dev Uses address(0) for the hooks field. The hook sorts the project token and terminal token into the correct
-    /// currency order. Pool keys are intentionally immutable once set.
+    /// @dev Uses the configured `oracleHook` for the hooks field. The hook sorts the project token and terminal token
+    /// into the correct currency order. Pool keys are intentionally immutable once set.
     /// @dev Operator-only. Configuring the pool turns on the floor + ceiling arbitrage routing above
     /// for this `(projectId, terminalToken)` pair. Without a configured pool, the hook is a passthrough.
     /// @param projectId The ID of the project to set the pool for.
@@ -1223,7 +1223,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Keep a reference to the token being used by the terminal. Use address(0) for native ETH.
         address terminalToken = context.amount.token == JBConstants.NATIVE_TOKEN ? address(0) : context.amount.token;
 
-        // Keep references to pool diagnostics. If the user provided a quote, honor it directly and skip the TWAP.
+        // Keep references to pool diagnostics. A user-provided quote is the floor; the TWAP is still read for them.
         uint256 rawSwapQuote;
         int24 twapTick;
         uint128 twapLiquidity;
@@ -1232,7 +1232,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool floorCoversSettlement;
         bool poolHasLiquidity = true;
         if (hasUserSpecifiedQuote) {
-            // Only compute poolId from storage when skipping _getQuote (which would return it).
+            // A user-provided quote routes only through a set pool with live liquidity.
             (poolId, poolHasLiquidity) = _liveLiquidityOf({projectId: context.projectId, terminalToken: terminalToken});
         }
 
