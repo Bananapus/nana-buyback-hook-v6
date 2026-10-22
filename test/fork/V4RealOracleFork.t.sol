@@ -50,11 +50,8 @@ import {ForkProjectToken, ForkLiquidityHelper, ForTest_BuybackHook} from "../hel
 /// @notice Test harness that exposes JBSwapLib.getQuoteFromOracle as a public function.
 /// @dev Since JBSwapLib functions are internal, we need a wrapper contract to call them from tests.
 contract OracleQuoteHarness {
-    using StateLibrary for IPoolManager;
-
     /// @notice Expose JBSwapLib.getQuoteFromOracle for direct testing.
     function getQuoteFromOracle(
-        IPoolManager poolManager,
         PoolKey memory key,
         uint32 twapWindow,
         uint128 amountIn,
@@ -65,7 +62,7 @@ contract OracleQuoteHarness {
         view
         returns (uint256 amountOut, int24 arithmeticMeanTick, uint128 harmonicMeanLiquidity)
     {
-        return JBSwapLib.getQuoteFromOracle(poolManager, key, twapWindow, amountIn, baseToken, quoteToken);
+        return JBSwapLib.getQuoteFromOracle(key, twapWindow, amountIn, baseToken, quoteToken);
     }
 }
 
@@ -233,7 +230,6 @@ contract V4RealOracleForkTest is Test {
 
         // Call the library function through the harness.
         (uint256 amountOut, int24 arithmeticMeanTick, uint128 harmonicMeanLiquidity) = quoteHarness.getQuoteFromOracle({
-            poolManager: poolManager,
             key: key,
             twapWindow: twapWindow,
             amountIn: 1 ether,
@@ -396,12 +392,7 @@ contract V4RealOracleForkTest is Test {
 
         // First verify at the library level that harmonicMeanLiquidity is 0.
         (uint256 libAmountOut,, uint128 libHarmonicMeanLiquidity) = quoteHarness.getQuoteFromOracle({
-            poolManager: poolManager,
-            key: key,
-            twapWindow: 300,
-            amountIn: 1 ether,
-            baseToken: address(0),
-            quoteToken: address(projectToken)
+            key: key, twapWindow: 300, amountIn: 1 ether, baseToken: address(0), quoteToken: address(projectToken)
         });
 
         console.log("  Library-level amountOut: %s", _formatEther(libAmountOut));
@@ -484,7 +475,6 @@ contract V4RealOracleForkTest is Test {
         });
 
         (uint256 amountOut5min, int24 meanTick5min, uint128 meanLiq5min) = quoteHarness.getQuoteFromOracle({
-            poolManager: poolManager,
             key: key,
             twapWindow: window5min,
             amountIn: 1 ether,
@@ -514,12 +504,7 @@ contract V4RealOracleForkTest is Test {
         });
 
         (uint256 amountOut2hr, int24 meanTick2hr, uint128 meanLiq2hr) = quoteHarness.getQuoteFromOracle({
-            poolManager: poolManager,
-            key: key,
-            twapWindow: window2hr,
-            amountIn: 1 ether,
-            baseToken: address(0),
-            quoteToken: address(projectToken)
+            key: key, twapWindow: window2hr, amountIn: 1 ether, baseToken: address(0), quoteToken: address(projectToken)
         });
 
         console.log("  2hr TWAP:");
@@ -554,7 +539,6 @@ contract V4RealOracleForkTest is Test {
         });
 
         (uint256 amountOut5minShift, int24 meanTick5minShift,) = quoteHarness.getQuoteFromOracle({
-            poolManager: poolManager,
             key: key,
             twapWindow: window5min,
             amountIn: 1 ether,
@@ -568,12 +552,7 @@ contract V4RealOracleForkTest is Test {
         });
 
         (uint256 amountOut2hrShift, int24 meanTick2hrShift,) = quoteHarness.getQuoteFromOracle({
-            poolManager: poolManager,
-            key: key,
-            twapWindow: window2hr,
-            amountIn: 1 ether,
-            baseToken: address(0),
-            quoteToken: address(projectToken)
+            key: key, twapWindow: window2hr, amountIn: 1 ether, baseToken: address(0), quoteToken: address(projectToken)
         });
 
         console.log("");

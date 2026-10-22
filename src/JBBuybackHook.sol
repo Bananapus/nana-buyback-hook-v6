@@ -287,9 +287,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// (set during `beforeCashOutRecordedWith`), NOT from `context.cashOutCount`. This distinction matters when a
     /// data hook wrapper (e.g. REVDeployer) splits the cash-out into fee and non-fee tranches — the terminal
     /// always passes the original full count in `context.cashOutCount`, but only the non-fee portion should be sold.
-    /// @param context Standard Juicebox cash-out hook context. `hookMetadata` encodes (minimumSwapAmountOut,
-    /// cashOutCountToSell) chosen during `beforeCashOutRecordedWith`, followed by informational sell-side routing
-    /// metadata.
+    /// @param context Standard Juicebox cash-out hook context. `hookMetadata` is the nine-word tuple from
+    /// `beforeCashOutRecordedWith`: the routing floor and count to sell, routing diagnostics, whether the floor was
+    /// the caller's, and the no-quote sale's price limit as an output amount for the whole count.
     function afterCashOutRecordedWith(JBAfterCashOutRecordedContext calldata context) external payable override {
         // Make sure only payment terminals of the project can trigger the sell-side hook.
         if (!DIRECTORY.isTerminalOf({projectId: context.projectId, terminal: IJBTerminal(msg.sender)})) {
@@ -307,19 +307,14 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Decode the sell-side slippage floor and the token count to sell, both chosen during route selection.
         // The cashOutCount from metadata is the count the data hook intended for this swap — it may differ from
         // context.cashOutCount when a wrapper (e.g. REVDeployer) splits tokens into fee and non-fee tranches.
-        uint256 minimumSwapAmountOut;
-        uint256 cashOutCountToSell = context.cashOutCount;
-        bool shouldEnforceMinimumSwapAmountOut;
-        if (context.hookMetadata.length != 0) {
-            if (context.hookMetadata.length >= 256) {
-                (minimumSwapAmountOut, cashOutCountToSell,,,,,, shouldEnforceMinimumSwapAmountOut) = abi.decode(
-                    context.hookMetadata, (uint256, uint256, uint256, int24, uint128, PoolId, uint256, bool)
-                );
-            } else {
-                (minimumSwapAmountOut, cashOutCountToSell) = abi.decode(context.hookMetadata, (uint256, uint256));
-                shouldEnforceMinimumSwapAmountOut = minimumSwapAmountOut != 0;
-            }
-        }
+        (
+            uint256 minimumSwapAmountOut,
+            uint256 cashOutCountToSell,,,,,,
+            bool shouldEnforceMinimumSwapAmountOut,
+            uint256 sellLimitAmountOut
+        ) = abi.decode(
+            context.hookMetadata, (uint256, uint256, uint256, int24, uint128, PoolId, uint256, bool, uint256)
+        );
         // Wrappers can pass a smaller sell count through metadata, but they must never inflate it above
         // what the terminal actually burned in `context.cashOutCount`.
         if (cashOutCountToSell > context.cashOutCount) cashOutCountToSell = context.cashOutCount;
@@ -343,14 +338,17 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint256 actualReceived = IERC20(projectToken).balanceOf(address(this)) - preMintBalance;
 
         // Sell the reminted project tokens for the terminal token using the configured pool direction.
-        (uint256 amountSpent, uint256 amountReceived, bool swapFailed) = _swapExactInput({
-            key: key,
-            amountIn: actualReceived,
-            minimumSwapAmountOut: minimumSwapAmountOut,
-            zeroForOne: projectToken < terminalToken,
-            derivedFloorAmountOut: 0,
-            floorCoversSettlement: false
-        });
+        (uint256 amountSpent, uint256 amountReceived, bool swapFailed) = _swapExactInput(
+            SwapCallbackData({
+                key: key,
+                zeroForOne: projectToken < terminalToken,
+                amountIn: actualReceived,
+                // A no-quote sale stops at the limit chosen during route selection, not at the routing floor.
+                minimumSwapAmountOut: sellLimitAmountOut == 0 ? minimumSwapAmountOut : sellLimitAmountOut,
+                derivedFloorAmountOut: 0,
+                floorCoversSettlement: false
+            })
+        );
 
         // If the pool reverted, return the reminted project tokens to the holder instead of
         // blocking the cash-out entirely. The holder keeps their tokens and can sell manually or retry.
@@ -737,8 +735,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     }
 
     /// @notice Set the V4 pool to use for a given project and terminal token pair, constructing the PoolKey internally.
-    /// @dev Uses address(0) for the hooks field. The hook sorts the project token and terminal token into the correct
-    /// currency order. Pool keys are intentionally immutable once set.
+    /// @dev Uses the configured `oracleHook` for the hooks field. The hook sorts the project token and terminal token
+    /// into the correct currency order. Pool keys are intentionally immutable once set.
     /// @dev Operator-only. Configuring the pool turns on the floor + ceiling arbitrage routing above
     /// for this `(projectId, terminalToken)` pair. Without a configured pool, the hook is a passthrough.
     /// @param projectId The ID of the project to set the pool for.
@@ -870,11 +868,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // Take the output (PoolManager owes us).
         // Use balance-delta accounting to handle fee-on-transfer tokens that deliver less than `outputAmount`.
-        uint256 balanceBeforeTake = _currencyBalanceOf(outputCurrency);
+        uint256 balanceBeforeTake = _terminalTokenBalance(Currency.unwrap(outputCurrency));
 
         poolManager.take({currency: outputCurrency, to: address(this), amount: outputAmount});
 
-        uint256 balanceAfterTake = _currencyBalanceOf(outputCurrency);
+        uint256 balanceAfterTake = _terminalTokenBalance(Currency.unwrap(outputCurrency));
 
         // The actual received amount accounts for any fee-on-transfer deduction.
         uint256 actualOutputAmount = balanceAfterTake - balanceBeforeTake;
@@ -985,6 +983,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             hasUserSpecifiedMinimumSwapAmountOut = minimumSwapAmountOut != 0;
         }
 
+        // Compute the direct protocol reclaim amount for this cash-out request.
+        uint256 directCashOutAmount = _reclaimOf({cashOutCount: context.cashOutCount, context: context});
+
         // Fall back to the protocol cash-out path if the caller forced it via `skip`, if no pool is
         // configured, if no project token is known, or if no project tokens are being cashed out. When the
         // user supplied an explicit minimum, the fallback must still satisfy it — otherwise revert so the
@@ -995,15 +996,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 || context.cashOutCount == 0
         ) {
             if (hasUserSpecifiedMinimumSwapAmountOut) {
-                uint256 fallbackReclaim = JBCashOuts.cashOutFrom({
-                    surplus: context.surplus.value,
-                    cashOutCount: context.cashOutCount,
-                    totalSupply: context.totalSupply,
-                    cashOutTaxRate: context.cashOutTaxRate
-                });
                 // Enforce the user's explicit minimum against the exact net the terminal would pay out.
-                uint256 netFallbackReclaim = _netAfterTerminalFee({amount: fallbackReclaim, context: context});
-                _requireMinimum({amount: netFallbackReclaim, minimum: minimumSwapAmountOut});
+                _requireMinimum({
+                    amount: _netAfterTerminalFee({amount: directCashOutAmount, context: context}),
+                    minimum: minimumSwapAmountOut
+                });
             }
             return (
                 context.cashOutTaxRate,
@@ -1014,42 +1011,57 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             );
         }
 
-        // Compute the direct protocol reclaim amount for this cash-out request.
-        uint256 directCashOutAmount = JBCashOuts.cashOutFrom({
-            surplus: context.surplus.value,
-            cashOutCount: context.cashOutCount,
-            totalSupply: context.totalSupply,
-            cashOutTaxRate: context.cashOutTaxRate
-        });
-
-        // Keep references to pool diagnostics. Explicit minimums skip the TWAP lookup, so diagnostics remain zeroed.
-        uint256 rawSwapQuote;
-        int24 twapTick;
-        uint128 twapLiquidity;
-        PoolId poolId;
-        bool poolHasLiquidity = true;
-        if (hasUserSpecifiedMinimumSwapAmountOut) {
-            // Only compute poolId from storage when skipping _getQuote (which would return it).
-            poolId = _poolKeyOf[context.projectId][terminalToken].toId();
-            poolHasLiquidity = poolManager.getLiquidity(poolId) != 0;
-        } else {
-            (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId,,) = _getQuote({
-                projectId: context.projectId,
-                amountIn: context.cashOutCount,
-                baseToken: projectToken,
-                quoteToken: terminalToken,
-                terminalToken: terminalToken,
-                payRoute: false,
-                issuanceTokenCount: 0
-            });
-        }
-
         // Compute the executable net direct reclaim under the active fee semantics. The terminal's
         // effective payout depends on the cash-out tax rate, whether the beneficiary is feeless, and —
         // in the zero-tax branch — the terminal's `feeFreeSurplusOf` counter (a fee applies only up
         // to that surplus). Reading it from the selected terminal gives an exact net, so the
         // noop-vs-AMM comparison and any user-specified floor can both rely on the same number.
         uint256 netDirectCashOutAmount = _netAfterTerminalFee({amount: directCashOutAmount, context: context});
+
+        // Keep references to pool diagnostics. Explicit minimums skip the TWAP lookup, so diagnostics remain zeroed.
+        uint256 rawSwapQuote;
+        int24 twapTick;
+        uint128 twapLiquidity;
+        PoolId poolId;
+        bool floorCoversSettlement;
+        uint256 sellLimitAmountOut;
+        bool poolHasLiquidity = true;
+        if (hasUserSpecifiedMinimumSwapAmountOut) {
+            // Only compute poolId from storage when skipping _getQuote (which would return it).
+            (poolId, poolHasLiquidity) = _liveLiquidityOf({projectId: context.projectId, terminalToken: terminalToken});
+        } else {
+            (rawSwapQuote, minimumSwapAmountOut, twapTick, twapLiquidity, poolId,, floorCoversSettlement) = _getQuote({
+                projectId: context.projectId,
+                amountIn: context.cashOutCount,
+                baseToken: projectToken,
+                quoteToken: terminalToken,
+                terminalToken: terminalToken,
+                payRoute: false,
+                issuanceTokenCount: netDirectCashOutAmount
+            });
+
+            // An expected-output floor only chooses the route: that sale stops at the whole count's marginal net
+            // reclaim rate. The reclaim curve is quadratic in the count, so half of reclaiming twice the count is the
+            // count at that rate. Reclaim is convex, so each token sold beats what reclaiming it would add, and the
+            // proceeds plus a later reclaim of any unsold tokens do not fall below reclaiming them all. Past half the
+            // supply the curve caps at the surplus and would understate the rate, so those cash-outs reclaim. A
+            // stale TWAP can also price a sale whose limit spot has already passed, so that sale could not start;
+            // those cash-outs reclaim too.
+            if (floorCoversSettlement) {
+                sellLimitAmountOut = _netAfterTerminalFee({
+                    amount: _reclaimOf({cashOutCount: 2 * context.cashOutCount, context: context}) / 2, context: context
+                });
+                (uint160 spotSqrtPrice,,,) = poolManager.getSlot0(poolId);
+                bool zeroForOne = projectToken < terminalToken;
+                uint160 limitSqrtPrice = JBSwapLib.sqrtPriceLimitFromAmounts({
+                    amountIn: context.cashOutCount, minimumAmountOut: sellLimitAmountOut, zeroForOne: zeroForOne
+                });
+                if (
+                    2 * context.cashOutCount > context.totalSupply
+                        || (zeroForOne ? spotSqrtPrice <= limitSqrtPrice : spotSqrtPrice >= limitSqrtPrice)
+                ) sellLimitAmountOut = type(uint256).max;
+            }
+        }
 
         // With no live pool liquidity, the direct terminal path is the only executable settlement route. If the user
         // explicitly required more than that path can net out, revert instead of silently ignoring their floor.
@@ -1058,8 +1070,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
 
         // The market route can only be selected when the pool has live liquidity and a non-zero quote/minimum. A zero
-        // market minimum means there is no executable AMM floor, so routing must stay on the terminal path.
-        bool marketCanSettle = poolHasLiquidity && minimumSwapAmountOut != 0;
+        // market minimum means there is no executable AMM floor, so routing must stay on the terminal path. An
+        // expected-output floor must also beat the count at the sale's limit rate, or the sale could not start.
+        bool marketCanSettle = poolHasLiquidity && minimumSwapAmountOut > sellLimitAmountOut;
 
         // Treat the direct path as settleable by default. The local-surplus read is only needed when direct would
         // otherwise beat a live AMM route.
@@ -1091,7 +1104,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 twapLiquidity,
                 poolId,
                 rawSwapQuote,
-                hasUserSpecifiedMinimumSwapAmountOut
+                hasUserSpecifiedMinimumSwapAmountOut,
+                sellLimitAmountOut
             )
         });
 
@@ -1209,7 +1223,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         // Keep a reference to the token being used by the terminal. Use address(0) for native ETH.
         address terminalToken = context.amount.token == JBConstants.NATIVE_TOKEN ? address(0) : context.amount.token;
 
-        // Keep references to pool diagnostics. If the user provided a quote, honor it directly and skip the TWAP.
+        // Keep references to pool diagnostics. A user-provided quote is the floor; the TWAP is still read for them.
         uint256 rawSwapQuote;
         int24 twapTick;
         uint128 twapLiquidity;
@@ -1218,9 +1232,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool floorCoversSettlement;
         bool poolHasLiquidity = true;
         if (hasUserSpecifiedQuote) {
-            // Only compute poolId from storage when skipping _getQuote (which would return it).
-            poolId = _poolKeyOf[context.projectId][terminalToken].toId();
-            poolHasLiquidity = _poolIsSet[context.projectId][terminalToken] && poolManager.getLiquidity(poolId) != 0;
+            // A user-provided quote routes only through a set pool with live liquidity.
+            (poolId, poolHasLiquidity) = _liveLiquidityOf({projectId: context.projectId, terminalToken: terminalToken});
         }
 
         // A user quote still reads the TWAP for diagnostics, without the cold-start spot fallback, and keeps its own
@@ -1491,14 +1504,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         PoolKey memory key = _poolKeyOf[context.projectId][normalizedTerminalToken];
 
         // Try the V4 unlock/callback swap. On failure, fall back to minting.
-        (, amountReceived, swapFailed) = _swapExactInput({
-            key: key,
-            amountIn: amountToSwapWith,
-            minimumSwapAmountOut: minimumSwapAmountOut,
-            zeroForOne: !projectTokenIs0,
-            derivedFloorAmountOut: derivedFloorAmountOut,
-            floorCoversSettlement: floorCoversSettlement
-        });
+        (, amountReceived, swapFailed) = _swapExactInput(
+            SwapCallbackData({
+                key: key,
+                zeroForOne: !projectTokenIs0,
+                amountIn: amountToSwapWith,
+                minimumSwapAmountOut: minimumSwapAmountOut,
+                derivedFloorAmountOut: derivedFloorAmountOut,
+                floorCoversSettlement: floorCoversSettlement
+            })
+        );
         if (swapFailed) return (0, true);
 
         emit Swap({
@@ -1514,42 +1529,18 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @dev Encodes the swap parameters into callback data, hands control to the PoolManager through `unlock(...)`,
     /// and decodes the amount received from the callback result. If the pool reverts, returns `swapFailed = true`
     /// instead of propagating the revert, allowing the caller to implement a fallback path.
-    /// @param key The V4 pool key to swap against.
-    /// @param amountIn The exact amount of input tokens to sell.
-    /// @param minimumSwapAmountOut The minimum acceptable amount of output tokens.
-    /// @param zeroForOne Whether the swap should move from `currency0` to `currency1`.
-    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock.
-    /// 0 when no in-unlock floor applies (explicit caller minima, and sell-side swaps whose derived floors soft-land
-    /// through the caller's `shouldEnforceMinimumSwapAmountOut` flag).
-    /// @param floorCoversSettlement Whether the derived floor covers the whole settlement, not the consumed input.
+    /// @param params The swap to execute. Its `derivedFloorAmountOut` is 0 when no in-unlock floor applies (explicit
+    /// caller minima, and sell-side swaps whose derived floors soft-land through the caller's
+    /// `shouldEnforceMinimumSwapAmountOut` flag).
     /// @return amountSpent The amount of input tokens actually consumed by the swap.
     /// @return amountReceived The amount of output tokens received from the swap.
     /// @return swapFailed True if the swap reverted and was caught by try/catch.
-    function _swapExactInput(
-        PoolKey memory key,
-        uint256 amountIn,
-        uint256 minimumSwapAmountOut,
-        bool zeroForOne,
-        uint256 derivedFloorAmountOut,
-        bool floorCoversSettlement
-    )
+    function _swapExactInput(SwapCallbackData memory params)
         internal
         returns (uint256 amountSpent, uint256 amountReceived, bool swapFailed)
     {
-        // Encode the swap parameters so `unlockCallback(...)` can execute the swap after the PoolManager unlocks.
-        bytes memory callbackData = abi.encode(
-            SwapCallbackData({
-                key: key,
-                zeroForOne: zeroForOne,
-                amountIn: amountIn,
-                minimumSwapAmountOut: minimumSwapAmountOut,
-                derivedFloorAmountOut: derivedFloorAmountOut,
-                floorCoversSettlement: floorCoversSettlement
-            })
-        );
-
         // Try the V4 unlock/callback swap. On failure, signal the caller to handle the fallback.
-        try poolManager.unlock(callbackData) returns (bytes memory result) {
+        try poolManager.unlock(abi.encode(params)) returns (bytes memory result) {
             (amountSpent, amountReceived) = abi.decode(result, (uint256, uint256));
         } catch {
             return (0, 0, true);
@@ -1621,16 +1612,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         return super._contextSuffixLength();
     }
 
-    /// @notice This contract's balance of a V4 currency (native or ERC-20).
-    /// @param currency The V4 currency to read the balance of.
-    /// @return The balance held by this contract.
-    function _currencyBalanceOf(Currency currency) internal view returns (uint256) {
-        return
-            currency.isAddressZero()
-                ? address(this).balance
-                : IERC20(Currency.unwrap(currency)).balanceOf(address(this));
-    }
-
     /// @notice Whether the selected terminal can settle the direct protocol reclaim used in route comparison.
     /// @dev Cash-out pricing can use aggregate surplus, but the selected terminal can only pay from its local surplus.
     /// If the direct path cannot settle locally, a live AMM route must be allowed to win even when the aggregate
@@ -1683,9 +1664,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param terminalToken The terminal token address (already normalized: address(0) for native). Passed by the
     /// caller to avoid a redundant `projectTokenOf` SLOAD that would otherwise be needed to derive it.
     /// @param payRoute Whether this quote decides a pay's route. Only a pay route may use the bounded spot fallback
-    /// when no TWAP exists, or the expected-output floor.
-    /// @param issuanceTokenCount For a pay route, the tokens direct issuance gives for `amountIn`. When the sigmoid
-    /// floor does not beat it, the expected swap output less `_EXPECTED_OUT_SLIPPAGE` becomes the floor if that does.
+    /// when no TWAP exists.
+    /// @param issuanceTokenCount What the direct route gives for `amountIn`: issuance for a pay route, net reclaim for
+    /// a cash-out. When the sigmoid floor does not beat it, the expected swap output less `_EXPECTED_OUT_SLIPPAGE`
+    /// becomes the floor if that does.
     /// @return rawAmountOut The raw oracle quote before slippage adjustment. For a TWAP-priced pay route, the expected
     /// settlement instead: the swap leg up to the issuance-rate price limit plus issuance for the input it leaves.
     /// @return amountOut The minimum number of tokens to receive after slippage adjustment.
@@ -1693,8 +1675,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @return twapLiquidity The harmonic mean liquidity from the TWAP oracle.
     /// @return poolId The V4 pool identifier used for the quote.
     /// @return oracleUnseeded True when the pool has live liquidity but no usable TWAP liquidity.
-    /// @return floorCoversSettlement True when `amountOut` is the expected-output floor, which the unlock checks
-    /// against the whole settlement instead of pro-rating it by consumed input.
+    /// @return floorCoversSettlement True when `amountOut` is the expected-output floor. A pay's unlock checks it
+    /// against the whole settlement instead of pro-rating it by consumed input; a cash-out only routes on it.
     function _getQuote(
         uint256 projectId,
         uint256 amountIn,
@@ -1733,9 +1715,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint128 currentLiquidity = poolManager.getLiquidity(poolId);
         if (currentLiquidity == 0) return (0, 0, 0, 0, poolId, false, false);
 
-        // Query the oracle hook (or spot if twapWindow is 0).
+        // Query the oracle hook.
         (amountOut, twapTick, twapLiquidity) = JBSwapLib.getQuoteFromOracle({
-            poolManager: poolManager,
             key: key,
             // Safe: twapWindow is validated <= MAX_TWAP_WINDOW (2 days = 172800), fits in uint32.
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -1858,6 +1839,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             }
         }
 
+        // The sigmoid tolerance grows far faster than real impact, so in a thin pool its floor can sit under the direct
+        // route (issuance for a pay, net reclaim for a cash-out) while the pool still beats it. Then floor the swap at
+        // the full-input expected output less a small buffer. The swap routes only if the floor beats the direct route.
+        // Explicit-quote pays read this quote (of the terminal token) only for diagnostics, so they keep the sigmoid.
+        if ((payRoute || baseToken != terminalToken) && amountOut <= issuanceTokenCount) {
+            floorCoversSettlement = true;
+            amountOut = JBSwapLib.getExpectedAmountOut({quote: rawAmountOut, impact: impact, poolFeeBps: poolFeeBps})
+                / TWAP_SLIPPAGE_DENOMINATOR * (TWAP_SLIPPAGE_DENOMINATOR - _EXPECTED_OUT_SLIPPAGE);
+        }
+
         // A pay route reports its expected settlement as the quote, so route scorers and previews compare what the
         // pay settles to: the swap leg up to the issuance-rate price limit, plus issuance for the input it leaves.
         if (payRoute) {
@@ -1865,21 +1856,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 quote: rawAmountOut, impact: impact, poolFeeBps: poolFeeBps, issuanceTokenCount: issuanceTokenCount
             });
 
-            // The sigmoid tolerance grows far faster than real impact, so in a thin pool its floor can sit under
-            // direct issuance while the pool still beats it. Then floor the swap at the full-input expected output
-            // less a small buffer. A pay larger than the pool can take above the issuance rate has a full-input output
-            // under issuance, so floor it at its expected settlement instead, with the buffer on the swap leg. That
-            // floor is the tighter of the two, so it applies only where the looser one would not route. The swap
-            // routes only if the floor beats issuance, and a miss mints the whole pay.
-            if (amountOut <= issuanceTokenCount) {
-                floorCoversSettlement = true;
-                amountOut = JBSwapLib.getExpectedAmountOut({
-                        quote: rawAmountOut, impact: impact, poolFeeBps: poolFeeBps
-                    }) / TWAP_SLIPPAGE_DENOMINATOR * (TWAP_SLIPPAGE_DENOMINATOR - _EXPECTED_OUT_SLIPPAGE);
-                if (amountOut <= issuanceTokenCount) {
-                    amountOut = issuedAmountOut + swapAmountOut / TWAP_SLIPPAGE_DENOMINATOR
-                        * (TWAP_SLIPPAGE_DENOMINATOR - _EXPECTED_OUT_SLIPPAGE);
-                }
+            // A pay larger than the pool can take above the issuance rate has a full-input output under issuance, so
+            // floor it at its expected settlement instead, with the buffer on the swap leg. That floor is the tighter
+            // of the two, so it applies only where the looser one would not route, and a miss mints the whole pay.
+            if (floorCoversSettlement && amountOut <= issuanceTokenCount) {
+                amountOut = issuedAmountOut + swapAmountOut / TWAP_SLIPPAGE_DENOMINATOR
+                    * (TWAP_SLIPPAGE_DENOMINATOR - _EXPECTED_OUT_SLIPPAGE);
             }
 
             rawAmountOut = swapAmountOut + issuedAmountOut;
@@ -1887,6 +1869,23 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
         // With no floor, report no quote, as routing and preview consumers read a zero quote as no route.
         if (amountOut == 0) rawAmountOut = 0;
+    }
+
+    /// @notice A pair's pool ID, and whether the pool is set and has live in-range liquidity.
+    /// @param projectId The ID of the project.
+    /// @param terminalToken The terminal token, normalized to address(0) for native.
+    /// @return poolId The pool's ID.
+    /// @return hasLiquidity Whether the pool is set and has live in-range liquidity.
+    function _liveLiquidityOf(
+        uint256 projectId,
+        address terminalToken
+    )
+        internal
+        view
+        returns (PoolId poolId, bool hasLiquidity)
+    {
+        poolId = _poolKeyOf[projectId][terminalToken].toId();
+        hasLiquidity = _poolIsSet[projectId][terminalToken] && poolManager.getLiquidity(poolId) != 0;
     }
 
     /// @notice The calldata. Preferred to use over `msg.data`.
@@ -1932,6 +1931,26 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         return amount - JBFees.standardFeeAmountFrom(feeBase);
     }
 
+    /// @notice What the terminal's bonding curve reclaims for a count under this cash-out's surplus, supply and tax.
+    /// @param cashOutCount The number of tokens to price.
+    /// @param context The before-cashout context the data hook is processing.
+    /// @return The gross reclaim before any terminal fee.
+    function _reclaimOf(
+        uint256 cashOutCount,
+        JBBeforeCashOutRecordedContext calldata context
+    )
+        internal
+        pure
+        returns (uint256)
+    {
+        return JBCashOuts.cashOutFrom({
+            surplus: context.surplus.value,
+            cashOutCount: cashOutCount,
+            totalSupply: context.totalSupply,
+            cashOutTaxRate: context.cashOutTaxRate
+        });
+    }
+
     /// @notice Reverts when a settled amount falls short of a caller-specified minimum.
     /// @dev A zero minimum is "no floor". One revert site for every explicit-minimum check keeps the error encoding
     /// out of the bytecode eight times.
@@ -1943,10 +1962,12 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         }
     }
 
-    /// @notice Returns this contract's balance of the given terminal token.
-    /// @param token The terminal token address (NATIVE_TOKEN for ETH).
+    /// @notice Returns this contract's balance of the given token.
+    /// @param token The token address: NATIVE_TOKEN for ETH as a terminal token, or address(0) as a V4 currency.
     /// @return balance The current balance held by this contract.
     function _terminalTokenBalance(address token) internal view returns (uint256 balance) {
-        return token == JBConstants.NATIVE_TOKEN ? address(this).balance : IERC20(token).balanceOf(address(this));
+        return token == JBConstants.NATIVE_TOKEN || token == address(0)
+            ? address(this).balance
+            : IERC20(token).balanceOf(address(this));
     }
 }

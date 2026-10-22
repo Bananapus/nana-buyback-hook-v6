@@ -297,7 +297,6 @@ contract V4GeomeanSlippageForkTest is Test {
 
             // Query the oracle via JBSwapLib.
             (uint256 amountOut, int24 meanTick, uint128 meanLiquidity) = JBSwapLib.getQuoteFromOracle(
-                poolManager,
                 key,
                 twapWindows[i],
                 1 ether,
@@ -343,9 +342,8 @@ contract V4GeomeanSlippageForkTest is Test {
                 (uint256 slippage,) = _getSlippageForSwap(key, orders[o]);
 
                 // Get the TWAP quote as the minimum baseline.
-                (uint256 twapMinimum,,) = JBSwapLib.getQuoteFromOracle(
-                    poolManager, key, 5 minutes, uint128(orders[o]), address(0), address(projectToken)
-                );
+                (uint256 twapMinimum,,) =
+                    JBSwapLib.getQuoteFromOracle(key, 5 minutes, uint128(orders[o]), address(0), address(projectToken));
 
                 uint256 adjustedMinimum =
                     twapMinimum * (JBSwapLib._SLIPPAGE_DENOMINATOR - slippage) / JBSwapLib._SLIPPAGE_DENOMINATOR;

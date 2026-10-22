@@ -201,7 +201,17 @@ contract SellSwapFallback is Test {
             }),
             cashOutTaxRate: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(minimumSwapAmountOut, cashOutCountToSell),
+            hookMetadata: abi.encode(
+                minimumSwapAmountOut,
+                cashOutCountToSell,
+                uint256(0),
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                minimumSwapAmountOut != 0,
+                uint256(0)
+            ),
             cashOutMetadata: ""
         });
     }
@@ -366,7 +376,9 @@ contract SellSwapFallback is Test {
             }),
             cashOutTaxRate: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(uint256(0), cashOutCount),
+            hookMetadata: abi.encode(
+                uint256(0), cashOutCount, uint256(0), int24(0), uint128(0), bytes32(0), uint256(0), false, uint256(0)
+            ),
             cashOutMetadata: ""
         });
 

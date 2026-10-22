@@ -218,7 +218,8 @@ contract SellSidePartialFillDerivedFloor is Test {
             uint128(0),
             PoolId.wrap(bytes32(0)),
             uint256(0),
-            shouldEnforceMinimumSwapAmountOut
+            shouldEnforceMinimumSwapAmountOut,
+            uint256(0)
         );
     }
 
