@@ -136,6 +136,12 @@ only accepts calls from a project terminal, but that check alone does not prove 
 hook that wraps this one must forward its full 18-word spec unchanged. Off-chain decoders that require exactly 17 words
 must accept 18.
 
+Sell-side metadata is 288 bytes from 1.5.0 (256 before). The appended ninth word, `sellLimitAmountOut`, is the
+no-quote sale's price limit as an output amount for the whole count: half the net reclaim of twice the count, the count
+at its marginal reclaim rate. It is set when the expected-output floor chose the route (0 otherwise, so the sale uses
+`minimumSwapAmountOut`). `minimumSwapAmountOut` stays the routing floor that clients turn into an explicit minimum.
+`afterCashOutRecordedWith` requires all nine words, so a wrapper must forward the full spec unchanged.
+
 For a pay with no caller quote priced from the TWAP, `rawSwapQuote` is the pay's expected settlement: the swap leg up to
 the issuance-rate price limit plus issuance for the input it leaves. It counts gross project tokens, or beneficiary tokens
 when the payer sets `skipSplits` (the leftover's reserved share is then left out). The model rounds a quote under 10,000

@@ -317,8 +317,8 @@ contract CashOutFloorFork is Test {
     }
 
     /// @dev The attacker's best front-run from 1/64 to 8x the cash-out, with each hook. Under this source the victim
-    /// keeps at least what the deployed hook's victim keeps under its own best attack, except one thin-pool cell, and
-    /// never falls more than the second token tranche below reclaiming everything.
+    /// keeps at least what the deployed hook's victim keeps under its own best attack, and never falls more than the
+    /// second token tranche below reclaiming everything.
     function test_cashOutSandwichBestResponse_project7() public {
         _sandwichSearch(7);
     }
@@ -364,12 +364,7 @@ contract CashOutFloorFork is Test {
                     continue;
                 }
                 assertGe(victimAtBest, reclaim * 974 / 1000, "at most the second tranche below reclaim");
-                // Accepted: project 13's 400-token cash-out after a 25-token front-run keeps 1.2% less than the
-                // deployed hook gives (it reclaims, and no front-run pays against it), because the returned tokens
-                // pay the second tranche.
-                if (victimAtBest < deployedVictim) {
-                    assertTrue(pid == 13 && sizes[i] == 400e18, "attacked below the deployed hook");
-                }
+                assertGe(victimAtBest, deployedVictim, "attacked at or above the deployed hook's attacked victim");
             }
         }
     }
