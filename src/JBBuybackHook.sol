@@ -1466,11 +1466,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param minimumSwapAmountOut The token count used to derive the swap's price limit via
     /// `JBSwapLib.sqrtPriceLimitFromAmounts`. When set to the issuance-rate equivalent (`tokenCountWithoutHook`),
     /// the swap fills only while the pool offers a better rate than minting.
-    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock on the whole settlement.
+    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock.
     /// A miss unwinds the swap (caught below) so the payment falls back to minting. 0 when the caller
     /// supplied an explicit minimum, which is enforced on the combined output in `afterPayRecordedWith` instead.
-    /// @param floorCoversSettlement Whether the derived floor covers the whole settlement instead of the consumed
-    /// input. @return amountReceived The amount of project tokens received from the swap.
+    /// @param floorCoversSettlement Whether the derived floor covers the whole settlement, not the consumed input.
+    /// @return amountReceived The amount of project tokens received from the swap.
     /// @return swapFailed True if the swap reverted and was caught by try/catch (triggers mint fallback).
     function _swap(
         JBAfterPayRecordedContext calldata context,
@@ -1519,11 +1519,11 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @param amountIn The exact amount of input tokens to sell.
     /// @param minimumSwapAmountOut The minimum acceptable amount of output tokens.
     /// @param zeroForOne Whether the swap should move from `currency0` to `currency1`.
-    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock on the whole settlement.
+    /// @param derivedFloorAmountOut The oracle-derived floor enforced inside the unlock.
     /// 0 when no in-unlock floor applies (explicit caller minima, and sell-side swaps whose derived floors soft-land
     /// through the caller's `shouldEnforceMinimumSwapAmountOut` flag).
-    /// @param floorCoversSettlement Whether the derived floor covers the whole settlement instead of the consumed
-    /// input. @return amountSpent The amount of input tokens actually consumed by the swap.
+    /// @param floorCoversSettlement Whether the derived floor covers the whole settlement, not the consumed input.
+    /// @return amountSpent The amount of input tokens actually consumed by the swap.
     /// @return amountReceived The amount of output tokens received from the swap.
     /// @return swapFailed True if the swap reverted and was caught by try/catch.
     function _swapExactInput(
