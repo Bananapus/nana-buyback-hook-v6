@@ -138,7 +138,7 @@ For a pay with no caller quote priced from the TWAP, `rawSwapQuote` is the pay's
 the issuance-rate price limit plus issuance for the input it leaves. It counts gross project tokens, or beneficiary tokens
 when the payer sets `skipSplits` (the leftover's reserved share is then left out). The model rounds a quote under 10,000
 raw units to zero, so dust pays report no settlement. Route scorers and
-previews that read `max(rawSwapQuote, minimumSwapAmountOut)` therefore compare what the pay settles to. For cash-outs,
+previews that read `max(rawSwapQuote, minimumSwapAmountOut)` therefore compare what the pay settles to (or the sigmoid floor, in the rare case it is higher). For cash-outs,
 explicit-quote pays and the cold-start bootstrap quote it stays the raw oracle quote. The settlement uses one liquidity
 range at the lesser of current and TWAP liquidity, so it can misrank routes when liquidity deepens within the move
 (about 8.8% in the worst case found). A router terminal binds one buyback hook address, so it must be redeployed with
