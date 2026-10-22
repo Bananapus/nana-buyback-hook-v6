@@ -231,7 +231,17 @@ contract FOTProjectTokenTest is Test {
             }),
             cashOutTaxRate: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(minimumSwapAmountOut, cashOutCountToSell),
+            hookMetadata: abi.encode(
+                minimumSwapAmountOut,
+                cashOutCountToSell,
+                uint256(0),
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                minimumSwapAmountOut != 0,
+                uint256(0)
+            ),
             cashOutMetadata: ""
         });
     }

@@ -203,7 +203,17 @@ contract CashOutConsumedInputResidue is Test {
             }),
             cashOutTaxRate: 0,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(uint256(0), cashOutCountToSell),
+            hookMetadata: abi.encode(
+                uint256(0),
+                cashOutCountToSell,
+                uint256(0),
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                false,
+                uint256(0)
+            ),
             cashOutMetadata: ""
         });
 
