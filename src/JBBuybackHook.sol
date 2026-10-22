@@ -1239,6 +1239,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                     issuanceTokenCount: tokenCountWithoutHook
                 });
             if (!hasUserSpecifiedQuote) minimumSwapAmountOut = quotedMinimum;
+
+            // A same-terminal split forwards the hook only its post-fee amount, which a floor this close to issuance
+            // may not cover, so those pays keep the sigmoid route and mint when it does not beat issuance.
+            if (floorCoversSettlement && context.payer == context.terminal) minimumSwapAmountOut = 0;
         }
 
         uint256 minimumBeneficiaryTokenCount;

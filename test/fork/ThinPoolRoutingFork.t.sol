@@ -183,11 +183,34 @@ contract ThinPoolRoutingFork is Test {
         view
         returns (uint256 raw)
     {
+        bytes memory word =
+            _spec({
+            pid: pid, amount: amount, weight: weight, reservedPercent: reservedPercent, metadata: metadata, payer: PAYER
+        }).metadata;
+        // The raw quote is the 14th word of the spec metadata.
+        assembly {
+            raw := mload(add(word, mul(14, 32)))
+        }
+    }
+
+    /// @dev The hook spec for a pay from `payer`.
+    function _spec(
+        uint256 pid,
+        uint256 amount,
+        uint256 weight,
+        uint256 reservedPercent,
+        bytes memory metadata,
+        address payer
+    )
+        internal
+        view
+        returns (JBPayHookSpecification memory)
+    {
         (, JBPayHookSpecification[] memory specs) = JBBuybackHook(payable(HOOK))
             .beforePayRecordedWith(
                 JBBeforePayRecordedContext({
                 terminal: address(TERMINAL),
-                payer: PAYER,
+                payer: payer,
                 amount: JBTokenAmount({
                 token: JBConstants.NATIVE_TOKEN,
                 decimals: 18,
@@ -202,11 +225,7 @@ contract ThinPoolRoutingFork is Test {
                 metadata: metadata
             })
             );
-        bytes memory word = specs[0].metadata;
-        // The raw quote is the 14th word of the spec metadata.
-        assembly {
-            raw := mload(add(word, mul(14, 32)))
-        }
+        return specs[0];
     }
 
     /// @dev The raw quote word in the hook spec, for a pay with an explicit quote.
@@ -265,6 +284,19 @@ contract ThinPoolRoutingFork is Test {
             emit log_named_decimal_uint("payer tokens", settled, 18);
             assertApproxEqRel(far ? raw * 6200 / 10_000 : raw, settled, 2e14, "quote matches settlement");
         }
+    }
+
+    /// @dev A same-terminal split forwards the hook only its post-fee amount, so the reported pay arriving as one
+    /// mints, as it does on the deployed hook, while the same pay from an outside payer routes to the pool.
+    function test_sameTerminalSplit_keepsTheSigmoidRoute() public {
+        _upgrade();
+        JBPayHookSpecification memory outside =
+            _spec({pid: THIN, amount: TX_AMOUNT, weight: 50_000e18, reservedPercent: 0, metadata: "", payer: PAYER});
+        JBPayHookSpecification memory split = _spec({
+            pid: THIN, amount: TX_AMOUNT, weight: 50_000e18, reservedPercent: 0, metadata: "", payer: address(TERMINAL)
+        });
+        assertFalse(outside.noop, "outside pay routes");
+        assertTrue(split.noop, "split pay mints");
     }
 
     /// @dev A pay larger than the pool can take above the issuance rate, right after a small buy moved the pool, keeps

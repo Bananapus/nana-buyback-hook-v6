@@ -134,8 +134,10 @@ Buy-side metadata is 576 bytes from 1.5.0 (544 before). `floorCoversSettlement`,
 pro-rating it; `afterPayRecordedWith` reads a missing 18th word as false, so 17-word metadata keeps the pro-rated rule.
 Decoders that require exactly 17 words must accept 18.
 
-For a pay with no caller quote priced from the TWAP, `rawSwapQuote` is the pay's expected settlement in gross project
-tokens: the swap leg up to the issuance-rate price limit plus issuance for the input it leaves. Route scorers and
+For a pay with no caller quote priced from the TWAP, `rawSwapQuote` is the pay's expected settlement: the swap leg up to
+the issuance-rate price limit plus issuance for the input it leaves. It counts gross project tokens, or beneficiary tokens
+when the payer sets `skipSplits` (the leftover's reserved share is then left out). The model rounds a quote under 10,000
+raw units to zero, so dust pays report no settlement. Route scorers and
 previews that read `max(rawSwapQuote, minimumSwapAmountOut)` therefore compare what the pay settles to. For cash-outs,
 explicit-quote pays and the cold-start bootstrap quote it stays the raw oracle quote. The settlement uses one liquidity
 range at the lesser of current and TWAP liquidity, so it can misrank routes when liquidity deepens within the move
