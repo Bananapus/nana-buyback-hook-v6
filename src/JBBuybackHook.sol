@@ -1737,9 +1737,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         uint128 currentLiquidity = poolManager.getLiquidity(poolId);
         if (currentLiquidity == 0) return (0, 0, 0, 0, poolId, false, false);
 
-        // Query the oracle hook (or spot if twapWindow is 0).
+        // Query the oracle hook.
         (amountOut, twapTick, twapLiquidity) = JBSwapLib.getQuoteFromOracle({
-            poolManager: poolManager,
             key: key,
             // Safe: twapWindow is validated <= MAX_TWAP_WINDOW (2 days = 172800), fits in uint32.
             // forge-lint: disable-next-line(unsafe-typecast)
