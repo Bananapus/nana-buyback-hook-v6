@@ -94,11 +94,13 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Thrown when attempting to set a pool for a project/terminal token pair that already has one.
     error JBBuybackHook_PoolAlreadySet(PoolId poolId);
 
+    /// @notice Thrown when the provided PoolKey's hook is not the configured oracle hook.
+    error JBBuybackHook_PoolHookMismatch(address hooks);
+
     /// @notice Thrown when the pool is initialized at a price other than the one the caller expected.
     error JBBuybackHook_PoolInitializedAtWrongPrice(uint160 actualSqrtPriceX96, uint160 expectedSqrtPriceX96);
 
     /// @notice Thrown when the provided PoolKey does not contain the project token and terminal token pair.
-    error JBBuybackHook_PoolHookMismatch(address hooks);
     error JBBuybackHook_PoolKeyCurrenciesMismatch();
 
     /// @notice Thrown when the pool has not been initialized in the Uniswap V4 PoolManager.
@@ -1737,8 +1739,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool zeroForOne = baseToken < quoteToken;
 
         // If there's no TWAP liquidity data, the buy side may use a tightly bounded bootstrap quote. Prefer a valid
-        // oracle tick when one exists; raw slot0 is only used for the configured oracle hook when no oracle quote is
-        // available. Sell-side quotes stay TWAP-only.
+        // oracle tick when one exists; raw slot0 is only used when no oracle quote is available. Sell-side quotes stay
+        // TWAP-only.
         if (twapLiquidity == 0) {
             // Surface the unseeded-oracle state even when guardrails reject routing, so preview clients can explain why
             // the hook minted instead of swapping.
@@ -1747,9 +1749,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // Cash-outs and explicit diagnostic lookups must not use spot pricing, because spot is manipulable inside
             // one block and is only acceptable for the bounded buy-side bootstrap path.
             if (!payRoute) return (0, 0, twapTick, 0, poolId, oracleUnseeded, false);
-
-            // Raw slot0 is only trusted for pools using this hook's configured oracle hook; an arbitrary pool hook can
-            // keep TWAP liquidity at zero forever and would otherwise make spot routing a permanent mode.
 
             // Slot0 supplies the fallback spot tick and the live LP fee. The LP fee is dynamic for some V4 pools, so
             // the pool key's fee field is not sufficient for this guardrail.
