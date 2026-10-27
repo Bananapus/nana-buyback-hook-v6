@@ -313,7 +313,8 @@ contract TestBuybackFOT is Test {
                 uint256(0),
                 false, // oracleUnseeded
                 false, // skipSplits
-                uint256(0) // reservedPercent
+                uint256(0), // reservedPercent
+                false // floorCoversSettlement
             ),
             payerMetadata: ""
         });
