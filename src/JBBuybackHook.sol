@@ -694,10 +694,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @notice Set the V4 pool to use for a given project and terminal token pair.
     /// @dev Pool keys are intentionally immutable once set. This prevents manipulation of swap routing
     /// after a project's buyback hook is configured.
-    /// @dev WARNING: The `poolKey.hooks` field is NOT validated. A malicious or buggy V4 hook address in the pool key
-    /// could interfere with swaps (e.g. manipulate pricing, revert, or extract value). Because this function is
-    /// permissioned to the project owner (or a delegate with `SET_BUYBACK_POOL`), this is a self-harming-only risk.
-    /// Callers MUST ensure the pool key — including its hooks field — references a trusted pool.
+    /// @dev `poolKey.hooks` must be the configured `oracleHook`, which prices every route; a pool with any other hook
+    /// could take a no-minimum sale through its own callbacks.
     /// @dev Operator-only. Configuring the pool turns on the floor + ceiling arbitrage routing above
     /// for this `(projectId, terminalToken)` pair. Without a configured pool, the hook is a passthrough.
     /// @param projectId The ID of the project to set the pool for.
@@ -918,9 +916,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     /// @dev This function auto-applies the "floor arbitrage" path described in ARBITRAGE.md (Path 2,
     /// in revnet-core-v6). When the AMM bid is HIGHER than the bonding-curve reclaim, the hook routes
     /// the holder's burn through the pool — they get more ETH. When the AMM bid is LOWER, the hook
-    /// passes through to the terminal — the bonding-curve floor is what they receive. Either way, the
-    /// holder receives at least the bonding-curve reclaim. The terminal path only wins if the selected terminal can
-    /// locally settle the gross reclaim; aggregate surplus may price a cash-out, but it cannot fund settlement from a
+    /// passes through to the terminal — the bonding-curve floor is what they receive. Route selection
+    /// compares estimates; only an explicit minimum is a hard payout floor (INVARIANTS A.2.1). The terminal path only
+    /// wins if the selected terminal can locally settle the gross reclaim; aggregate surplus may price a cash-out, but
+    /// it cannot fund settlement from a
     /// terminal whose own local surplus is insufficient.
     ///
     /// **Why this matters for protocol health:** when external actors arbitrage between the AMM and the
@@ -1047,7 +1046,8 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // proceeds plus a later reclaim of any unsold tokens do not fall below reclaiming them all. Past half the
             // supply the curve caps at the surplus and would understate the rate, so those cash-outs reclaim. A
             // stale TWAP can also price a sale whose limit spot has already passed, so that sale could not start;
-            // those cash-outs reclaim too.
+            // those cash-outs reclaim too, on sigmoid routes as well. The limit is a pre-fee price, so the last tokens
+            // sold can net up to the pool's fees below their marginal reclaim (RISKS.md 9.11).
             if (floorCoversSettlement) {
                 sellLimitAmountOut = _netAfterTerminalFee({
                     amount: _reclaimOf({cashOutCount: 2 * context.cashOutCount, context: context}) / 2, context: context

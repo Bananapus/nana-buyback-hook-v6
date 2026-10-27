@@ -46,8 +46,8 @@ repo.
 - `setPoolFor` rejects a pool whose hook is not the configured oracle hook (`JBBuybackHook_PoolHookMismatch`).
   Only the oracle hook prices routes, and a pool with another hook could take a no-minimum sale through its own
   callbacks.
-- A no-quote pay to a project that mints nothing (weight zero) no longer takes the cold-start bootstrap route, which
-  would swap with no price limit or output floor while the TWAP is unseeded.
+- A no-quote pay to a project that mints nothing (weight zero) keeps the cold-start bootstrap route's spot-derived output
+  floor; it used to replace that floor with issuance, which is zero, and swap with no floor.
 - A sigmoid-route cash-out also reclaims when spot has already passed the sale's limit, instead of selling a sliver and
   returning the rest.
 
