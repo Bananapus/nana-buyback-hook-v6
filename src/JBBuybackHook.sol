@@ -98,6 +98,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
     error JBBuybackHook_PoolInitializedAtWrongPrice(uint160 actualSqrtPriceX96, uint160 expectedSqrtPriceX96);
 
     /// @notice Thrown when the provided PoolKey does not contain the project token and terminal token pair.
+    error JBBuybackHook_PoolHookMismatch(address hooks);
     error JBBuybackHook_PoolKeyCurrenciesMismatch();
 
     /// @notice Thrown when the pool has not been initialized in the Uniswap V4 PoolManager.
@@ -1051,15 +1052,17 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 sellLimitAmountOut = _netAfterTerminalFee({
                     amount: _reclaimOf({cashOutCount: 2 * context.cashOutCount, context: context}) / 2, context: context
                 });
-                (uint160 spotSqrtPrice,,,) = poolManager.getSlot0(poolId);
-                bool zeroForOne = projectToken < terminalToken;
-                uint160 limitSqrtPrice = JBSwapLib.sqrtPriceLimitFromAmounts({
-                    amountIn: context.cashOutCount, minimumAmountOut: sellLimitAmountOut, zeroForOne: zeroForOne
-                });
-                if (
-                    2 * context.cashOutCount > context.totalSupply
-                        || (zeroForOne ? spotSqrtPrice <= limitSqrtPrice : spotSqrtPrice >= limitSqrtPrice)
-                ) sellLimitAmountOut = type(uint256).max;
+                if (2 * context.cashOutCount > context.totalSupply) sellLimitAmountOut = type(uint256).max;
+            }
+            (uint160 spotSqrtPrice,,,) = poolManager.getSlot0(poolId);
+            bool zeroForOne = projectToken < terminalToken;
+            uint160 limitSqrtPrice = JBSwapLib.sqrtPriceLimitFromAmounts({
+                amountIn: context.cashOutCount,
+                minimumAmountOut: sellLimitAmountOut == 0 ? minimumSwapAmountOut : sellLimitAmountOut,
+                zeroForOne: zeroForOne
+            });
+            if (zeroForOne ? spotSqrtPrice <= limitSqrtPrice : spotSqrtPrice >= limitSqrtPrice) {
+                sellLimitAmountOut = type(uint256).max;
             }
         }
 
@@ -1278,7 +1281,7 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // already meets/exceeds the user's quote or the TWAP-derived minimum.
             bool noop = !poolHasLiquidity || tokenCountWithoutHook >= minimumSwapAmountOut;
 
-            if (oracleUnseeded && !hasUserSpecifiedQuote && minimumSwapAmountOut != 0) {
+            if (oracleUnseeded && !hasUserSpecifiedQuote && minimumSwapAmountOut != 0 && tokenCountWithoutHook != 0) {
                 // The cold-start quote is spot-dependent, so use it only for route selection. Execution still enforces
                 // the issuance-rate floor that the swap price limit is built from.
                 minimumSwapAmountOut = tokenCountWithoutHook;
@@ -1448,6 +1451,9 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
         bool validPair = (currency0 == projectToken && currency1 == normalizedTerminalToken)
             || (currency0 == normalizedTerminalToken && currency1 == projectToken);
         if (!validPair) revert JBBuybackHook_PoolKeyCurrenciesMismatch();
+
+        // Only the configured oracle hook prices routes, so a pool must use it.
+        if (poolKey.hooks != oracleHook) revert JBBuybackHook_PoolHookMismatch({hooks: address(poolKey.hooks)});
 
         // Store the pool key and mark it as set.
         _poolKeyOf[projectId][normalizedTerminalToken] = poolKey;
@@ -1744,7 +1750,6 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
 
             // Raw slot0 is only trusted for pools using this hook's configured oracle hook; an arbitrary pool hook can
             // keep TWAP liquidity at zero forever and would otherwise make spot routing a permanent mode.
-            if (address(key.hooks) != address(oracleHook)) return (0, 0, twapTick, 0, poolId, oracleUnseeded, false);
 
             // Slot0 supplies the fallback spot tick and the live LP fee. The LP fee is dynamic for some V4 pools, so
             // the pool key's fee field is not sufficient for this guardrail.

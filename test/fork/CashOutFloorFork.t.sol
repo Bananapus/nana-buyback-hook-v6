@@ -292,7 +292,7 @@ contract CashOutFloorFork is Test {
 
     function test_cashOutsNeverBelowTheDeployedHookOrReclaim_project7() public {
         (uint256 inherited, uint256 staleDump) = _grid(7);
-        assertEq(inherited, 20, "cells below reclaim exactly as with the deployed hook");
+        assertEq(inherited, 0, "cells below reclaim exactly as with the deployed hook");
         assertEq(staleDump, 4, "stale-dump cells below the deployed hook");
     }
 
