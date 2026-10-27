@@ -126,7 +126,7 @@ preview payload consumed by `afterPayRecordedWith` and by router-terminal previe
 ```
 
 `quotedAmountToSwapWith` is the gross quoted swap amount. It lets `afterPayRecordedWith` scale oracle-derived floors
-and issuance-rate price limits when a same-terminal split forwards only a net post-fee amount. Explicit caller minima
+and issuance-rate price limits when a same-terminal payment (a split, or a protocol fee) forwards only a net post-fee amount. Explicit caller minima
 are settlement guarantees and are not scaled.
 
 Buy-side metadata is 576 bytes from 2.0.0 (544 before). `floorCoversSettlement`, the appended 18th word, is true when

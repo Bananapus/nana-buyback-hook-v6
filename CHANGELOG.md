@@ -43,6 +43,13 @@ repo.
   count), and unsold tokens return to the holder. See RISKS 9.11.
 - Metadata purpose names align with V6 lifecycle phases: use `pay` and `cashOut` caller metadata keyed to the relevant
   hook address.
+- `setPoolFor` rejects a pool whose hook is not the configured oracle hook (`JBBuybackHook_PoolHookMismatch`).
+  Only the oracle hook prices routes, and a pool with another hook could take a no-minimum sale through its own
+  callbacks.
+- A no-quote pay to a project that mints nothing (weight zero) no longer takes the cold-start bootstrap route, which
+  would swap with no price limit or output floor while the TWAP is unseeded.
+- A sigmoid-route cash-out also reclaims when spot has already passed the sale's limit, instead of selling a sliver and
+  returning the rest.
 
 ## Metadata Changes
 
@@ -152,8 +159,8 @@ Generated event/error name deltas:
     `JBBuybackHookRegistry_HookMismatch`, `JBBuybackHookRegistry_ZeroHook`,
     `JBBuybackHook_AlreadyConfigured`, `JBBuybackHook_CallerNotPoolManager`,
     `JBBuybackHook_CallerNotTerminal`, `JBBuybackHook_PoolInitializedAtWrongPrice`,
-    `JBBuybackHook_PoolNotInitialized`, `JBBuybackHook_PoolNotSet`, `JBMetadataResolver_DataNotPadded`,
-    `JBMetadataResolver_MetadataTooLong`, `JBMetadataResolver_MetadataTooShort`.
+    `JBBuybackHook_PoolHookMismatch`, `JBBuybackHook_PoolNotInitialized`, `JBBuybackHook_PoolNotSet`,
+    `JBMetadataResolver_DataNotPadded`, `JBMetadataResolver_MetadataTooLong`, `JBMetadataResolver_MetadataTooShort`.
 - Error names removed or replaced:
   - `JBBuybackHook_AmountOverflow`, `JBBuybackHook_CallerNotPool`, `JBBuybackHook_ZeroTerminalToken`, `T`.
 
