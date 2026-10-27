@@ -249,7 +249,7 @@ contract CashOutFloorFork is Test {
                     vm.toString(sizes[i] / 1e18),
                     " 1.4=",
                     vm.toString(deployed),
-                    " 1.5=",
+                    " 2.0=",
                     vm.toString(updated),
                     " reclaim=",
                     vm.toString(reclaim),
@@ -347,7 +347,7 @@ contract CashOutFloorFork is Test {
                     "sandwich",
                     string.concat(
                         vm.toString(pid),
-                        u == 1 ? " 1.5" : " 1.4",
+                        u == 1 ? " 2.0" : " 1.4",
                         " n",
                         vm.toString(sizes[i] / 1e18),
                         " d",
