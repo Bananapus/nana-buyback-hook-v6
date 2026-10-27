@@ -126,7 +126,7 @@ preview payload consumed by `afterPayRecordedWith` and by router-terminal previe
 ```
 
 `quotedAmountToSwapWith` is the gross quoted swap amount. It lets `afterPayRecordedWith` scale oracle-derived floors
-and issuance-rate price limits when a same-terminal split forwards only a net post-fee amount. Explicit caller minima
+and issuance-rate price limits when a same-terminal payment (a split, or a protocol fee) forwards only a net post-fee amount. Explicit caller minima
 are settlement guarantees and are not scaled.
 
 Buy-side metadata is 576 bytes from 2.0.0 (544 before). `floorCoversSettlement`, the appended 18th word, is true when
@@ -135,6 +135,12 @@ pro-rating it. `afterPayRecordedWith` requires all 18 words and reverts on fewer
 only accepts calls from a project terminal, but that check alone does not prove where the metadata came from: a data
 hook that wraps this one must forward its full 18-word spec unchanged. Off-chain decoders that require exactly 17 words
 must accept 18.
+
+Sell-side metadata is 288 bytes from 2.0.0 (256 before). The appended ninth word, `sellLimitAmountOut`, is the
+no-quote sale's price limit as an output amount for the whole count: half the net reclaim of twice the count, the count
+at its marginal reclaim rate. It is set when the expected-output floor chose the route (0 otherwise, so the sale uses
+`minimumSwapAmountOut`). `minimumSwapAmountOut` stays the routing floor that clients turn into an explicit minimum.
+`afterCashOutRecordedWith` requires all nine words, so a wrapper must forward the full spec unchanged.
 
 For a pay with no caller quote priced from the TWAP, `rawSwapQuote` is the pay's expected settlement: the swap leg up to
 the issuance-rate price limit plus issuance for the input it leaves. It counts gross project tokens, or beneficiary tokens

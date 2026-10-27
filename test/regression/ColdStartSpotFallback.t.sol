@@ -178,6 +178,21 @@ contract ColdStartSpotFallbackTest is Test {
         );
     }
 
+    /// @notice A weight-zero project mints nothing, so issuance cannot be the cold-start floor; the swap keeps its
+    /// spot-derived floor instead of running with none.
+    function test_coldStartWeightZero_keepsSpotFloor() public {
+        oracle.setShouldRevert(true);
+        _setSpot({tick: 1000, liquidity: 1_000_000 ether});
+
+        JBBeforePayRecordedContext memory context = _payContext(1 ether);
+        context.weight = 0;
+        (, JBPayHookSpecification[] memory specs) = hook.beforePayRecordedWith(context);
+        PayMetadata memory metadata = _decode(specs[0].metadata);
+
+        assertEq(metadata.tokenCountWithoutHook, 0, "a weight-zero pay mints nothing");
+        assertGt(metadata.minimumSwapAmountOut, 0, "the swap keeps a floor");
+    }
+
     function test_coldStartNoQuote_underDeliveredSwapDoesNotRevert() public {
         oracle.setShouldRevert(true);
         _setSpot({tick: 1000, liquidity: 1_000_000 ether});
@@ -297,7 +312,7 @@ contract ColdStartSpotFallbackTest is Test {
         assertTrue(decoded.oracleUnseeded, "diagnostics should still expose the cold-start oracle state");
     }
 
-    function test_coldStartSpotFallback_rejectsPoolWithUnconfiguredHook() public {
+    function test_setPoolFor_rejectsPoolWithUnconfiguredHook() public {
         uint256 otherProjectId = 43;
         MockOracleHook otherHook = new MockOracleHook();
         PoolKey memory otherPoolKey = PoolKey({
@@ -307,7 +322,6 @@ contract ColdStartSpotFallbackTest is Test {
             tickSpacing: 60,
             hooks: IHooks(address(otherHook))
         });
-        PoolId otherPoolId = otherPoolKey.toId();
 
         vm.mockCall(address(projects), abi.encodeCall(projects.ownerOf, (otherProjectId)), abi.encode(owner));
         vm.mockCall(
@@ -323,23 +337,17 @@ contract ColdStartSpotFallbackTest is Test {
             abi.encodeCall(tokens.tokenOf, (otherProjectId)),
             abi.encode(IJBToken(address(projectToken)))
         );
-        _mockCurrentRuleset({mockProjectId: otherProjectId});
-        poolManager.setSlot0(otherPoolId, TickMath.getSqrtPriceAtTick(1000), 1000, 3000);
-        poolManager.setLiquidity(otherPoolId, 1_000_000 ether);
 
+        poolManager.setSlot0(otherPoolKey.toId(), TickMath.getSqrtPriceAtTick(1000), 1000, 3000);
+
+        // Only the configured oracle hook prices routes, so registering a pool with any other hook reverts.
+        vm.expectRevert(
+            abi.encodeWithSelector(JBBuybackHook.JBBuybackHook_PoolHookMismatch.selector, address(otherHook))
+        );
         vm.prank(owner);
         hook.setPoolFor({
             projectId: otherProjectId, poolKey: otherPoolKey, twapWindow: twapWindow, terminalToken: address(0)
         });
-
-        (uint256 weight, JBPayHookSpecification[] memory specs) =
-            hook.beforePayRecordedWith(_payContext({mockProjectId: otherProjectId, amount: 1 ether, metadata: ""}));
-        PayMetadata memory decoded = _decode(specs[0].metadata);
-
-        assertEq(weight, 1e18, "pool with unconfigured oracle hook should keep mint weight");
-        assertTrue(specs[0].noop, "unconfigured oracle hook should block raw spot bootstrap");
-        assertTrue(decoded.oracleUnseeded, "UI should still be able to identify the cold-start state");
-        assertEq(decoded.rawSwapQuote, 0, "rejected bootstrap path should not report an executable quote");
     }
 
     function test_warmPool_usesTwapEvenWhenSpotIsDifferent() public {

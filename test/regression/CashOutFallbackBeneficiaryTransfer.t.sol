@@ -139,7 +139,9 @@ contract RegressionCashOutFallbackBeneficiaryTransferTest is Test {
             beneficiary: payable(beneficiary),
             // No caller minimum (0) — exercises the fallback path that returns reminted tokens
             // to the holder when the pool reverts.
-            hookMetadata: abi.encode(uint256(0), cashOutCount),
+            hookMetadata: abi.encode(
+                uint256(0), cashOutCount, uint256(0), int24(0), uint128(0), bytes32(0), uint256(0), false, uint256(0)
+            ),
             cashOutMetadata: ""
         });
 
