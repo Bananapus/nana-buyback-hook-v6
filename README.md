@@ -138,8 +138,9 @@ must accept 18.
 
 Sell-side metadata is 288 bytes from 2.0.0 (256 before). The appended ninth word, `sellLimitAmountOut`, is the
 no-quote sale's price limit as an output amount for the whole count: half the net reclaim of twice the count, the count
-at its marginal reclaim rate. It is set when the expected-output floor chose the route (0 otherwise, so the sale uses
-`minimumSwapAmountOut`). `minimumSwapAmountOut` stays the routing floor that clients turn into an explicit minimum.
+at its marginal reclaim rate. It is set when the expected-output floor chose the route, and is `type(uint256).max` on a noop spec
+that reclaims instead (past half the supply, or with spot already past the limit, when the net reclaim is not 0).
+Otherwise it is 0 and the sale uses `minimumSwapAmountOut`. `minimumSwapAmountOut` stays the routing floor that clients turn into an explicit minimum.
 `afterCashOutRecordedWith` requires all nine words, so a wrapper must forward the full spec unchanged.
 
 For a pay with no caller quote priced from the TWAP, `rawSwapQuote` is the pay's expected settlement: the swap leg up to

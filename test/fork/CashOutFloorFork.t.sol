@@ -373,7 +373,7 @@ contract CashOutFloorFork is Test {
     /// @dev Over any surplus, supply and tax on the live pools in each grid state, a cash-out routed on the
     /// expected-output floor has a sale limit at or above net reclaim and below that floor, with spot short of the
     /// limit's price, so the sale can start and never undercuts reclaiming, and it is at most half the supply, where
-    /// the limit is exact.
+    /// the limit is exact. The last two hold when reclaiming pays something.
     function testFuzz_expectedOutputRoutesOnlyWhenTheSaleCanStart(
         bool p7,
         uint256 count,
@@ -418,6 +418,8 @@ contract CashOutFloorFork is Test {
         if (limit == 0) return;
         assertGt(floor, limit, "the expected output beats the count at the limit rate");
         assertGe(limit, netDirect, "the limit is at or above net reclaim");
+        // A reclaim that pays nothing is never forced, so these two hold only when reclaiming pays something.
+        if (netDirect == 0) return;
         assertLe(2 * count, supply, "at most half the supply");
         assertLt(
             _sqrtP(p7 ? 7 : 13),

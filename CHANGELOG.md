@@ -48,8 +48,9 @@ repo.
   callbacks.
 - A no-quote pay to a project that mints nothing (weight zero) keeps the cold-start bootstrap route's spot-derived output
   floor; it used to replace that floor with issuance, which is zero, and swap with no floor.
-- A sigmoid-route cash-out also reclaims when spot has already passed the sale's limit, instead of selling a sliver and
-  returning the rest.
+- A sigmoid-route cash-out also reclaims when spot has already passed the sale's limit. In 1.4 that sale reverted in the
+  pool (`PriceLimitAlreadyExceeded`) and the holder got every reminted token back. Neither the spot check nor the half-supply
+  cutoff forces a reclaim that pays nothing, so those cash-outs keep 1.4's behavior.
 
 ## Metadata Changes
 
@@ -93,7 +94,7 @@ repo.
   uint128 twapLiquidity, PoolId poolId, uint256 rawSwapQuote, bool hasUserSpecifiedMinimumSwapAmountOut,
   uint256 sellLimitAmountOut)`. `minimumSwapAmountOut` is the routing floor. `sellLimitAmountOut` is the no-quote sale's
   price limit as an output amount for the whole count, 0 when the sale uses `minimumSwapAmountOut` as its limit, or
-  `type(uint256).max` on a noop spec past half the supply or with spot past the limit.
+  `type(uint256).max` on a noop spec past half the supply or with spot past the limit (only when the net reclaim is not 0).
   `afterCashOutRecordedWith` requires all nine words.
 
 ## ABI, Event, and Error Changes

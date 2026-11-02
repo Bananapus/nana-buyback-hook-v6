@@ -1049,12 +1049,16 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
             // supply the curve caps at the surplus and would understate the rate, so those cash-outs reclaim. A
             // stale TWAP can also price a sale whose limit spot has already passed, so that sale could not start;
             // those cash-outs reclaim too, on sigmoid routes as well. The limit is a pre-fee price, so the last tokens
-            // sold can net up to the pool's fees below their marginal reclaim (RISKS.md 9.11).
+            // sold can net up to the pool's fees below their marginal reclaim (RISKS.md 9.11). Neither override
+            // forces a reclaim that pays nothing: such a sale keeps the pool route, and if it cannot start, the holder
+            // gets the reminted tokens back.
             if (floorCoversSettlement) {
                 sellLimitAmountOut = _netAfterTerminalFee({
                     amount: _reclaimOf({cashOutCount: 2 * context.cashOutCount, context: context}) / 2, context: context
                 });
-                if (2 * context.cashOutCount > context.totalSupply) sellLimitAmountOut = type(uint256).max;
+                if (netDirectCashOutAmount != 0 && 2 * context.cashOutCount > context.totalSupply) {
+                    sellLimitAmountOut = type(uint256).max;
+                }
             }
             (uint160 spotSqrtPrice,,,) = poolManager.getSlot0(poolId);
             bool zeroForOne = projectToken < terminalToken;
@@ -1063,7 +1067,10 @@ contract JBBuybackHook is JBPermissioned, ERC2771Context, IUnlockCallback, IJBBu
                 minimumAmountOut: sellLimitAmountOut == 0 ? minimumSwapAmountOut : sellLimitAmountOut,
                 zeroForOne: zeroForOne
             });
-            if (zeroForOne ? spotSqrtPrice <= limitSqrtPrice : spotSqrtPrice >= limitSqrtPrice) {
+            if (
+                netDirectCashOutAmount != 0
+                    && (zeroForOne ? spotSqrtPrice <= limitSqrtPrice : spotSqrtPrice >= limitSqrtPrice)
+            ) {
                 sellLimitAmountOut = type(uint256).max;
             }
         }
