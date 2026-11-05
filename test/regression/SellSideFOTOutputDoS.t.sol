@@ -212,7 +212,17 @@ contract RegressionSellSideFOTOutputDoSTest is Test {
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: beneficiary,
-            hookMetadata: abi.encode(quotedAmountOut, cashOutCount),
+            hookMetadata: abi.encode(
+                quotedAmountOut,
+                cashOutCount,
+                uint256(0),
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                quotedAmountOut != 0,
+                uint256(0)
+            ),
             cashOutMetadata: ""
         });
 

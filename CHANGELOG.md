@@ -27,8 +27,30 @@ repo.
   enough to activate the market route if the pool is drained.
 - Sell-side route selection compares against what the selected terminal can locally settle, not only aggregate
   project surplus.
+- A pay with no caller quote floors its swap at the expected single-range output less 2% when the sigmoid floor would
+  sit under direct issuance. Thin pools that beat issuance now route to the swap instead of minting. A pay larger than
+  the pool can take above the issuance rate floors its settlement at the swap leg up to the issuance-rate price limit,
+  less 2%, plus issuance for the input that leg leaves.
+- The expected-output floor covers the whole settlement (swap output plus unconsumed input at the issuance rate), so a
+  partial fill whose settlement misses it unwinds and the pay mints. Sigmoid floors stay pro-rated by consumed input.
+- A pay with no caller quote reports its expected settlement as `rawSwapQuote` (word 13 of the pay spec): the swap leg
+  up to the issuance-rate price limit plus issuance for the input it leaves. Route scorers that read
+  `max(rawSwapQuote, minimumSwapAmountOut)` rank such pays by what they settle. Cash-outs, explicit-quote pays and
+  cold-start bootstrap quotes keep the raw oracle quote.
+- A cash-out with no caller minimum whose sigmoid floor would sit under net reclaim routes on the same expected-output
+  floor when it beats both net reclaim and the count at its marginal net reclaim rate, spot is short of the price that
+  rate implies, and the count is at most half the supply. That floor only chooses the route: the sale stops at the marginal rate (half the net reclaim of twice the
+  count), and unsold tokens return to the holder. See RISKS 9.11.
 - Metadata purpose names align with V6 lifecycle phases: use `pay` and `cashOut` caller metadata keyed to the relevant
   hook address.
+- `setPoolFor` rejects a pool whose hook is not the configured oracle hook (`JBBuybackHook_PoolHookMismatch`).
+  Only the oracle hook prices routes, and a pool with another hook could take a no-minimum sale through its own
+  callbacks.
+- A no-quote pay to a project that mints nothing (weight zero) keeps the cold-start bootstrap route's spot-derived output
+  floor; it used to replace that floor with issuance, which is zero, and swap with no floor.
+- A sigmoid-route cash-out also reclaims when spot has already passed the sale's limit. In 1.4 that sale reverted in the
+  pool (`PriceLimitAlreadyExceeded`) and the holder got every reminted token back. Neither the spot check nor the half-supply
+  cutoff forces a reclaim that pays nothing, so those cash-outs keep 1.4's behavior.
 
 ## Metadata Changes
 
@@ -59,13 +81,21 @@ repo.
   uint256 rawSwapQuote,
   bool oracleUnseeded,
   bool skipSplits,
-  uint256 reservedPercent
+  uint256 reservedPercent,
+  bool floorCoversSettlement
 )
 ```
 
 - `quotedAmountToSwapWith` is the gross quoted swap amount. It lets `afterPayRecordedWith` scale oracle-derived floors
   and issuance-rate price limits when a same-terminal split forwards only a net post-fee amount. Explicit caller minima
   are settlement guarantees and are not scaled.
+- The cash-out hook specification returned from `beforeCashOutRecordedWith` carries
+  `(uint256 minimumSwapAmountOut, uint256 cashOutCount, uint256 netDirectCashOutAmount, int24 twapTick,
+  uint128 twapLiquidity, PoolId poolId, uint256 rawSwapQuote, bool hasUserSpecifiedMinimumSwapAmountOut,
+  uint256 sellLimitAmountOut)`. `minimumSwapAmountOut` is the routing floor. `sellLimitAmountOut` is the no-quote sale's
+  price limit as an output amount for the whole count, 0 when the sale uses `minimumSwapAmountOut` as its limit, or
+  `type(uint256).max` on a noop spec past half the supply or with spot past the limit (only when the net reclaim is not 0).
+  `afterCashOutRecordedWith` requires all nine words.
 
 ## ABI, Event, and Error Changes
 
@@ -130,8 +160,8 @@ Generated event/error name deltas:
     `JBBuybackHookRegistry_HookMismatch`, `JBBuybackHookRegistry_ZeroHook`,
     `JBBuybackHook_AlreadyConfigured`, `JBBuybackHook_CallerNotPoolManager`,
     `JBBuybackHook_CallerNotTerminal`, `JBBuybackHook_PoolInitializedAtWrongPrice`,
-    `JBBuybackHook_PoolNotInitialized`, `JBBuybackHook_PoolNotSet`, `JBMetadataResolver_DataNotPadded`,
-    `JBMetadataResolver_MetadataTooLong`, `JBMetadataResolver_MetadataTooShort`.
+    `JBBuybackHook_PoolHookMismatch`, `JBBuybackHook_PoolNotInitialized`, `JBBuybackHook_PoolNotSet`,
+    `JBMetadataResolver_DataNotPadded`, `JBMetadataResolver_MetadataTooLong`, `JBMetadataResolver_MetadataTooShort`.
 - Error names removed or replaced:
   - `JBBuybackHook_AmountOverflow`, `JBBuybackHook_CallerNotPool`, `JBBuybackHook_ZeroTerminalToken`, `T`.
 
