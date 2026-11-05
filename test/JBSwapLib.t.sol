@@ -4,8 +4,6 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {JBSwapLib} from "../src/libraries/JBSwapLib.sol";
 import {MockOracleHook} from "./mock/MockOracleHook.sol";
-import {MockPoolManager} from "./mock/MockPoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
@@ -22,7 +20,6 @@ contract JBSwapLibTest is Test {
     /// @notice A hook oracle quote uses the longest retained best-effort window when the requested window is
     /// under-covered.
     function test_getQuoteFromOracle_usesBestEffortObservationCoverage() public {
-        MockPoolManager poolManager = new MockPoolManager();
         MockOracleHook oracleHook = new MockOracleHook();
 
         address baseToken = makeAddr("baseToken");
@@ -48,12 +45,7 @@ contract JBSwapLibTest is Test {
         oracleHook.setObservationCoverage(retainedWindow);
 
         (uint256 amountOut, int24 arithmeticMeanTick, uint128 returnedLiquidity) = JBSwapLib.getQuoteFromOracle({
-            poolManager: IPoolManager(address(poolManager)),
-            key: key,
-            twapWindow: twapWindow,
-            amountIn: 1 ether,
-            baseToken: baseToken,
-            quoteToken: quoteToken
+            key: key, twapWindow: twapWindow, amountIn: 1 ether, baseToken: baseToken, quoteToken: quoteToken
         });
 
         assertEq(arithmeticMeanTick, currentTick, "partial coverage used the retained window denominator");

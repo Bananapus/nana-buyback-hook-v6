@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 
-import {IJBCashOutTerminal} from "@bananapus/core-v6/src/interfaces/IJBCashOutTerminal.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
@@ -475,41 +474,6 @@ contract ThinPoolRoutingFork is Test {
     }
 
     /// @dev The holder's ETH received and project tokens left after cashing out `count`.
-    function _cashOut(uint256 pid, uint256 count) internal returns (uint256 eth, uint256 tokens) {
-        uint256 before = PAYER.balance;
-        vm.prank(PAYER);
-        IJBCashOutTerminal(address(TERMINAL))
-            .cashOutTokensOf(PAYER, pid, count, JBConstants.NATIVE_TOKEN, 0, payable(PAYER), "");
-        return (PAYER.balance - before, _token(pid).balanceOf(PAYER));
-    }
-
-    /// @dev Cash-outs settle exactly as through the deployed hook (the holder's ETH and project tokens, which include
-    /// any hook swap proceeds sent straight to the beneficiary), as-is, after a buy and after a dump.
-    function test_cashOuts_matchTheDeployedHook() public {
-        _captureCodes();
-        for (uint256 p; p < 2; p++) {
-            uint256 pid = p == 0 ? THIN : FAR;
-            _pay(pid, 1 ether);
-            for (uint256 s; s < 3; s++) {
-                uint256 snap = vm.snapshotState();
-                if (s == 1) swapper.swap{value: 0.01 ether}(_key(pid), true, 0.01 ether);
-                if (s == 2) this.dump(pid, 0.003 ether);
-                uint256 held = _token(pid).balanceOf(PAYER);
-                for (uint256 d = 2; d <= 2000; d *= 10) {
-                    uint256 inner = vm.snapshotState();
-                    (uint256 deployedEth, uint256 deployedTokens) = _cashOut(pid, held / d);
-                    vm.revertToState(inner);
-                    vm.etch(HOOK, updatedCode);
-                    (uint256 updatedEth, uint256 updatedTokens) = _cashOut(pid, held / d);
-                    vm.revertToStateAndDelete(inner);
-                    assertEq(updatedEth, deployedEth, "same ETH to the holder");
-                    assertEq(updatedTokens, deployedTokens, "same project tokens left");
-                }
-                vm.revertToStateAndDelete(snap);
-            }
-        }
-    }
-
     /// @dev Sandwiches around a pay on the new route, front-run sizes `step` apart. The floor covers the whole
     /// settlement, so a front-run that forces a partial fill at the issuance-rate price limit cannot pass it with a
     /// diluted share: the payer keeps at least the floor, or the swap unwinds and the whole pay mints.

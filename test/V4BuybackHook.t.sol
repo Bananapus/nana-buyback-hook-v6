@@ -1916,7 +1916,17 @@ contract V4BuybackHookTest is Test {
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: payable(beneficiary),
-            hookMetadata: abi.encode(amountOut, cashOutCount),
+            hookMetadata: abi.encode(
+                amountOut,
+                cashOutCount,
+                uint256(0),
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                amountOut != 0,
+                uint256(0)
+            ),
             cashOutMetadata: ""
         });
 
@@ -1984,7 +1994,8 @@ contract V4BuybackHookTest is Test {
                 uint128(1_000_000 ether),
                 poolId,
                 uint256(6 ether),
-                false
+                false,
+                uint256(0)
             ),
             cashOutMetadata: ""
         });
@@ -2044,7 +2055,8 @@ contract V4BuybackHookTest is Test {
                 uint128(1_000_000 ether),
                 poolId,
                 uint256(6 ether),
-                true
+                true,
+                uint256(0)
             ),
             cashOutMetadata: ""
         });
@@ -2097,7 +2109,17 @@ contract V4BuybackHookTest is Test {
             }),
             cashOutTaxRate: JBConstants.MAX_CASH_OUT_TAX_RATE,
             beneficiary: payable(beneficiary),
-            hookMetadata: abi.encode(amountOut, nonFeeCashOutCount),
+            hookMetadata: abi.encode(
+                amountOut,
+                nonFeeCashOutCount,
+                uint256(0),
+                int24(0),
+                uint128(0),
+                bytes32(0),
+                uint256(0),
+                amountOut != 0,
+                uint256(0)
+            ),
             cashOutMetadata: ""
         });
 
@@ -2121,7 +2143,7 @@ contract V4BuybackHookTest is Test {
         assertEq(beneficiary.balance, amountOut, "beneficiary should receive swap proceeds");
     }
 
-    function test_afterCashOutRecordedWith_fallsBackToContextCountWhenNoMetadata() public {
+    function test_afterCashOutRecordedWith_revertsWithoutTheHooksMetadata() public {
         vm.prank(owner);
         hook.setPoolFor({
             projectId: projectId, poolKey: poolKey, twapWindow: twapWindow, terminalToken: JBConstants.NATIVE_TOKEN
@@ -2159,18 +2181,10 @@ contract V4BuybackHookTest is Test {
             cashOutMetadata: ""
         });
 
-        // With empty metadata, the hook should fall back to context.cashOutCount.
-        vm.expectCall(
-            address(controller),
-            abi.encodeWithSignature(
-                "mintTokensOf(uint256,uint256,address,string,bool)", projectId, cashOutCount, address(hook), "", false
-            )
-        );
-
+        // Only the hook's own nine-word cash-out metadata is accepted.
         vm.prank(address(terminal));
+        vm.expectRevert();
         hook.afterCashOutRecordedWith(context);
-
-        assertTrue(mockPm.swapCalled(), "sell-side swap should execute");
     }
 
     function test_afterCashOutRecordedWith_revertsIfCallerIsNotProjectTerminal() public {

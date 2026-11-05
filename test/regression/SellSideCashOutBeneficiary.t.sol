@@ -148,7 +148,9 @@ contract SellSideCashOutBeneficiaryTest is Test {
             beneficiary: payable(BENEFICIARY),
             // No caller minimum (0) — exercises the fallback path that returns reminted tokens
             // to the holder when the pool reverts.
-            hookMetadata: abi.encode(uint256(0), CASH_OUT_COUNT),
+            hookMetadata: abi.encode(
+                uint256(0), CASH_OUT_COUNT, uint256(0), int24(0), uint128(0), bytes32(0), uint256(0), false, uint256(0)
+            ),
             cashOutMetadata: ""
         });
     }

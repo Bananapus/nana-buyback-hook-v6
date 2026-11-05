@@ -3,19 +3,13 @@ pragma solidity 0.8.28;
 
 import {IGeomeanOracle} from "@bananapus/univ4-router-v6/src/interfaces/IGeomeanOracle.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 /// @notice Shared math library for the buyback hook: queries TWAP oracles, calculates sigmoid-based slippage
 /// tolerances from estimated price impact, converts ticks to token amounts, and derives V4 sqrt price limits.
 library JBSwapLib {
-    using StateLibrary for IPoolManager;
-    using PoolIdLibrary for PoolKey;
-
     /// @notice The precision multiplier for impact calculations.
     /// @dev 1e18 precision (13 orders of magnitude above the 1e5 = 10 * _SLIPPAGE_DENOMINATOR scale that slippage
     ///      basis points use) keeps a small swap in a deep pool from rounding its impact to zero.
@@ -38,7 +32,6 @@ library JBSwapLib {
     //*********************************************************************//
 
     /// @notice Query a V4 oracle hook for TWAP data. Returns 0 if the oracle is unavailable.
-    /// @param poolManager The V4 PoolManager.
     /// @param key The pool key (whose `hooks` field points to the oracle hook).
     /// @param twapWindow The TWAP window in seconds.
     /// @param amountIn The amount of base tokens to get a quote for.
@@ -48,7 +41,6 @@ library JBSwapLib {
     /// @return arithmeticMeanTick The TWAP tick over the window.
     /// @return harmonicMeanLiquidity The harmonic mean liquidity over the window.
     function getQuoteFromOracle(
-        IPoolManager poolManager,
         PoolKey memory key,
         uint32 twapWindow,
         uint128 amountIn,
@@ -59,19 +51,6 @@ library JBSwapLib {
         view
         returns (uint256 amountOut, int24 arithmeticMeanTick, uint128 harmonicMeanLiquidity)
     {
-        // If no TWAP window, use spot price from PoolManager state.
-        if (twapWindow == 0) {
-            PoolId poolId = key.toId();
-            (uint160 sqrtPriceX96, int24 tick,,) = poolManager.getSlot0(poolId);
-            if (sqrtPriceX96 == 0) return (0, 0, 0);
-            arithmeticMeanTick = tick;
-            harmonicMeanLiquidity = poolManager.getLiquidity(poolId);
-            amountOut = getQuoteAtTick({
-                tick: arithmeticMeanTick, baseAmount: amountIn, baseToken: baseToken, quoteToken: quoteToken
-            });
-            return (amountOut, arithmeticMeanTick, harmonicMeanLiquidity);
-        }
-
         IGeomeanOracle oracle = IGeomeanOracle(address(key.hooks));
         uint32 quoteWindow = twapWindow;
 
@@ -116,9 +95,8 @@ library JBSwapLib {
                 tick: arithmeticMeanTick, baseAmount: amountIn, baseToken: baseToken, quoteToken: quoteToken
             });
         } catch {
-            // Oracle hook not available — return zero to force the mint path.
-            // Falling back to spot price is trivially sandwich-attackable. Swaps will
-            // activate once the oracle warms up (~30 min after pool creation).
+            // Oracle hook not available: return zero so the caller treats the oracle as unseeded. A spot fallback here
+            // would be trivially sandwich-attackable; the hook's bounded buy-side bootstrap is the only spot path.
             return (0, 0, 0);
         }
     }
@@ -319,7 +297,8 @@ library JBSwapLib {
     ///         if the execution price would be worse than the minimum acceptable rate.
     /// @dev When `minimumAmountOut == 0`, returns the direction's extreme price bound (no swap-price limit).
     /// @param amountIn The amount of tokens to swap in.
-    /// @param minimumAmountOut The minimum acceptable output (from payer quote or TWAP).
+    /// @param minimumAmountOut The output the whole input must at least reach at the limit rate (a payer quote, a TWAP
+    /// floor, the issuance-rate count or a cash-out's marginal reclaim).
     /// @param zeroForOne True when selling token0 for token1 (price decreases).
     /// @return sqrtPriceLimit The V4-compatible sqrtPriceLimitX96.
     function sqrtPriceLimitFromAmounts(
@@ -373,18 +352,9 @@ library JBSwapLib {
         // Normal range: full precision via ratioX192. Extended range: ratioX128 to avoid mulDiv overflow.
         bool extended = num / den >= (uint256(1) << 64);
         uint256 ratio = FullMath.mulDiv({a: num, b: uint256(1) << (extended ? 128 : 192), denominator: den});
-        uint256 shift;
-        if (extended) {
-            // Shift before sqrt for better precision: sqrt(ratioX128 << 64) vs sqrt(ratioX128) << 32.
-            if (ratio <= type(uint256).max >> 64) {
-                ratio <<= 64;
-            } else {
-                // Overflow guard: fall back to post-sqrt shift when the pre-shift would overflow.
-                shift = 32;
-            }
-        }
-
-        uint256 sqrtResult = Math.sqrt(ratio) << shift;
+        // An extended ratio is at least 2^192, so shifting it left by 64 before the sqrt would overflow; shift the
+        // root instead.
+        uint256 sqrtResult = Math.sqrt(ratio) << (extended ? 32 : 0);
 
         // Clamp to valid V4 range.
         if (sqrtResult <= uint256(TickMath.MIN_SQRT_PRICE)) return TickMath.MIN_SQRT_PRICE + 1;
