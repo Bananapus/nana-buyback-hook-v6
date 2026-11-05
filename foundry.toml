@@ -9,6 +9,7 @@ fs_permissions = [{ access = "read-write", path = "./"}]
 
 [rpc_endpoints]
 ethereum = "${RPC_ETHEREUM_MAINNET}"
+base = "${RPC_BASE_MAINNET}"
 
 [fuzz]
 runs = 4096

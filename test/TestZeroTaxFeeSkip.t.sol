@@ -334,6 +334,36 @@ contract TestZeroTaxFeeSkip is Test {
         assertEq(net, 0, "max tax rate should yield zero reclaim");
     }
 
+    /// @notice A no-quote cash-out whose pool spot has already passed the sale's limit reclaims, unless reclaiming pays
+    /// nothing. Then it keeps the pool route, so a reverting sale returns the holder's tokens instead of burning them.
+    function test_spotPastLimit_zeroReclaimKeepsThePoolRoute() public {
+        _seedTwapAndPassSpot();
+        _mockRuleset(JBConstants.MAX_CASH_OUT_TAX_RATE);
+
+        (,,,, JBCashOutHookSpecification[] memory specs) =
+            hook.beforeCashOutRecordedWith(_buildContext(JBConstants.MAX_CASH_OUT_TAX_RATE, false, 0));
+
+        assertEq(_decodeNet(specs[0].metadata), 0, "max tax reclaims nothing");
+        assertFalse(specs[0].noop, "a worthless reclaim must not be forced");
+    }
+
+    /// @notice The same spot-passed cash-out reclaims when reclaiming pays something.
+    function test_spotPastLimit_positiveReclaimReclaims() public {
+        _seedTwapAndPassSpot();
+        _mockRuleset(5000);
+
+        (,,,, JBCashOutHookSpecification[] memory specs) = hook.beforeCashOutRecordedWith(_buildContext(5000, false, 0));
+
+        assertGt(_decodeNet(specs[0].metadata), 0, "half tax reclaims something");
+        assertTrue(specs[0].noop, "a sale that cannot start reclaims");
+    }
+
+    /// @dev A warm TWAP at tick 0 prices the sale, while spot sits at tick 2000: past any limit a 1:1 sale implies.
+    function _seedTwapAndPassSpot() internal {
+        mockOracle.setObserveData(0, 0, 0, uint160((uint256(600) << 128) / uint256(1_000_000 ether)));
+        mockPm.setSlot0(poolKey.toId(), TickMath.getSqrtPriceAtTick(2000), 2000, 3000);
+    }
+
     function _mockTerminalLocalSurplus(uint256 surplus) internal {
         address[] memory tokensToCheck = new address[](1);
         tokensToCheck[0] = JBConstants.NATIVE_TOKEN;

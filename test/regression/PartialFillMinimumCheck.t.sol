@@ -291,7 +291,8 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 uint256(0),
                 false, // oracleUnseeded
                 skipSplits,
-                reservedPercent
+                reservedPercent,
+                false
             ),
             payerMetadata: ""
         });
@@ -345,7 +346,8 @@ contract PFMC_PartialFillMinimumCheck is Test {
                 uint256(0),
                 false, // oracleUnseeded
                 false, // skipSplits
-                uint256(0) // reservedPercent
+                uint256(0), // reservedPercent
+                false // floorCoversSettlement
             ),
             payerMetadata: ""
         });
